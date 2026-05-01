@@ -196,3 +196,39 @@ OpenAI shipped the AGENTS.md standard in August 2025.
 They will build the auto-generator next.
 6-12 month window from then.
 Ship Phase 3 before that window closes.
+
+---
+
+## THE REAL VISION — Not yet built
+
+**What Carto was always meant to be:**
+
+Not just AGENTS.md sync. A visual codebase graph — like Emfirge's cartography feature but for code instead of AWS infrastructure.
+
+Every file = a node.
+Every import = an edge.
+Every function call = a relationship.
+
+```
+routes/users.js → controllers/user.js → models/User.js → database.js
+```
+
+Exposed two ways:
+1. Visual UI in the browser (vis.js graph, like Emfirge cartography)
+2. AGENTS.md text export (what we have now — the foundation)
+
+**What we built so far = 30% of the vision.**
+The extraction layer works. The graph doesn't exist yet.
+
+**What the real Carto needs:**
+- Parse import statements across all files → build dependency edges
+- Build a graph (nodes = files/functions, edges = imports/calls)
+- Visual browser UI to explore the graph
+- AI navigates the graph to understand the codebase
+- AGENTS.md becomes the text export of the graph
+
+**Why this matters:**
+AGENTS.md sync → OpenAI can copy in a week.
+A visual codebase graph that AI can navigate → genuinely defensible. Much harder to copy.
+
+**This is the next big phase after current polish.**
