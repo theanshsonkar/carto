@@ -62,25 +62,15 @@ async function runFullSync(config) {
   const allModelFiles = config.watch.modelFiles || [];
   const allFrontendFiles = config.watch.frontendFiles || [];
 
-  // Aggregate data
   let allRoutes = [];
   let allModels = [];
   let allFetches = [];
   let allStorageKeys = [];
-
-  // Functions: { filename: [{ name, params, returnType }] }
   const functionsMap = {};
-  // Routes per file for file map
   const routeCountMap = {};
-  // Env vars: { varName: Set([filename, ...]) }
   const envVarMap = new Map();
-  // DB tables: [{ tableName, modelName, file }]
   const dbTableList = [];
-
-  // Deduplicate files
   const processedFiles = new Set();
-
-  // Process all code files (route + model files, deduplicated)
   const allCodeFiles = [...new Set([...allRouteFiles, ...allModelFiles])];
 
   for (const filePath of allCodeFiles) {
@@ -94,42 +84,32 @@ async function runFullSync(config) {
     const relPath = path.relative(projectRoot, filePath);
     const plugin = getPluginForFile(plugins, filePath);
 
-    if (!plugin) {
-      // No plugin for this file type — skip silently
-      continue;
-    }
+    if (!plugin) continue;
 
     const result = plugin.extract(content, relPath);
 
-    // Routes
     allRoutes = allRoutes.concat(result.routes);
     routeCountMap[filePath] = result.routes.length;
 
-    // Models
     allModels = allModels.concat(result.models);
 
-    // Functions
     if (result.functions.length > 0 && basename !== '__init__.py') {
       functionsMap[basename] = result.functions;
     }
 
-    // Env vars
     for (const varName of result.envVars) {
       if (!envVarMap.has(varName)) envVarMap.set(varName, new Set());
       envVarMap.get(varName).add(basename);
     }
 
-    // DB tables
     for (const t of result.dbTables) {
       dbTableList.push({ tableName: t.tableName, modelName: t.modelName, file: basename });
     }
 
-    // Fetches and storage keys (from JS/HTML plugins)
     allFetches = allFetches.concat(result.fetches);
     allStorageKeys = allStorageKeys.concat(result.storageKeys);
   }
 
-  // Process frontend files separately (may overlap with code files)
   for (const filePath of allFrontendFiles) {
     if (processedFiles.has(filePath)) continue;
     processedFiles.add(filePath);
@@ -147,12 +127,10 @@ async function runFullSync(config) {
     allStorageKeys = allStorageKeys.concat(result.storageKeys);
   }
 
-  // Global dedup: collapse dynamic fetches across all files into one summary row
   const staticFetches = allFetches.filter(f => f.url !== '[dynamic]' && !f.url.startsWith('dynamic calls detected'));
   let totalDynamic = 0;
   for (const f of allFetches) {
     if (f.url === '[dynamic]') totalDynamic++;
-    // Also count already-collapsed per-file rows
     const m = f.url.match(/^dynamic calls detected \((\d+) unresolved\)$/);
     if (m) totalDynamic += parseInt(m[1], 10);
   }
@@ -161,7 +139,6 @@ async function runFullSync(config) {
   }
   allFetches = staticFetches;
 
-  // Global dedup: storage keys across all files
   const skSeen = new Set();
   allStorageKeys = allStorageKeys.filter(({ operation, key }) => {
     const id = `${operation}::${key}`;
@@ -170,10 +147,8 @@ async function runFullSync(config) {
     return true;
   });
 
-  // Build import graph from all processed files
   const fileContentsForImports = [];
   const allProcessedPaths = [...new Set([...allCodeFiles, ...allFrontendFiles])];
-  // Re-read is avoided — collect during processing. Use a second pass for simplicity.
   for (const filePath of allProcessedPaths) {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
@@ -184,19 +159,15 @@ async function runFullSync(config) {
   }
   const importGraph = buildImportGraph(fileContentsForImports, projectRoot);
 
-  // Detect tech stack from watched files + manifests
   const stackItems = buildStackLine(fileContentsForImports, projectRoot);
 
-  // Compute entry points and high impact files from import graph
   const allValues = new Set();
   for (const deps of Object.values(importGraph)) {
     for (const dep of deps) allValues.add(dep);
   }
-  // Entry points: files that import 3+ others but nothing imports them
   const entryPoints = Object.keys(importGraph)
     .filter(f => !allValues.has(f) && importGraph[f].length >= 3)
     .sort();
-  // High impact: files imported by 3+ others, sorted descending by count
   const depCount = {};
   for (const deps of Object.values(importGraph)) {
     for (const dep of deps) {
@@ -208,7 +179,6 @@ async function runFullSync(config) {
     .sort((a, b) => b[1] - a[1])
     .map(([file, count]) => ({ file, count }));
 
-  // Build file map
   const fileMap = [];
   for (const filePath of allCodeFiles) {
     const basename = path.basename(filePath);
@@ -221,15 +191,12 @@ async function runFullSync(config) {
     }
   }
 
-  // Aggregate env vars into sorted array
   const envVars = [...envVarMap.keys()]
     .sort()
     .map(name => ({ name, files: [...envVarMap.get(name)].sort() }));
 
-  // Scan project structure
   const structure = await scanStructure(projectRoot);
 
-  // Validate extracted data — drop anything malformed
   const validated = validateExtracted({
     routes: allRoutes,
     models: allModels,
@@ -256,7 +223,6 @@ async function runFullSync(config) {
 
   mergeIntoAgentsMd(config.output, autoContent);
 
-  // Save graph to .carto/map.json (atomic write)
   const cartoDir = path.join(projectRoot, '.carto');
   const mapData = {
     version: '1',
