@@ -254,6 +254,26 @@ async function runFullSync(config) {
   });
 
   mergeIntoAgentsMd(config.output, autoContent);
+
+  // Save graph to .carto/map.json (atomic write)
+  const cartoDir = path.join(config.projectRoot, '.carto');
+  const mapData = {
+    version: '1',
+    generated: new Date().toISOString(),
+    imports: importGraph,
+    routes: validated.routes,
+    highImpact: highImpact.map(h => ({ file: h.file, dependents: h.count })),
+    entryPoints,
+    stack: stackItems
+  };
+  try {
+    const tmpPath = path.join(cartoDir, 'map.tmp.json');
+    const mapPath = path.join(cartoDir, 'map.json');
+    fs.writeFileSync(tmpPath, JSON.stringify(mapData, null, 2) + '\n', 'utf-8');
+    fs.renameSync(tmpPath, mapPath);
+  } catch (err) {
+    console.warn(`[CARTO] Warning: Could not write .carto/map.json — ${err.message}`);
+  }
 }
 
 module.exports = { runFullSync, safeReadFile, scanStructure };
