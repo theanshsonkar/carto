@@ -1,9 +1,9 @@
 {
-  "name": "carto-agents",
+  "name": "carto-md",
   "version": "1.0.0",
-  "description": "Auto-generates and maintains your AGENTS.md. Your code changes. AGENTS.md updates.",
+  "description": "The context layer for AI-native development.",
   "bin": {
-    "carto": "./src/cli/index.js"
+    "carto": "src/cli/index.js"
   },
   "main": "./src/sync.js",
   "scripts": {
@@ -16,14 +16,20 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "author": {
+    "name": "Ansh Sonkar",
+    "url": "https://github.com/theanshsonkar",
+    "twitter": "https://x.com/theanshsonkar"
+  },
   "license": "MIT",
   "keywords": [
     "agents",
     "AGENTS.md",
     "AI",
     "context",
-    "codegen",
-    "FastAPI",
-    "developer-tools"
+    "codebase",
+    "developer-tools",
+    "cursor",
+    "copilot"
   ]
 }

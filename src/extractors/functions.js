@@ -43,15 +43,16 @@ function extractFunctions(content, filename) {
     const rawParams = match[3];
     const returnType = match[4] ? match[4].trim() : '\u2014';
 
-    // Step 3: Clean params
-    const skipParams = new Set(['self', '*args', '**kwargs', '*', '']);
-    const params = rawParams
-      .split(',')
+    // Step 3: Clean params — use smart split to handle commas inside brackets
+    const skipParams = new Set(['self', '']);
+    const params = splitParams(rawParams)
       .map(p => {
         // Strip type annotation (everything after first ":")
         let cleaned = p.split(':')[0];
         // Strip default value (everything after first "=")
         cleaned = cleaned.split('=')[0];
+        // Strip leading * or **
+        cleaned = cleaned.replace(/^\*{1,2}/, '');
         return cleaned.trim();
       })
       .filter(p => !skipParams.has(p));
@@ -64,6 +65,28 @@ function extractFunctions(content, filename) {
   }
 
   return functions;
+}
+
+/**
+ * Splits params by comma at the top level only.
+ * Commas inside brackets [], parentheses (), or braces {} do NOT split.
+ */
+function splitParams(rawParams) {
+  const params = [];
+  let depth = 0;
+  let current = '';
+  for (const char of rawParams) {
+    if (char === '[' || char === '(' || char === '{') depth++;
+    else if (char === ']' || char === ')' || char === '}') depth--;
+    else if (char === ',' && depth === 0) {
+      params.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) params.push(current.trim());
+  return params;
 }
 
 module.exports = { extractFunctions };

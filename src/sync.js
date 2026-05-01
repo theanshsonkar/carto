@@ -142,6 +142,29 @@ async function runFullSync(config) {
     allStorageKeys = allStorageKeys.concat(result.storageKeys);
   }
 
+  // Global dedup: collapse dynamic fetches across all files into one summary row
+  const staticFetches = allFetches.filter(f => !f.url.startsWith('[dynamic'));
+  let totalDynamic = 0;
+  for (const f of allFetches) {
+    if (f.url === '[dynamic]') totalDynamic++;
+    // Also count already-collapsed per-file rows like "[dynamic ×1]"
+    const m = f.url.match(/^\[dynamic\s*\u00d7(\d+)\]$/);
+    if (m) totalDynamic += parseInt(m[1], 10);
+  }
+  if (totalDynamic > 0) {
+    staticFetches.push({ url: `[dynamic \u00d7${totalDynamic}]`, method: '\u2014' });
+  }
+  allFetches = staticFetches;
+
+  // Global dedup: storage keys across all files
+  const skSeen = new Set();
+  allStorageKeys = allStorageKeys.filter(({ operation, key }) => {
+    const id = `${operation}::${key}`;
+    if (skSeen.has(id)) return false;
+    skSeen.add(id);
+    return true;
+  });
+
   // Build file map
   const fileMap = [];
   for (const filePath of allCodeFiles) {

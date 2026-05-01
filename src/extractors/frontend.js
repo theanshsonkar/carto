@@ -37,7 +37,26 @@ function extractFrontend(content) {
     });
   }
 
-  return { fetches, storageKeys };
+  // Collapse dynamic fetches into a single summary row
+  const staticFetches = fetches.filter(f => f.url !== '[dynamic]');
+  const dynamicCount = fetches.filter(f => f.url === '[dynamic]').length;
+  if (dynamicCount > 0) {
+    staticFetches.push({
+      url: `[dynamic \u00d7${dynamicCount}]`,
+      method: '\u2014'
+    });
+  }
+
+  // Deduplicate storage keys — keep first occurrence only
+  const seen = new Set();
+  const dedupedStorageKeys = storageKeys.filter(({ operation, key }) => {
+    const id = `${operation}::${key}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  return { fetches: staticFetches, storageKeys: dedupedStorageKeys };
 }
 
 module.exports = { extractFrontend };
