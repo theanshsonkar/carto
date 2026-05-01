@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const pkg = require('../../package.json');
 const command = process.argv[2];
 
 function printUsage() {
@@ -15,6 +16,11 @@ Commands:
 Options:
   --help, -h   Show this help message
 `);
+}
+
+if (command === '--version' || command === '-v') {
+  console.log(`${pkg.name} ${pkg.version}`);
+  process.exit(0);
 }
 
 if (!command || command === '--help' || command === '-h') {
