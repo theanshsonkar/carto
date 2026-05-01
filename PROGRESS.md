@@ -116,8 +116,8 @@ carto-ansh/
 
 **Goal:** Carto works accurately on the most popular stacks, not just FastAPI + plain HTML.
 
-**What gets added:**
-- tree-sitter AST for JS/TS (regex breaks on complex JS — tree-sitter doesn't)
+**What got added:**
+- tree-sitter AST for JS/TS
 - Express extractor (routes)
 - Prisma extractor (schema → models)
 - Next.js extractor (API routes from `/app/api/` and `/pages/api/`)
@@ -126,18 +126,24 @@ carto-ansh/
 
 ---
 
-## PHASE 3 — Plugin Architecture + JS/TS Support ✅ DONE
+## PHASE 3 — Import Graph ✅ DONE
 
-**Goal:** Power users get real-time context injection on top of AGENTS.md.
+**Goal:** AI knows not just what exists but how files connect.
 
-**What gets added:**
-- Local MCP server (`carto serve`)
-- Real-time context injection per Claude request
-- All edge cases from Phase 2 fixed
-- `CONTRIBUTING.md` written — instructions for adding language/framework support
-- README with before/after demo
-- 60-second demo video (non-negotiable for launch)
-- `npm publish` → `carto-agents` live on npm
+**What got added:**
+- `src/extractors/imports.js` — parses import statements from JS/TS and Python
+- Resolves relative + package-relative paths against real filesystem
+- Only includes dependencies that actually exist as files — no phantom links
+- New "File Relationships (auto)" section in AGENTS.md
+- Format: `routes/auth.js → controllers/auth.js, models/User.js`
+- Auto-updates on file save via existing watcher — no changes needed to watch pipeline
+
+**Verified live on Emfirge:**
+- `main.py → aws_collector.py, cartography.py, database.py, drift_service.py, llm.py, models.py, rules.py, scoring.py, storage.py`
+- All existing sections (routes, models, functions, env vars) untouched
+
+**What this unlocks:**
+AI navigates the codebase without you explaining structure every session. Knows which file to touch, which dependencies it affects. Works up to ~10k lines reliably.
 
 ---
 

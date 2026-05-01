@@ -9,6 +9,15 @@ const path = require('path');
 function inferResponsibility(filename, functionCount, routeCount) {
   const base = path.basename(filename).toLowerCase();
 
+  // Skip barrel exports — index files with no routes and no functions
+  if (
+    (base === 'index.ts' || base === 'index.js' || base === 'index.tsx' || base === 'index.jsx') &&
+    functionCount === 0 &&
+    routeCount === 0
+  ) {
+    return null;
+  }
+
   // Skip __init__.py entirely
   if (base === '__init__.py') return null;
 

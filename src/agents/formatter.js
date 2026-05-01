@@ -1,3 +1,5 @@
+const path = require('path');
+
 /**
  * Converts extracted data into markdown sections for AGENTS.md.
  *
@@ -13,7 +15,7 @@
  *   9. Frontend API Calls (auto)
  *   10. Frontend Storage Keys (auto)
  */
-function formatSections({ routes, models, frontend, structure, warnings, fileMap, functions, dbTables, envVars, importGraph }) {
+function formatSections({ routes, models, frontend, structure, warnings, fileMap, functions, dbTables, envVars, importGraph, stackItems, entryPoints, highImpact }) {
   const sections = [];
 
   // 1. Project Structure
@@ -26,6 +28,22 @@ function formatSections({ routes, models, frontend, structure, warnings, fileMap
     }
   } else {
     sections.push('_No structure data available._');
+  }
+
+  // Stack line — right after structure
+  if (stackItems && stackItems.length > 0) {
+    sections.push(`\n**Stack:** ${stackItems.join(', ')}`);
+  }
+
+  // Entry points
+  if (entryPoints && entryPoints.length > 0) {
+    sections.push(`**Entry points:** ${entryPoints.join(', ')}`);
+  }
+
+  // High impact files
+  if (highImpact && highImpact.length > 0) {
+    const items = highImpact.map(h => `${h.file} (${h.count} dependents)`);
+    sections.push(`**High impact:** ${items.join(', ')}`);
   }
 
   // 2. File Map

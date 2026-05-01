@@ -6,6 +6,7 @@ const { mergeIntoAgentsMd } = require('./agents/merger');
 const { inferResponsibility } = require('./extractors/filemap');
 const { validateExtracted } = require('./agents/validator');
 const { buildImportGraph } = require('./extractors/imports');
+const { buildStackLine } = require('./extractors/stack');
 
 const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.idea', '.vscode', '.carto', 'AGENTS.md']);
 
@@ -71,7 +72,7 @@ async function runFullSync(config) {
   // Routes per file for file map
   const routeCountMap = {};
   // Env vars: { varName: Set([filename, ...]) }
-  const envVarMap = {};
+  const envVarMap = new Map();
   // DB tables: [{ tableName, modelName, file }]
   const dbTableList = [];
 
@@ -89,6 +90,7 @@ async function runFullSync(config) {
     if (!content) continue;
 
     const basename = path.basename(filePath);
+    const relPath = path.relative(config.projectRoot, filePath);
     const plugin = getPluginForFile(plugins, filePath);
 
     if (!plugin) {
@@ -96,7 +98,7 @@ async function runFullSync(config) {
       continue;
     }
 
-    const result = plugin.extract(content, basename);
+    const result = plugin.extract(content, relPath);
 
     // Routes
     allRoutes = allRoutes.concat(result.routes);
@@ -112,8 +114,8 @@ async function runFullSync(config) {
 
     // Env vars
     for (const varName of result.envVars) {
-      if (!envVarMap[varName]) envVarMap[varName] = new Set();
-      envVarMap[varName].add(basename);
+      if (!envVarMap.has(varName)) envVarMap.set(varName, new Set());
+      envVarMap.get(varName).add(basename);
     }
 
     // DB tables
@@ -181,22 +183,47 @@ async function runFullSync(config) {
   }
   const importGraph = buildImportGraph(fileContentsForImports, config.projectRoot);
 
+  // Detect tech stack from watched files + manifests
+  const stackItems = buildStackLine(fileContentsForImports, config.projectRoot);
+
+  // Compute entry points and high impact files from import graph
+  const allValues = new Set();
+  for (const deps of Object.values(importGraph)) {
+    for (const dep of deps) allValues.add(dep);
+  }
+  // Entry points: files that import 3+ others but nothing imports them
+  const entryPoints = Object.keys(importGraph)
+    .filter(f => !allValues.has(f) && importGraph[f].length >= 3)
+    .sort();
+  // High impact: files imported by 3+ others, sorted descending by count
+  const depCount = {};
+  for (const deps of Object.values(importGraph)) {
+    for (const dep of deps) {
+      depCount[dep] = (depCount[dep] || 0) + 1;
+    }
+  }
+  const highImpact = Object.entries(depCount)
+    .filter(([, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([file, count]) => ({ file, count }));
+
   // Build file map
   const fileMap = [];
   for (const filePath of allCodeFiles) {
     const basename = path.basename(filePath);
+    const relPath = path.relative(config.projectRoot, filePath);
     const funcCount = (functionsMap[basename] || []).length;
     const routeCount = routeCountMap[filePath] || 0;
     const responsibility = inferResponsibility(basename, funcCount, routeCount);
     if (responsibility && responsibility !== '\u2014') {
-      fileMap.push({ file: basename, responsibility });
+      fileMap.push({ file: relPath, responsibility });
     }
   }
 
   // Aggregate env vars into sorted array
-  const envVars = Object.keys(envVarMap)
+  const envVars = [...envVarMap.keys()]
     .sort()
-    .map(name => ({ name, files: [...envVarMap[name]].sort() }));
+    .map(name => ({ name, files: [...envVarMap.get(name)].sort() }));
 
   // Scan project structure
   const structure = await scanStructure(config.projectRoot);
@@ -220,7 +247,10 @@ async function runFullSync(config) {
     functions: validated.functions,
     dbTables: validated.dbTables,
     envVars: validated.envVars,
-    importGraph
+    importGraph,
+    stackItems,
+    entryPoints,
+    highImpact
   });
 
   mergeIntoAgentsMd(config.output, autoContent);

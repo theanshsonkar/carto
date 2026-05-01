@@ -12,7 +12,7 @@ async function run(projectRoot) {
   console.log(`[CARTO] Detected: ${detection.framework} (${detection.language})`);
 
   const isIgnored = parseCartoIgnore(projectRoot);
-  const files = discoverFiles(projectRoot, detection.framework, isIgnored);
+  const files = discoverFiles(projectRoot, detection.framework, isIgnored, detection.secondaryFramework);
 
   // Count files for reporting
   const pyCount = files.routeFiles.filter(f => f.endsWith('.py')).length;

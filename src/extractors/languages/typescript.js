@@ -1,4 +1,5 @@
 const parser = require('@babel/parser');
+const path = require('path');
 const jsPlugin = require('./javascript');
 
 const TS_PARSE_OPTIONS = {
@@ -31,6 +32,100 @@ module.exports = {
     };
   }
 };
+
+// ---------------------------------------------------------------------------
+// Next.js Pages Router route detection
+// ---------------------------------------------------------------------------
+
+const HTTP_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH']);
+
+/**
+ * Detects Next.js route patterns:
+ *
+ * Pages Router (pages/api/...):
+ *   export default function handler(req, res) — treated as ALL methods
+ *   export default async function handler(req, res)
+ *
+ * App Router (app/api/.../route.ts):
+ *   export function GET/POST/PUT/DELETE/PATCH
+ *   export async function GET/POST/PUT/DELETE/PATCH
+ *   export const GET/POST = ...
+ */
+function extractNextJSPagesRoutes(ast, filename) {
+  const routes = [];
+  const normalizedPath = ('/' + filename).replace(/\\/g, '/');
+  const isApiFile = normalizedPath.includes('/pages/api/') || normalizedPath.includes('/app/api/');
+
+  if (!isApiFile) return routes;
+  if (!ast.program || !ast.program.body) return routes;
+
+  // Infer route path from filename
+  // pages/api/users/[id].ts → /api/users/[id]
+  // app/api/users/route.ts → /api/users
+  let routePath = '[inferred]';
+  const pagesMatch = normalizedPath.match(/\/pages(\/api\/.+)/);
+  const appMatch = normalizedPath.match(/\/app(\/api\/.+)/);
+  if (pagesMatch) {
+    routePath = pagesMatch[1].replace(/\/[^/]+$/, '').replace(/\/index$/, '');
+    if (!routePath || routePath === '/api') routePath = '/api';
+  } else if (appMatch) {
+    routePath = appMatch[1].replace(/\/[^/]+$/, '').replace(/\/route$/, '');
+    if (!routePath || routePath === '/api') routePath = '/api';
+  }
+
+  for (const node of ast.program.body) {
+    // export default function handler(req, res) — Pages Router pattern
+    if (node.type === 'ExportDefaultDeclaration' && node.declaration) {
+      const decl = node.declaration;
+      if (decl.type === 'FunctionDeclaration' || decl.type === 'ArrowFunctionExpression' || decl.type === 'FunctionExpression') {
+        const funcName = (decl.id && decl.id.name) || 'handler';
+
+        // If the function name is an HTTP method, use it
+        if (HTTP_METHODS.has(funcName.toUpperCase())) {
+          routes.push({
+            method: funcName.toUpperCase(),
+            path: routePath,
+            functionName: funcName
+          });
+        } else {
+          // Pages Router default export — handles all methods
+          routes.push({
+            method: 'ALL',
+            path: routePath,
+            functionName: funcName
+          });
+        }
+      }
+    }
+
+    // export function GET/POST/... or export const GET = ... — App Router pattern
+    if (node.type === 'ExportNamedDeclaration' && node.declaration) {
+      const decl = node.declaration;
+
+      if (decl.type === 'FunctionDeclaration' && decl.id && HTTP_METHODS.has(decl.id.name.toUpperCase())) {
+        routes.push({
+          method: decl.id.name.toUpperCase(),
+          path: routePath,
+          functionName: decl.id.name
+        });
+      }
+
+      if (decl.type === 'VariableDeclaration') {
+        for (const vDecl of decl.declarations) {
+          if (vDecl.id && vDecl.id.name && HTTP_METHODS.has(vDecl.id.name.toUpperCase())) {
+            routes.push({
+              method: vDecl.id.name.toUpperCase(),
+              path: routePath,
+              functionName: vDecl.id.name
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return routes;
+}
 
 // ---------------------------------------------------------------------------
 // AST traversal helper

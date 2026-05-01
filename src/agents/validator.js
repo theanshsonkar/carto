@@ -14,7 +14,7 @@ function validateExtracted({ routes, models, functions, envVars, dbTables }) {
   };
 }
 
-const VALID_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']);
+const VALID_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'ALL']);
 const VALID_HANDLER = /^[a-zA-Z_]\w*$|^\[anonymous\]$/;
 const VALID_CLASS_NAME = /^[A-Z][a-zA-Z0-9]*$/;
 const VALID_FIELD_NAME = /^[a-z_]\w*$/;

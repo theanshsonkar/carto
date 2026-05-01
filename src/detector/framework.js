@@ -3,40 +3,64 @@ const path = require('path');
 
 const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.idea', '.vscode', '.carto']);
 
+// Priority order: lower index = higher priority
+const PYTHON_PRIORITY = ['fastapi', 'django', 'flask', 'python-generic'];
+const JS_PRIORITY = ['nextjs', 'express', 'react', 'node-generic'];
+
 /**
- * detectFramework(projectRoot) → { framework, language, confidence }
+ * detectFramework(projectRoot) → { framework, language, confidence, secondaryFramework?, secondaryLanguage? }
  *
- * Search order (recursive up to 3 levels deep):
- * 1. requirements.txt → fastapi / django / flask / python-generic
- * 2. package.json → nextjs / express / react / node-generic
- * 3. pyproject.toml → same logic as requirements.txt
- * 4. Nothing found → { framework: 'unknown', language: 'unknown' }
- *
- * Returns first match found. Does not combine multiple detections.
+ * Collects all matches from requirements.txt, package.json, pyproject.toml.
+ * Picks the most specific Python and JS framework by priority.
+ * If both a Python and JS framework are detected, returns both
+ * (primary = highest priority overall, secondary = the other language).
  */
 function detectFramework(projectRoot) {
-  // Search for files up to 3 levels deep
   const candidates = findFile(projectRoot, ['requirements.txt', 'package.json', 'pyproject.toml'], 3);
 
-  // 1. Check requirements.txt
-  const reqFile = candidates.find(f => path.basename(f) === 'requirements.txt');
-  if (reqFile) {
-    const result = detectFromPythonDeps(reqFile);
-    if (result) return result;
+  const pythonDetections = new Set();
+  const jsDetections = new Set();
+
+  // Check requirements.txt
+  for (const f of candidates.filter(f => path.basename(f) === 'requirements.txt')) {
+    const results = detectAllFromPythonDeps(f);
+    for (const r of results) pythonDetections.add(r);
   }
 
-  // 2. Check package.json
-  const pkgFile = candidates.find(f => path.basename(f) === 'package.json');
-  if (pkgFile) {
-    const result = detectFromPackageJson(pkgFile);
-    if (result) return result;
+  // Check pyproject.toml
+  for (const f of candidates.filter(f => path.basename(f) === 'pyproject.toml')) {
+    const results = detectAllFromPythonDeps(f);
+    for (const r of results) pythonDetections.add(r);
   }
 
-  // 3. Check pyproject.toml
-  const pyprojectFile = candidates.find(f => path.basename(f) === 'pyproject.toml');
-  if (pyprojectFile) {
-    const result = detectFromPythonDeps(pyprojectFile);
-    if (result) return result;
+  // Check package.json
+  for (const f of candidates.filter(f => path.basename(f) === 'package.json')) {
+    const results = detectAllFromPackageJson(f);
+    for (const r of results) jsDetections.add(r);
+  }
+
+  // Pick best Python framework by priority
+  const bestPython = PYTHON_PRIORITY.find(fw => pythonDetections.has(fw)) || null;
+  // Pick best JS framework by priority
+  const bestJS = JS_PRIORITY.find(fw => jsDetections.has(fw)) || null;
+
+  if (bestPython && bestJS) {
+    // Both detected — Python is primary (higher priority in the global list)
+    return {
+      framework: bestPython,
+      language: 'python',
+      confidence: 'high',
+      secondaryFramework: bestJS,
+      secondaryLanguage: 'javascript'
+    };
+  }
+
+  if (bestPython) {
+    return { framework: bestPython, language: 'python', confidence: 'high' };
+  }
+
+  if (bestJS) {
+    return { framework: bestJS, language: 'javascript', confidence: 'high' };
   }
 
   return { framework: 'unknown', language: 'unknown', confidence: 'none' };
@@ -69,49 +93,46 @@ function findFile(dir, fileNames, maxDepth, currentDepth = 0) {
   return results;
 }
 
-function detectFromPythonDeps(filePath) {
+/**
+ * Returns all matching Python frameworks from a deps file.
+ */
+function detectAllFromPythonDeps(filePath) {
+  const detected = [];
   let content;
   try {
     content = fs.readFileSync(filePath, 'utf-8').toLowerCase();
   } catch {
-    return null;
+    return detected;
   }
 
-  if (content.includes('fastapi')) {
-    return { framework: 'fastapi', language: 'python', confidence: 'high' };
-  }
-  if (content.includes('django')) {
-    return { framework: 'django', language: 'python', confidence: 'high' };
-  }
-  if (content.includes('flask')) {
-    return { framework: 'flask', language: 'python', confidence: 'high' };
-  }
-  if (content.includes('pydantic')) {
-    return { framework: 'python-generic', language: 'python', confidence: 'medium' };
-  }
-  return null;
+  if (content.includes('fastapi')) detected.push('fastapi');
+  if (content.includes('django')) detected.push('django');
+  if (content.includes('flask')) detected.push('flask');
+  if (content.includes('pydantic') && !detected.length) detected.push('python-generic');
+
+  return detected;
 }
 
-function detectFromPackageJson(filePath) {
+/**
+ * Returns all matching JS frameworks from a package.json.
+ */
+function detectAllFromPackageJson(filePath) {
+  const detected = [];
   let pkg;
   try {
     pkg = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   } catch {
-    return null;
+    return detected;
   }
 
   const deps = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
 
-  if (deps['next']) {
-    return { framework: 'nextjs', language: 'javascript', confidence: 'high' };
-  }
-  if (deps['express']) {
-    return { framework: 'express', language: 'javascript', confidence: 'high' };
-  }
-  if (deps['react']) {
-    return { framework: 'react', language: 'javascript', confidence: 'high' };
-  }
-  return { framework: 'node-generic', language: 'javascript', confidence: 'medium' };
+  if (deps['next']) detected.push('nextjs');
+  if (deps['express']) detected.push('express');
+  if (deps['react'] && !deps['next']) detected.push('react');
+  if (!detected.length) detected.push('node-generic');
+
+  return detected;
 }
 
 module.exports = { detectFramework };
