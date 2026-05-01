@@ -55,11 +55,14 @@ async function run(projectRoot) {
     'utf-8'
   );
 
+  // Install pre-commit hook
+  installGitHook(projectRoot);
+
   // Run first sync
   const syncConfig = resolveConfig(projectRoot, config);
   await runFullSync(syncConfig);
 
-  console.log('[CARTO] AGENTS.md generated. Run "carto watch" to keep it live.');
+  console.log('[CARTO] AGENTS.md generated. Carto will sync on every git commit.');
 }
 
 /**
@@ -75,6 +78,31 @@ function resolveConfig(projectRoot, config) {
     output: path.resolve(projectRoot, config.output),
     projectRoot
   };
+}
+
+function installGitHook(projectRoot) {
+  const gitDir = path.join(projectRoot, '.git');
+  if (!fs.existsSync(gitDir)) return;
+
+  const hooksDir = path.join(gitDir, 'hooks');
+  if (!fs.existsSync(hooksDir)) fs.mkdirSync(hooksDir, { recursive: true });
+
+  const hookPath = path.join(hooksDir, 'pre-commit');
+  const hookLine = 'carto sync\n';
+
+  if (fs.existsSync(hookPath)) {
+    const existing = fs.readFileSync(hookPath, 'utf-8');
+    if (existing.includes('carto sync')) {
+      console.log('[CARTO] Git hook already installed.');
+      return;
+    }
+    fs.appendFileSync(hookPath, '\n' + hookLine);
+  } else {
+    fs.writeFileSync(hookPath, '#!/bin/sh\n' + hookLine);
+  }
+
+  fs.chmodSync(hookPath, '755');
+  console.log('[CARTO] Git pre-commit hook installed.');
 }
 
 module.exports = { run, resolveConfig };
