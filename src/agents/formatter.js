@@ -9,10 +9,11 @@
  *   5. Functions (auto)
  *   6. Database Tables (auto)
  *   7. Environment Variables (auto)
- *   8. Frontend API Calls (auto)
- *   9. Frontend Storage Keys (auto)
+ *   8. File Relationships (auto)
+ *   9. Frontend API Calls (auto)
+ *   10. Frontend Storage Keys (auto)
  */
-function formatSections({ routes, models, frontend, structure, warnings, fileMap, functions, dbTables, envVars }) {
+function formatSections({ routes, models, frontend, structure, warnings, fileMap, functions, dbTables, envVars, importGraph }) {
   const sections = [];
 
   // 1. Project Structure
@@ -114,7 +115,21 @@ function formatSections({ routes, models, frontend, structure, warnings, fileMap
     sections.push('_No environment variables detected._');
   }
 
-  // 8. Frontend API Calls
+  // 8. File Relationships
+  sections.push('\n## File Relationships (auto)\n');
+  if (importGraph && Object.keys(importGraph).length > 0) {
+    const sortedFiles = Object.keys(importGraph).sort();
+    for (const file of sortedFiles) {
+      const deps = importGraph[file];
+      if (deps.length > 0) {
+        sections.push(`${file} \u2192 ${deps.join(', ')}`);
+      }
+    }
+  } else {
+    sections.push('_No file relationships detected._');
+  }
+
+  // 9. Frontend API Calls
   sections.push('\n## Frontend API Calls (auto)\n');
   if (frontend.fetches.length > 0) {
     sections.push('| Method | URL |');
@@ -126,7 +141,7 @@ function formatSections({ routes, models, frontend, structure, warnings, fileMap
     sections.push('_No fetch calls found._');
   }
 
-  // 9. Frontend Storage Keys
+  // 10. Frontend Storage Keys
   sections.push('\n## Frontend Storage Keys (auto)\n');
   if (frontend.storageKeys.length > 0) {
     sections.push('| Operation | Key |');

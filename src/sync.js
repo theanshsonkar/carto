@@ -5,6 +5,7 @@ const { formatSections } = require('./agents/formatter');
 const { mergeIntoAgentsMd } = require('./agents/merger');
 const { inferResponsibility } = require('./extractors/filemap');
 const { validateExtracted } = require('./agents/validator');
+const { buildImportGraph } = require('./extractors/imports');
 
 const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.idea', '.vscode', '.carto', 'AGENTS.md']);
 
@@ -166,6 +167,20 @@ async function runFullSync(config) {
     return true;
   });
 
+  // Build import graph from all processed files
+  const fileContentsForImports = [];
+  const allProcessedPaths = [...new Set([...allCodeFiles, ...allFrontendFiles])];
+  // Re-read is avoided — collect during processing. Use a second pass for simplicity.
+  for (const filePath of allProcessedPaths) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      fileContentsForImports.push({ filePath, content });
+    } catch {
+      // skip — already warned during extraction
+    }
+  }
+  const importGraph = buildImportGraph(fileContentsForImports, config.projectRoot);
+
   // Build file map
   const fileMap = [];
   for (const filePath of allCodeFiles) {
@@ -204,7 +219,8 @@ async function runFullSync(config) {
     fileMap,
     functions: validated.functions,
     dbTables: validated.dbTables,
-    envVars: validated.envVars
+    envVars: validated.envVars,
+    importGraph
   });
 
   mergeIntoAgentsMd(config.output, autoContent);

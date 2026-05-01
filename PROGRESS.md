@@ -145,13 +145,24 @@ carto-ansh/
 
 **Goal:** Front page of Hacker News.
 
+**Revised story — lead with accuracy at scale, not AGENTS.md sync:**
+> "AI that's actually accurate about your code. 100 lines or 1 million. No hallucinations on structure, routes, models. Free. Local. Open source."
+
 **The plan:**
 - Hacker News Show HN — Tuesday 9am EST only
-  - Title: `"Show HN: Carto — keeps your AGENTS.md always current automatically"`
+  - Title: `"Show HN: Carto — your AI stops hallucinating your own codebase"`
 - Product Hunt same day
-- 60-second demo video: wrong framework hallucination before → correct after
+- 60-second demo video (non-negotiable):
+  - Before (30s): AI hallucinates wrong field name / wrong route on a 500-file project
+  - After Carto (30s): AI gets it exactly right, first time
 - Dev Twitter thread
 - Respond to every comment within 24 hours
+
+**Before launch checklist:**
+- [ ] README rewritten around accuracy-at-scale story (not AGENTS.md mechanics)
+- [ ] Demo video recorded
+- [ ] Verified works on a project with 500+ files
+- [ ] npm publish → `carto-agents` live
 
 ---
 
@@ -199,36 +210,27 @@ Ship Phase 3 before that window closes.
 
 ---
 
-## THE REAL VISION — Not yet built
+## THE REAL VISION — Post-launch (community builds this)
 
-**What Carto was always meant to be:**
+**The core product vision:**
+AI is accurate about your codebase at any scale. 100 lines or 1 million lines. No hallucinations on structure, routes, models, field names. Saves tokens. Free forever.
 
-Not just AGENTS.md sync. A visual codebase graph — like Emfirge's cartography feature but for code instead of AWS infrastructure.
+**What's built = the extraction layer (nodes):**
+- Routes, models, functions, fetch calls extracted correctly
+- Merger proven safe — manual sections never overwritten
+- Works on FastAPI, Express, Prisma, Next.js, JS/TS, Python
 
-Every file = a node.
-Every import = an edge.
-Every function call = a relationship.
+**What's missing = the relationship layer (edges):**
+- Import graph: file A imports B, function X calls Y
+- AI asks "what calls this function?" → gets exact answer, not 10,000 lines
+- AGENTS.md becomes a compressed slice of the graph, not a flat dump
+- Scales to 1M line codebases where flat AGENTS.md breaks down
 
-```
-routes/users.js → controllers/user.js → models/User.js → database.js
-```
+**Why graph comes after launch, not before:**
+- Current tool already solves the problem for small-medium projects
+- Ship now, get real users, see if 1M line scale is actually requested
+- Graph is the v2 story — "does it work on our 800k line monorepo?" → yes, here's how
+- Community contributors who work on large codebases are the ones to build this
 
-Exposed two ways:
-1. Visual UI in the browser (vis.js graph, like Emfirge cartography)
-2. AGENTS.md text export (what we have now — the foundation)
-
-**What we built so far = 30% of the vision.**
-The extraction layer works. The graph doesn't exist yet.
-
-**What the real Carto needs:**
-- Parse import statements across all files → build dependency edges
-- Build a graph (nodes = files/functions, edges = imports/calls)
-- Visual browser UI to explore the graph
-- AI navigates the graph to understand the codebase
-- AGENTS.md becomes the text export of the graph
-
-**Why this matters:**
-AGENTS.md sync → OpenAI can copy in a week.
-A visual codebase graph that AI can navigate → genuinely defensible. Much harder to copy.
-
-**This is the next big phase after current polish.**
+**Strategy:**
+Ship the accuracy story. Demo the hallucination fix. Let the graph be the thing community asks for and builds.
