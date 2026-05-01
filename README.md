@@ -6,32 +6,32 @@
 
 **Your code changes. AGENTS.md updates. Every AI always knows.**
 
-Carto auto-generates and auto-maintains your `AGENTS.md` file. Every time you save, your routes, models, functions, and dependencies are extracted and written into the standard file every AI coding tool already reads.
+Carto auto-generates and auto-maintains your `AGENTS.md` file each and every time you save, your routes, models, functions, and dependencies are extracted and written into the standard file every AI coding tool already reads.
 
 ---
 
 ## Origin
 
-I was building [Emfirge](https://emfirge.com) — a cloud security advisor for AWS.
+I was building [Emfirge](https://emfirge.cloud) — A Cloud Security Agent.
 
-To make the AI inside Emfirge understand infrastructure, I wrote a module called `cartography.py`. It scanned AWS resources, built a graph of how they connected, and wrote it into a structured map. The AI stopped hallucinating. It worked with accurate facts about the actual infrastructure — not guesses.
+To make the AI inside Emfirge understand infrastructure, I wrote a module called `cartography.py`. It mapped AWS resources, built a graph of how they connected, and wrote it into a structured map. The AI stopped hallucinating. It worked with accurate facts about the actual infrastructure and just not guesses.
 
 Halfway through, I switched AI tools. Opened a new session. Had to explain everything again from scratch.
 
 I thought: *I just built a cartography system so AI can understand infrastructure. Why doesn't this exist for codebases?*
 
-Carto is that thing. Same insight, different domain. Map your codebase once. Every AI session starts with accurate facts. You never explain your project again.
+Carto is that thing with Same insight, different domain. It Map your codebase once and every AI session starts with accurate facts. You never explain your project again.
 
 ---
 
 ## The problem
 
-AI coding tools are blind to your actual project. Every session starts from zero.
+AI coding tools are blind to your actual project & every session starts from zero.
 
-- Claude hallucinates your schema
-- Copilot suggests the wrong field names
-- Kiro asks what framework you're using
-- You rebuild context manually, every time
+> Claude hallucinates your schema
+> Copilot suggests the wrong field names
+> Kiro asks what framework you're using
+> You rebuild context manually, every time
 
 `AGENTS.md` is the standard that fixes this — a file in your project root that every AI tool reads for project context. But it's static. You write it manually. It gets stale the moment your code changes.
 
