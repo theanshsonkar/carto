@@ -1,5 +1,9 @@
 # carto
 
+[![npm version](https://img.shields.io/npm/v/carto-md)](https://www.npmjs.com/package/carto-md)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![npm downloads](https://img.shields.io/npm/dm/carto-md)](https://www.npmjs.com/package/carto-md)
+
 **Your code changes. AGENTS.md updates. Every AI always knows.**
 
 Carto auto-generates and auto-maintains your `AGENTS.md` file. Every time you save, your routes, models, functions, and dependencies are extracted and written into the standard file every AI coding tool already reads.
