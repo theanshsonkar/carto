@@ -1,0 +1,80 @@
+const fs = require('fs');
+const path = require('path');
+const { detectFramework } = require('../detector/framework');
+const { discoverFiles } = require('../detector/files');
+const { parseCartoIgnore } = require('../security/ignore');
+const { runFullSync } = require('../sync');
+
+async function run(projectRoot) {
+  console.log('[CARTO] Detecting project...');
+
+  const detection = detectFramework(projectRoot);
+  console.log(`[CARTO] Detected: ${detection.framework} (${detection.language})`);
+
+  const isIgnored = parseCartoIgnore(projectRoot);
+  const files = discoverFiles(projectRoot, detection.framework, isIgnored);
+
+  // Count files for reporting
+  const pyCount = files.routeFiles.filter(f => f.endsWith('.py')).length;
+  const jsCount = files.routeFiles.filter(f => /\.(js|ts|jsx|tsx)$/.test(f)).length;
+  const htmlCount = files.frontendFiles.length;
+
+  const parts = [];
+  if (pyCount > 0) parts.push(`${pyCount} Python files`);
+  if (jsCount > 0) parts.push(`${jsCount} JS/TS files`);
+  if (htmlCount > 0) parts.push(`${htmlCount} HTML files`);
+  console.log(`[CARTO] Found ${parts.join(', ') || '0 files'}`);
+
+  // Make paths relative for config storage
+  const relRouteFiles = files.routeFiles.map(f => path.relative(projectRoot, f));
+  const relModelFiles = files.modelFiles.map(f => path.relative(projectRoot, f));
+  const relFrontendFiles = files.frontendFiles.map(f => path.relative(projectRoot, f));
+
+  // Write .carto/config.json
+  const cartoDir = path.join(projectRoot, '.carto');
+  if (!fs.existsSync(cartoDir)) {
+    fs.mkdirSync(cartoDir, { recursive: true });
+  }
+
+  const config = {
+    version: '1',
+    framework: detection.framework,
+    language: detection.language,
+    watch: {
+      routeFiles: relRouteFiles,
+      modelFiles: relModelFiles,
+      frontendFiles: relFrontendFiles
+    },
+    output: 'AGENTS.md',
+    generated: new Date().toISOString()
+  };
+
+  fs.writeFileSync(
+    path.join(cartoDir, 'config.json'),
+    JSON.stringify(config, null, 2) + '\n',
+    'utf-8'
+  );
+
+  // Run first sync
+  const syncConfig = resolveConfig(projectRoot, config);
+  await runFullSync(syncConfig);
+
+  console.log('[CARTO] AGENTS.md generated. Run "carto watch" to keep it live.');
+}
+
+/**
+ * Resolves relative paths in config to absolute paths.
+ */
+function resolveConfig(projectRoot, config) {
+  return {
+    watch: {
+      routeFiles: (config.watch.routeFiles || []).map(f => path.resolve(projectRoot, f)),
+      modelFiles: (config.watch.modelFiles || []).map(f => path.resolve(projectRoot, f)),
+      frontendFiles: (config.watch.frontendFiles || []).map(f => path.resolve(projectRoot, f))
+    },
+    output: path.resolve(projectRoot, config.output),
+    projectRoot
+  };
+}
+
+module.exports = { run, resolveConfig };

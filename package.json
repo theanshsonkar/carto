@@ -1,0 +1,29 @@
+{
+  "name": "carto-agents",
+  "version": "1.0.0",
+  "description": "Auto-generates and maintains your AGENTS.md. Your code changes. AGENTS.md updates.",
+  "bin": {
+    "carto": "./src/cli/index.js"
+  },
+  "main": "./src/sync.js",
+  "scripts": {
+    "test": "node test/test.js"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.29.3",
+    "chokidar": "^3.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "AGENTS.md",
+    "AI",
+    "context",
+    "codegen",
+    "FastAPI",
+    "developer-tools"
+  ]
+}

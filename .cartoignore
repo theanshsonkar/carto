@@ -1,0 +1,16 @@
+# Carto ignore rules — files matching these patterns are excluded from scanning
+# Default rules are always active even without this file
+
+# Secrets and credentials
+.env
+.env.*
+*secret*
+*SECRET*
+*password*
+*PASSWORD*
+*credential*
+*CREDENTIAL*
+*private_key*
+*PRIVATE_KEY*
+*.pem
+*.key
