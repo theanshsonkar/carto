@@ -33,7 +33,7 @@ AI coding tools are blind to your actual project & every session starts from zer
 - Kiro asks what framework you're using
 - You rebuild context manually, every time
 
-`AGENTS.md` is the standard that fixes this — a file in your project root that every AI tool reads for project context. But it's static. You write it manually. It gets stale the moment your code changes.
+`AGENTS.md` is the standard that fixes this and a file in your project root that every AI tool reads for project context , But it's static and You write it manually so It gets stale the moment your code changes.
 
 **Carto makes it live.**
 
@@ -43,11 +43,11 @@ AI coding tools are blind to your actual project & every session starts from zer
 
 Context windows are large now. But pasting code means:
 
-- You decide what's relevant — you're often wrong
+- You decide what's relevant & you're often wrong
 - AI sees a snapshot, not your live state
 - Bigger context ≠ better context
 
-Carto gives AI the map. You give AI the problem. Different jobs.
+Carto gives AI the map & You give AI the problem. Different jobs.
 
 ---
 
@@ -92,7 +92,7 @@ carto init
 carto watch
 ```
 
-Leave `carto watch` running in a background terminal. Every file save updates AGENTS.md automatically.
+Leave `carto watch` running in a background terminal & every file save updates AGENTS.md automatically.
 
 ---
 
@@ -129,7 +129,7 @@ Leave `carto watch` running in a background terminal. Every file save updates AG
 
 ## What Carto never touches
 
-The manual sections you write directly into `AGENTS.md` — architecture decisions, active bugs, business rules, coding conventions — stay yours forever. Carto only rewrites content between its own markers:
+The manual sections you write directly into `AGENTS.md` - architecture decisions, active bugs, business rules, coding conventions it stay yours forever. Carto only rewrites content between its own markers:
 
 ```
 <!-- CARTO:AUTO:START -->
