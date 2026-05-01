@@ -28,10 +28,10 @@ Carto is that thing with Same insight, different domain. It Map your codebase on
 
 AI coding tools are blind to your actual project & every session starts from zero.
 
-> Claude hallucinates your schema
-> Copilot suggests the wrong field names
-> Kiro asks what framework you're using
-> You rebuild context manually, every time
+- Claude hallucinates your schema
+- Copilot suggests the wrong field names
+- Kiro asks what framework you're using
+- You rebuild context manually, every time
 
 `AGENTS.md` is the standard that fixes this — a file in your project root that every AI tool reads for project context. But it's static. You write it manually. It gets stale the moment your code changes.
 
