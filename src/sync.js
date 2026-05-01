@@ -56,6 +56,7 @@ async function scanStructure(basePath) {
  */
 async function runFullSync(config) {
   const warnings = [];
+  const projectRoot = config.projectRoot || process.cwd();
 
   const allRouteFiles = config.watch.routeFiles || [];
   const allModelFiles = config.watch.modelFiles || [];
@@ -90,7 +91,7 @@ async function runFullSync(config) {
     if (!content) continue;
 
     const basename = path.basename(filePath);
-    const relPath = path.relative(config.projectRoot, filePath);
+    const relPath = path.relative(projectRoot, filePath);
     const plugin = getPluginForFile(plugins, filePath);
 
     if (!plugin) {
@@ -181,10 +182,10 @@ async function runFullSync(config) {
       // skip — already warned during extraction
     }
   }
-  const importGraph = buildImportGraph(fileContentsForImports, config.projectRoot);
+  const importGraph = buildImportGraph(fileContentsForImports, projectRoot);
 
   // Detect tech stack from watched files + manifests
-  const stackItems = buildStackLine(fileContentsForImports, config.projectRoot);
+  const stackItems = buildStackLine(fileContentsForImports, projectRoot);
 
   // Compute entry points and high impact files from import graph
   const allValues = new Set();
@@ -211,7 +212,7 @@ async function runFullSync(config) {
   const fileMap = [];
   for (const filePath of allCodeFiles) {
     const basename = path.basename(filePath);
-    const relPath = path.relative(config.projectRoot, filePath);
+    const relPath = path.relative(projectRoot, filePath);
     const funcCount = (functionsMap[basename] || []).length;
     const routeCount = routeCountMap[filePath] || 0;
     const responsibility = inferResponsibility(basename, funcCount, routeCount);
@@ -226,7 +227,7 @@ async function runFullSync(config) {
     .map(name => ({ name, files: [...envVarMap.get(name)].sort() }));
 
   // Scan project structure
-  const structure = await scanStructure(config.projectRoot);
+  const structure = await scanStructure(projectRoot);
 
   // Validate extracted data — drop anything malformed
   const validated = validateExtracted({
@@ -256,7 +257,7 @@ async function runFullSync(config) {
   mergeIntoAgentsMd(config.output, autoContent);
 
   // Save graph to .carto/map.json (atomic write)
-  const cartoDir = path.join(config.projectRoot, '.carto');
+  const cartoDir = path.join(projectRoot, '.carto');
   const mapData = {
     version: '1',
     generated: new Date().toISOString(),

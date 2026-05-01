@@ -40,6 +40,7 @@ async function run(projectRoot) {
     version: '1',
     framework: detection.framework,
     language: detection.language,
+    projectRoot: projectRoot,
     watch: {
       routeFiles: relRouteFiles,
       modelFiles: relModelFiles,

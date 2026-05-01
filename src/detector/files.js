@@ -44,9 +44,10 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
       });
     const htmlFiles = findFilesRecursive(projectRoot, ['.html'], HTML_IGNORE, ignoreFn);
 
+    const cappedPy = cap(pyFiles);
     return {
-      routeFiles: cap(pyFiles),
-      modelFiles: cap(pyFiles),
+      routeFiles: cappedPy,
+      modelFiles: cappedPy,
       frontendFiles: cap(htmlFiles)
     };
   }
@@ -59,9 +60,10 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
       });
     const htmlFiles = findFilesRecursive(projectRoot, ['.html'], HTML_IGNORE, ignoreFn);
 
+    const cappedJs = cap(jsFiles);
     return {
-      routeFiles: cap(jsFiles),
-      modelFiles: cap(jsFiles),
+      routeFiles: cappedJs,
+      modelFiles: cappedJs,
       frontendFiles: cap(htmlFiles)
     };
   }
