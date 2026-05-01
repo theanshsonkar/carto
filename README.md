@@ -249,12 +249,7 @@ Carto never writes secrets into AGENTS.md. `.cartoignore` blocks `.env` files, s
 
 ## Contributing
 
-Python and JS/TS are supported today. Community adds more.
-
-- **Add a language**: `src/ast/languages/`
-- **Add a framework**: `src/extractors/`
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Python and JS/TS today. Want Go, Ruby, Django, Rails? Open an issue — or read [CONTRIBUTING.md](CONTRIBUTING.md) to add it yourself.
 
 ---
 
