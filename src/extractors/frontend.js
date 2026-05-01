@@ -42,7 +42,7 @@ function extractFrontend(content) {
   const dynamicCount = fetches.filter(f => f.url === '[dynamic]').length;
   if (dynamicCount > 0) {
     staticFetches.push({
-      url: `[dynamic \u00d7${dynamicCount}]`,
+      url: `dynamic calls detected (${dynamicCount} unresolved)`,
       method: '\u2014'
     });
   }

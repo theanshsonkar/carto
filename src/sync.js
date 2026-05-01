@@ -4,8 +4,9 @@ const { loadLanguagePlugins, getPluginForFile } = require('./extractors/loader')
 const { formatSections } = require('./agents/formatter');
 const { mergeIntoAgentsMd } = require('./agents/merger');
 const { inferResponsibility } = require('./extractors/filemap');
+const { validateExtracted } = require('./agents/validator');
 
-const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.idea', '.vscode', '.carto']);
+const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.idea', '.vscode', '.carto', 'AGENTS.md']);
 
 // Load plugins once at module load
 const plugins = loadLanguagePlugins();
@@ -143,16 +144,16 @@ async function runFullSync(config) {
   }
 
   // Global dedup: collapse dynamic fetches across all files into one summary row
-  const staticFetches = allFetches.filter(f => !f.url.startsWith('[dynamic'));
+  const staticFetches = allFetches.filter(f => f.url !== '[dynamic]' && !f.url.startsWith('dynamic calls detected'));
   let totalDynamic = 0;
   for (const f of allFetches) {
     if (f.url === '[dynamic]') totalDynamic++;
-    // Also count already-collapsed per-file rows like "[dynamic ×1]"
-    const m = f.url.match(/^\[dynamic\s*\u00d7(\d+)\]$/);
+    // Also count already-collapsed per-file rows
+    const m = f.url.match(/^dynamic calls detected \((\d+) unresolved\)$/);
     if (m) totalDynamic += parseInt(m[1], 10);
   }
   if (totalDynamic > 0) {
-    staticFetches.push({ url: `[dynamic \u00d7${totalDynamic}]`, method: '\u2014' });
+    staticFetches.push({ url: `dynamic calls detected (${totalDynamic} unresolved)`, method: '\u2014' });
   }
   allFetches = staticFetches;
 
@@ -185,16 +186,25 @@ async function runFullSync(config) {
   // Scan project structure
   const structure = await scanStructure(config.projectRoot);
 
-  const autoContent = formatSections({
+  // Validate extracted data — drop anything malformed
+  const validated = validateExtracted({
     routes: allRoutes,
     models: allModels,
+    functions: functionsMap,
+    envVars,
+    dbTables: dbTableList
+  });
+
+  const autoContent = formatSections({
+    routes: validated.routes,
+    models: validated.models,
     frontend: { fetches: allFetches, storageKeys: allStorageKeys },
     structure,
     warnings,
     fileMap,
-    functions: functionsMap,
-    dbTables: dbTableList,
-    envVars
+    functions: validated.functions,
+    dbTables: validated.dbTables,
+    envVars: validated.envVars
   });
 
   mergeIntoAgentsMd(config.output, autoContent);
