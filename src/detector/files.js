@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const MAX_FILES_PER_CATEGORY = 50;
+const MAX_FILES_TOTAL = 50;
+const ROUTE_BUDGET = 20;
+const MODEL_BUDGET = 10;
+const UTILITY_BUDGET = 20;
 
 const PYTHON_IGNORE = new Set(['__pycache__', '.venv', 'venv', 'migrations', 'node_modules', '.git', '.carto']);
 const JS_IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.carto', '.next', '.turbo', 'coverage', 'out', '.cache', 'generated', '__generated__', 'storybook-static', 'public', 'static']);
@@ -9,9 +12,6 @@ const HTML_IGNORE = new Set(['node_modules', '.git', '.carto']);
 
 /**
  * discoverFiles(projectRoot, framework, isIgnored, secondaryFramework) → { routeFiles, modelFiles, frontendFiles }
- *
- * isIgnored is an optional function (filePath) → boolean from the .cartoignore parser.
- * If secondaryFramework is provided, discovers files for both and merges.
  */
 function discoverFiles(projectRoot, framework, isIgnored, secondaryFramework) {
   const ignoreFn = isIgnored || (() => false);
@@ -20,22 +20,16 @@ function discoverFiles(projectRoot, framework, isIgnored, secondaryFramework) {
 
   if (secondaryFramework) {
     const secondary = discoverForFramework(projectRoot, secondaryFramework, ignoreFn);
-    // Merge and deduplicate
     const routeFiles = [...new Set([...primary.routeFiles, ...secondary.routeFiles])];
     const modelFiles = [...new Set([...primary.modelFiles, ...secondary.modelFiles])];
     const frontendFiles = [...new Set([...primary.frontendFiles, ...secondary.frontendFiles])];
-    return {
-      routeFiles: cap(routeFiles),
-      modelFiles: cap(modelFiles),
-      frontendFiles: cap(frontendFiles)
-    };
+    return { routeFiles, modelFiles, frontendFiles };
   }
 
   return primary;
 }
 
 function discoverForFramework(projectRoot, framework, ignoreFn) {
-
   if (['fastapi', 'django', 'flask', 'python-generic'].includes(framework)) {
     const pyFiles = findFilesRecursive(projectRoot, ['.py'], PYTHON_IGNORE, ignoreFn)
       .filter(f => {
@@ -44,39 +38,198 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
       });
     const htmlFiles = findFilesRecursive(projectRoot, ['.html'], HTML_IGNORE, ignoreFn);
 
-    const cappedPy = cap(pyFiles);
-    return {
-      routeFiles: cappedPy,
-      modelFiles: cappedPy,
-      frontendFiles: cap(htmlFiles)
-    };
+    if (pyFiles.length <= MAX_FILES_TOTAL) {
+      return { routeFiles: pyFiles, modelFiles: pyFiles, frontendFiles: htmlFiles };
+    }
+
+    return smartSelect(pyFiles, htmlFiles, projectRoot);
   }
 
   if (['express', 'nextjs', 'react', 'node-generic'].includes(framework)) {
-    const jsFiles = findFilesRecursive(projectRoot, ['.js', '.ts', '.jsx', '.tsx'], JS_IGNORE, ignoreFn)
+    const jsFiles = findFilesRecursive(projectRoot, ['.js', '.ts', '.jsx', '.tsx', '.prisma'], JS_IGNORE, ignoreFn)
       .filter(f => {
         const base = path.basename(f);
         return !base.includes('.test.') && !base.includes('.spec.');
       });
     const htmlFiles = findFilesRecursive(projectRoot, ['.html'], HTML_IGNORE, ignoreFn);
 
-    const cappedJs = cap(jsFiles);
-    return {
-      routeFiles: cappedJs,
-      modelFiles: cappedJs,
-      frontendFiles: cap(htmlFiles)
-    };
+    if (jsFiles.length <= MAX_FILES_TOTAL) {
+      return { routeFiles: jsFiles, modelFiles: jsFiles, frontendFiles: htmlFiles };
+    }
+
+    return smartSelect(jsFiles, htmlFiles, projectRoot);
   }
 
-  // Unknown framework — best effort
+  // Unknown framework
   const allCode = findFilesRecursive(projectRoot, ['.py', '.js', '.ts'], new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.carto']), ignoreFn);
   const htmlFiles = findFilesRecursive(projectRoot, ['.html'], HTML_IGNORE, ignoreFn);
 
+  if (allCode.length <= MAX_FILES_TOTAL) {
+    return { routeFiles: allCode, modelFiles: allCode, frontendFiles: htmlFiles };
+  }
+
+  return smartSelect(allCode, htmlFiles, projectRoot);
+}
+
+/**
+ * Smart file selection within the 50-file budget.
+ * Allocates: up to 20 route files, up to 10 model files, up to 20 utility files.
+ */
+function smartSelect(allFiles, htmlFiles, projectRoot) {
+  console.warn(`[CARTO] Warning: Found ${allFiles.length} files, selecting top ${MAX_FILES_TOTAL} by importance`);
+
+  const routeCandidates = [];
+  const modelCandidates = [];
+  const otherFiles = [];
+
+  for (const f of allFiles) {
+    if (isRouteFile(f)) {
+      routeCandidates.push(f);
+    } else if (isModelFile(f)) {
+      modelCandidates.push(f);
+    } else {
+      otherFiles.push(f);
+    }
+  }
+
+  // Sort routes by score (entry points first)
+  routeCandidates.sort((a, b) => scoreRoute(b) - scoreRoute(a));
+  const selectedRoutes = routeCandidates.slice(0, ROUTE_BUDGET);
+
+  // Sort models by score (schema files first)
+  modelCandidates.sort((a, b) => scoreModel(b) - scoreModel(a));
+  const selectedModels = modelCandidates.slice(0, MODEL_BUDGET);
+
+  // For utilities: scan all files for import statements, count how many times each is imported
+  const importCounts = countImportReferences(allFiles, projectRoot);
+  // Rank other files by how often they're imported
+  otherFiles.sort((a, b) => {
+    const relA = path.relative(projectRoot, a);
+    const relB = path.relative(projectRoot, b);
+    return (importCounts[relB] || 0) - (importCounts[relA] || 0);
+  });
+
+  const alreadySelected = new Set([...selectedRoutes, ...selectedModels]);
+  const remainingBudget = MAX_FILES_TOTAL - alreadySelected.size;
+  const selectedUtilities = otherFiles
+    .filter(f => !alreadySelected.has(f))
+    .slice(0, Math.min(UTILITY_BUDGET, remainingBudget));
+
+  const allSelected = [...new Set([...selectedRoutes, ...selectedModels, ...selectedUtilities])];
+
   return {
-    routeFiles: cap(allCode),
-    modelFiles: cap(allCode),
-    frontendFiles: cap(htmlFiles)
+    routeFiles: allSelected,
+    modelFiles: allSelected,
+    frontendFiles: htmlFiles.slice(0, 10)
   };
+}
+
+function isRouteFile(filePath) {
+  const p = filePath.toLowerCase().replace(/\\/g, '/');
+  const base = path.basename(p);
+  if (base === 'route.ts' || base === 'route.js' || base === 'routes.ts' || base === 'routes.js') return true;
+  if (p.includes('/api/') || p.includes('/routes/') || p.includes('/route/')) return true;
+  if (base === 'main.py' || base === 'app.py' || base === 'server.ts' || base === 'server.js') return true;
+  if (p.includes('/pages/api/')) return true;
+  return false;
+}
+
+function isModelFile(filePath) {
+  const p = filePath.toLowerCase().replace(/\\/g, '/');
+  const base = path.basename(p);
+  if (base === 'schema.prisma' || base.endsWith('.prisma')) return true;
+  if (base.startsWith('models.') || base.includes('.model.') || base.includes('.models.')) return true;
+  if (p.includes('/models/') || p.includes('/schemas/') || p.includes('/schema/')) return true;
+  if (base.includes('entity') || base.includes('schema')) return true;
+  return false;
+}
+
+function scoreRoute(filePath) {
+  const p = filePath.toLowerCase().replace(/\\/g, '/');
+  const base = path.basename(p);
+  if (base === 'main.py' || base === 'app.py' || base === 'server.ts' || base === 'server.js') return 10;
+  if (p.includes('/app/api/')) return 9;
+  if (p.includes('/pages/api/')) return 8;
+  if (p.includes('/routes/') || p.includes('/api/')) return 7;
+  return 5;
+}
+
+function scoreModel(filePath) {
+  const p = filePath.toLowerCase().replace(/\\/g, '/');
+  const base = path.basename(p);
+  if (base === 'schema.prisma') return 10;
+  if (base.startsWith('models.')) return 9;
+  if (p.includes('/models/')) return 8;
+  if (base.includes('.model.')) return 7;
+  return 5;
+}
+
+/**
+ * Quick scan of all files for import/require statements.
+ * Returns { 'relative/path': count } of how many files import each path.
+ */
+function countImportReferences(allFiles, projectRoot) {
+  const counts = {};
+
+  // Build a set of known relative paths for matching
+  const knownPaths = new Set();
+  for (const f of allFiles) {
+    knownPaths.add(path.relative(projectRoot, f));
+  }
+
+  // Quick regex scan — don't parse AST, just count references
+  const importPattern = /(?:from|import)\s+['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+  for (const filePath of allFiles) {
+    let content;
+    try {
+      content = fs.readFileSync(filePath, 'utf-8');
+    } catch {
+      continue;
+    }
+
+    const fileDir = path.dirname(filePath);
+    let match;
+    importPattern.lastIndex = 0;
+    while ((match = importPattern.exec(content)) !== null) {
+      const importPath = match[1] || match[2];
+      if (!importPath || !importPath.startsWith('.')) continue;
+
+      // Try to resolve to a known file
+      const resolved = tryResolve(importPath, fileDir, projectRoot, knownPaths);
+      if (resolved) {
+        counts[resolved] = (counts[resolved] || 0) + 1;
+      }
+    }
+  }
+
+  return counts;
+}
+
+/**
+ * Try to resolve a relative import to a known file path.
+ */
+function tryResolve(importPath, fileDir, projectRoot, knownPaths) {
+  const base = path.resolve(fileDir, importPath);
+  const rel = path.relative(projectRoot, base);
+
+  // Try exact
+  if (knownPaths.has(rel)) return rel;
+
+  // Try extensions
+  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.py'];
+  for (const ext of extensions) {
+    const withExt = rel + ext;
+    if (knownPaths.has(withExt)) return withExt;
+  }
+
+  // Try index files
+  for (const ext of extensions) {
+    const indexFile = path.join(rel, 'index' + ext);
+    if (knownPaths.has(indexFile)) return indexFile;
+  }
+
+  return null;
 }
 
 function findFilesRecursive(dir, extensions, ignoreDirs, isIgnored, results = []) {
@@ -102,29 +255,6 @@ function findFilesRecursive(dir, extensions, ignoreDirs, isIgnored, results = []
     }
   }
   return results;
-}
-
-function scoreFile(filePath) {
-  const p = filePath.toLowerCase().replace(/\\/g, '/');
-  const base = path.basename(p);
-  if (base === 'main.py' || base === 'app.py' || base === 'server.ts' ||
-      base === 'server.js' || base === 'app.ts' || base === 'index.ts' ||
-      base === 'route.ts' || base === 'routes.ts' || base === 'routes.js') return 10;
-  if (p.includes('/api/') || p.includes('/routes/') || p.includes('/route/')) return 9;
-  if (p.includes('/models/') || p.includes('/schemas/') || p.includes('/schema/')) return 8;
-  if (p.includes('/services/') || p.includes('/controllers/') || p.includes('/handlers/')) return 6;
-  if (p.includes('/lib/') || p.includes('/utils/') || p.includes('/helpers/')) return 2;
-  return 4;
-}
-
-function cap(files) {
-  const scored = files.map(f => ({ f, score: scoreFile(f) }))
-                      .sort((a, b) => b.score - a.score);
-  if (scored.length > MAX_FILES_PER_CATEGORY) {
-    console.warn(`[CARTO] Warning: Found ${scored.length} files, capping at ${MAX_FILES_PER_CATEGORY}`);
-    return scored.slice(0, MAX_FILES_PER_CATEGORY).map(x => x.f);
-  }
-  return scored.map(x => x.f);
 }
 
 module.exports = { discoverFiles };
