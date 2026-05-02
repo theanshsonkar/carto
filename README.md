@@ -158,6 +158,19 @@ Leave `carto watch` running in a background terminal. Every file save updates AG
 
 ---
 
+## Works with
+
+| Language | Frameworks |
+|----------|------------|
+| Python | FastAPI, Pydantic |
+| JavaScript | Express, Next.js |
+| TypeScript | Express, Next.js, Prisma |
+| HTML | fetch() calls |
+
+More languages via community — open an issue or see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
 ## What gets extracted automatically
 
 - API routes — FastAPI, Express, Next.js App Router
@@ -260,6 +273,13 @@ Carto is that. Same insight, different domain.
 ## License
 
 MIT — free forever.
+
+---
+
+## Contributors
+
+- [Ansh Sonkar](https://github.com/theanshsonkar) — creator
+- [Claude](https://claude.ai) — co-author
 
 ---
 
