@@ -2,8 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const { runFullSync } = require('../sync');
 const { resolveConfig } = require('./init');
+const { checkForUpdate } = require('./update-check');
 
 async function run(projectRoot) {
+  checkForUpdate(); // fire and forget
   const configPath = path.join(projectRoot, '.carto', 'config.json');
 
   if (!fs.existsSync(configPath)) {
