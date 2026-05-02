@@ -50,6 +50,39 @@ Not smarter AI. The same AI with accurate facts.
 
 ---
 
+## Know what breaks before you break it
+
+Most production bugs aren't logic errors. They're *"I didn't know X depended on Y."*
+
+`carto impact` makes that invisible knowledge visible — before you touch anything.
+
+```bash
+carto impact app/models.py
+
+# Impact analysis: app/models.py
+#
+# Imported by:
+#   → app/main.py
+#   → app/rules.py
+#   → app/scoring.py
+#   → app/aws_collector.py
+#   → tests/conftest.py
+#
+# Routes affected:
+#   → POST /analyze
+#   → GET /history
+#   → POST /simulate
+#   → ... 12 more
+#
+# Risk: HIGH — 5 files depend on this
+```
+
+No AI. No cloud. Runs in under a second. Locally, from your import graph.
+
+Make it a habit: before touching any file, run `carto impact` first. 10 seconds. Could save hours.
+
+---
+
 ## Why not just paste your code?
 
 Context windows are large now. But pasting code means:
@@ -122,37 +155,6 @@ Leave `carto watch` running in a background terminal. Every file save updates AG
 - `watch` — every work session, leave it running
 - `sync` — skipped watch and need a fresh snapshot
 - `impact` — before editing anything critical
-
----
-
-## Know what breaks before you break it
-
-Most production bugs aren't logic errors. They're *"I didn't know X depended on Y."*
-
-`carto impact` makes that invisible knowledge visible — before you touch anything.
-
-```bash
-carto impact app/models.py
-
-# Impact analysis: app/models.py
-#
-# Imported by:
-#   → app/main.py
-#   → app/rules.py
-#   → app/scoring.py
-#   → app/aws_collector.py
-#   → tests/conftest.py
-#
-# Routes affected:
-#   → POST /analyze
-#   → GET /history
-#   → POST /simulate
-#   → ... 12 more
-#
-# Risk: HIGH — 5 files depend on this
-```
-
-No AI. No cloud. Runs in under a second. Locally, from your import graph.
 
 ---
 
