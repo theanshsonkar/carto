@@ -276,11 +276,4 @@ MIT — free forever.
 
 ---
 
-## Contributors
-
-- [Ansh Sonkar](https://github.com/theanshsonkar) — creator
-- [Claude](https://claude.ai) — co-author
-
----
-
 *Built because AGENTS.md won. Someone had to keep it alive.*
