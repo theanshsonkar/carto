@@ -6,6 +6,10 @@
 
 **Your code changes. AGENTS.md updates. Every AI always knows.**
 
+```bash
+npm install -g carto-md
+```
+
 Carto auto-generates and maintains your `AGENTS.md` — the standard file every AI coding tool reads for project context. Every time you save, your routes, models, functions, and dependencies are extracted and kept current.
 
 ---
@@ -223,16 +227,6 @@ Drop the file in your project root. Each tool picks it up via its own context co
 - **Gemini CLI** — natively
 - **Devin** — natively
 - **Jules** — natively
-
----
-
-## Tested on
-
-- FastAPI + Python projects
-- Next.js App Router
-- Next.js + Prisma
-- React + FastAPI monorepos
-- Large monorepos (5000+ files — tested on Supabase and cal.com for stability, caps at 50 most important files at this scale)
 
 ---
 
