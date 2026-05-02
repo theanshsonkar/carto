@@ -52,6 +52,8 @@ Same task, two Claude sessions: *"Add a `notes` field to the booking model."*
 
 Not smarter AI. The same AI with accurate facts.
 
+*Stress tested on cal.com (5,018 files): 87% route coverage, 100% model field accuracy, import graph with zero phantom links.*
+
 ---
 
 ## Know what breaks before you break it
