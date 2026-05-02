@@ -1,10 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const MAX_FILES_TOTAL = 50;
-const ROUTE_BUDGET = 20;
+const MAX_FILES_TOTAL = 80;
+const BASE_ROUTE_BUDGET = 20;
 const MODEL_BUDGET = 10;
-const UTILITY_BUDGET = 20;
+const BASE_UTILITY_BUDGET = 20;
 
 const PYTHON_IGNORE = new Set(['__pycache__', '.venv', 'venv', 'migrations', 'node_modules', '.git', '.carto']);
 const JS_IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.carto', '.next', '.turbo', 'coverage', 'out', '.cache', 'generated', '__generated__', 'storybook-static', 'public', 'static']);
@@ -92,17 +92,19 @@ function smartSelect(allFiles, htmlFiles, projectRoot) {
     }
   }
 
-  // Sort routes by score (entry points first)
-  routeCandidates.sort((a, b) => scoreRoute(b) - scoreRoute(a));
-  const selectedRoutes = routeCandidates.slice(0, ROUTE_BUDGET);
+  // Dynamic route budget — expand if many route files, compensate from utility budget
+  const routeBudget = routeCandidates.length > BASE_ROUTE_BUDGET
+    ? Math.min(routeCandidates.length, 40)
+    : BASE_ROUTE_BUDGET;
+  const utilityBudget = Math.max(10, MAX_FILES_TOTAL - routeBudget - MODEL_BUDGET);
 
-  // Sort models by score (schema files first)
+  routeCandidates.sort((a, b) => scoreRoute(b) - scoreRoute(a));
+  const selectedRoutes = routeCandidates.slice(0, routeBudget);
+
   modelCandidates.sort((a, b) => scoreModel(b) - scoreModel(a));
   const selectedModels = modelCandidates.slice(0, MODEL_BUDGET);
 
-  // For utilities: scan all files for import statements, count how many times each is imported
   const importCounts = countImportReferences(allFiles, projectRoot);
-  // Rank other files by how often they're imported
   otherFiles.sort((a, b) => {
     const relA = path.relative(projectRoot, a);
     const relB = path.relative(projectRoot, b);
@@ -113,7 +115,7 @@ function smartSelect(allFiles, htmlFiles, projectRoot) {
   const remainingBudget = MAX_FILES_TOTAL - alreadySelected.size;
   const selectedUtilities = otherFiles
     .filter(f => !alreadySelected.has(f))
-    .slice(0, Math.min(UTILITY_BUDGET, remainingBudget));
+    .slice(0, Math.min(utilityBudget, remainingBudget));
 
   const allSelected = [...new Set([...selectedRoutes, ...selectedModels, ...selectedUtilities])];
 

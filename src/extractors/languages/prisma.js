@@ -27,18 +27,13 @@ module.exports = {
 
 function extractPrismaModels(content) {
   const models = [];
-  const modelPattern = /^model\s+(\w+)\s*\{([^}]+)\}/gm;
+  const blocks = extractModelBlocks(content);
 
-  let match;
-  while ((match = modelPattern.exec(content)) !== null) {
-    const className = match[1];
-    const body = match[2];
+  for (const { name, body } of blocks) {
     const fields = [];
-
     const lines = body.split('\n');
     for (const line of lines) {
       const trimmed = line.trim();
-      // Skip empty lines, comments, and @@directives
       if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('@@')) continue;
 
       const fieldMatch = trimmed.match(/^(\w+)\s+(\w+[\[\]?]*)/);
@@ -46,8 +41,7 @@ function extractPrismaModels(content) {
         fields.push({ name: fieldMatch[1], type: fieldMatch[2] });
       }
     }
-
-    models.push({ className, fields });
+    models.push({ className: name, fields });
   }
 
   return models;
@@ -55,21 +49,43 @@ function extractPrismaModels(content) {
 
 function extractPrismaDBTables(content) {
   const tables = [];
-  const modelPattern = /^model\s+(\w+)\s*\{([^}]+)\}/gm;
+  const blocks = extractModelBlocks(content);
 
-  let match;
-  while ((match = modelPattern.exec(content)) !== null) {
-    const modelName = match[1];
-    const body = match[2];
-
-    // Check for @@map('table_name')
+  for (const { name, body } of blocks) {
     const mapMatch = body.match(/@@map\s*\(\s*['"]([^'"]+)['"]\s*\)/);
-    const tableName = mapMatch ? mapMatch[1] : toSnakeCase(modelName);
-
-    tables.push({ tableName, modelName });
+    const tableName = mapMatch ? mapMatch[1] : toSnakeCase(name);
+    tables.push({ tableName, modelName: name });
   }
 
   return tables;
+}
+
+/**
+ * Brace-counting approach to extract model blocks.
+ * Handles } inside /// comments and @zod annotations.
+ */
+function extractModelBlocks(content) {
+  const blocks = [];
+  const modelStart = /^model\s+(\w+)\s*\{/gm;
+  let match;
+
+  while ((match = modelStart.exec(content)) !== null) {
+    const name = match[1];
+    const startIdx = match.index + match[0].length;
+    let depth = 1;
+    let i = startIdx;
+
+    while (i < content.length && depth > 0) {
+      if (content[i] === '{') depth++;
+      else if (content[i] === '}') depth--;
+      if (depth > 0) i++;
+    }
+
+    const body = content.substring(startIdx, i);
+    blocks.push({ name, body });
+  }
+
+  return blocks;
 }
 
 function toSnakeCase(str) {

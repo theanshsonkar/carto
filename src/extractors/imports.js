@@ -199,9 +199,14 @@ function buildImportGraph(fileContents, projectRoot) {
   const graph = {};
 
   for (const { filePath, content } of fileContents) {
+    const relPath = path.relative(projectRoot, filePath);
+    const base = path.basename(filePath);
+
+    // Skip generated files — they produce massive noisy edges
+    if (base.includes('.generated.') || relPath.includes('__generated__')) continue;
+
     const deps = extractImports(content, filePath, projectRoot);
     if (deps.length > 0) {
-      const relPath = path.relative(projectRoot, filePath);
       graph[relPath] = deps;
     }
   }
