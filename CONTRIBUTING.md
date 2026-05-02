@@ -33,7 +33,7 @@ Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
 
 ## How to add a language
 
-1. Create `src/ast/languages/yourlanguage.js`
+1. Create `src/extractors/languages/yourlanguage.js`
 2. Export a single function: `extractFromFile(filePath, fileContent)`
 3. Return:
 ```js
@@ -44,7 +44,7 @@ Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
   exports: [{ name }]
 }
 ```
-4. Add it to `src/ast/parser.js` language map
+4. Add it to `src/extractors/loader.js` language map
 5. Test on at least 3 real open-source projects
 6. Open a PR with before/after AGENTS.md examples
 
@@ -80,7 +80,7 @@ Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
 ## Development setup
 
 ```bash
-git clone https://github.com/anshsonkar/carto-ansh
+git clone https://github.com/theanshsonkar/carto
 cd carto-ansh
 npm install
 node src/cli/index.js init   # test in any project
@@ -95,7 +95,7 @@ node src/cli/index.js init   # test in any project
 - [ ] No changes to merger logic (unless explicitly fixing a merger bug)
 - [ ] No network calls added
 - [ ] `carto --version` still works
-- [ ] Existing tests pass
+- [ ] `npm test` passes
 
 ---
 
