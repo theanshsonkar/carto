@@ -137,7 +137,6 @@ function run(projectRoot, fileArg) {
  * Matches by basename or partial path suffix.
  */
 function resolveFile(fileArg, imports) {
-  // Collect all known files (keys + all values)
   const allFiles = new Set();
   for (const [file, deps] of Object.entries(imports)) {
     allFiles.add(file);
@@ -145,6 +144,7 @@ function resolveFile(fileArg, imports) {
   }
 
   const normalized = fileArg.replace(/\\/g, '/');
+  const hasPathSeparator = normalized.includes('/');
 
   // Exact match
   if (allFiles.has(normalized)) return normalized;
@@ -153,16 +153,17 @@ function resolveFile(fileArg, imports) {
   const matches = [...allFiles].filter(f => f.endsWith('/' + normalized) || f === normalized);
   if (matches.length === 1) return matches[0];
 
-  // Match by basename
+  // If input was a path (contains /), don't fall back to basename — it's ambiguous
+  if (hasPathSeparator) {
+    if (matches.length > 1) return null;
+    return null;
+  }
+
+  // Input is just a filename — fall back to basename matching
   const byBasename = [...allFiles].filter(f => path.basename(f) === path.basename(normalized));
   if (byBasename.length === 1) return byBasename[0];
 
-  // If multiple basename matches, prefer shortest path
-  if (byBasename.length > 1) {
-    byBasename.sort((a, b) => a.length - b.length);
-    return byBasename[0];
-  }
-
+  // Multiple basename matches — ambiguous, don't guess
   return null;
 }
 
