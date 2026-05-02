@@ -154,6 +154,7 @@ Leave `carto watch` running in a background terminal. Every file save updates AG
 | `carto watch` | Watch files, update AGENTS.md on every save |
 | `carto sync` | One-time refresh, no watcher |
 | `carto impact <file>` | Show blast radius before touching a file |
+| `carto remove` | Remove AGENTS.md and .carto/ from this project |
 | `carto --version` | Show version |
 
 **When to use each:**
