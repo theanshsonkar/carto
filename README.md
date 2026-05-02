@@ -4,7 +4,7 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![npm downloads](https://img.shields.io/npm/dm/carto-md)](https://www.npmjs.com/package/carto-md)
 
-**Your code changes. AGENTS.md updates. Every AI always knows.**
+**Maps your codebase so AI stops guessing. Your code changes. AGENTS.md updates. Every AI always knows.**
 
 ```bash
 npm install -g carto-md
