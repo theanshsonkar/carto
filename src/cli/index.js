@@ -12,6 +12,7 @@ Commands:
   watch         Read .carto/config.json, start file watcher
   sync          Read .carto/config.json, run one sync, exit
   impact <file> Show which files and routes are affected by changing a file
+  remove        Remove AGENTS.md and .carto/ from this project
 
 Options:
   --help, -h   Show this help message
@@ -46,6 +47,8 @@ if (command === 'init') {
 } else if (command === 'impact') {
   const fileArg = process.argv[3];
   require('./impact').run(process.cwd(), fileArg);
+} else if (command === 'remove') {
+  require('./remove').run(process.cwd());
 } else {
   console.error(`[CARTO] Unknown command: ${command}`);
   printUsage();
