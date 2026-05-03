@@ -6,6 +6,7 @@ const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 've
 // Priority order: lower index = higher priority
 const PYTHON_PRIORITY = ['fastapi', 'django', 'flask', 'python-generic'];
 const JS_PRIORITY = ['nextjs', 'express', 'react', 'node-generic'];
+const R_PRIORITY = ['plumber', 'shiny', 'r-generic'];
 
 /**
  * detectFramework(projectRoot) → { framework, language, confidence, secondaryFramework?, secondaryLanguage? }
@@ -16,36 +17,37 @@ const JS_PRIORITY = ['nextjs', 'express', 'react', 'node-generic'];
  * (primary = highest priority overall, secondary = the other language).
  */
 function detectFramework(projectRoot) {
-  const candidates = findFile(projectRoot, ['requirements.txt', 'package.json', 'pyproject.toml'], 3);
+  const candidates = findFile(projectRoot, ['requirements.txt', 'package.json', 'pyproject.toml', 'DESCRIPTION'], 3);
 
   const pythonDetections = new Set();
   const jsDetections = new Set();
+  const rDetections = new Set();
 
-  // Check requirements.txt
   for (const f of candidates.filter(f => path.basename(f) === 'requirements.txt')) {
-    const results = detectAllFromPythonDeps(f);
-    for (const r of results) pythonDetections.add(r);
+    for (const r of detectAllFromPythonDeps(f)) pythonDetections.add(r);
   }
 
-  // Check pyproject.toml
   for (const f of candidates.filter(f => path.basename(f) === 'pyproject.toml')) {
-    const results = detectAllFromPythonDeps(f);
-    for (const r of results) pythonDetections.add(r);
+    for (const r of detectAllFromPythonDeps(f)) pythonDetections.add(r);
   }
 
-  // Check package.json
   for (const f of candidates.filter(f => path.basename(f) === 'package.json')) {
-    const results = detectAllFromPackageJson(f);
-    for (const r of results) jsDetections.add(r);
+    for (const r of detectAllFromPackageJson(f)) jsDetections.add(r);
   }
 
-  // Pick best Python framework by priority
+  for (const f of candidates.filter(f => path.basename(f) === 'DESCRIPTION')) {
+    for (const r of detectAllFromRDescription(f)) rDetections.add(r);
+  }
+
+  if (rDetections.size === 0) {
+    for (const r of detectAllFromRFiles(projectRoot)) rDetections.add(r);
+  }
+
   const bestPython = PYTHON_PRIORITY.find(fw => pythonDetections.has(fw)) || null;
-  // Pick best JS framework by priority
   const bestJS = JS_PRIORITY.find(fw => jsDetections.has(fw)) || null;
+  const bestR = R_PRIORITY.find(fw => rDetections.has(fw)) || null;
 
   if (bestPython && bestJS) {
-    // Both detected — Python is primary (higher priority in the global list)
     return {
       framework: bestPython,
       language: 'python',
@@ -61,6 +63,10 @@ function detectFramework(projectRoot) {
 
   if (bestJS) {
     return { framework: bestJS, language: 'javascript', confidence: 'high' };
+  }
+
+  if (bestR) {
+    return { framework: bestR, language: 'r', confidence: 'high' };
   }
 
   return { framework: 'unknown', language: 'unknown', confidence: 'none' };
@@ -132,6 +138,45 @@ function detectAllFromPackageJson(filePath) {
   if (deps['react'] && !deps['next']) detected.push('react');
   if (!detected.length) detected.push('node-generic');
 
+  return detected;
+}
+
+function detectAllFromRDescription(filePath) {
+  const detected = [];
+  let content;
+  try {
+    content = fs.readFileSync(filePath, 'utf-8').toLowerCase();
+  } catch {
+    return detected;
+  }
+  if (content.includes('plumber')) detected.push('plumber');
+  if (content.includes('shiny')) detected.push('shiny');
+  if (!detected.length) detected.push('r-generic');
+  return detected;
+}
+
+function detectAllFromRFiles(projectRoot) {
+  const detected = [];
+  let files;
+  try {
+    files = fs.readdirSync(projectRoot).filter(f => f.endsWith('.R') || f.endsWith('.r'));
+  } catch {
+    return detected;
+  }
+  if (!files.length) return detected;
+
+  for (const file of files.slice(0, 5)) {
+    let content;
+    try {
+      content = fs.readFileSync(path.join(projectRoot, file), 'utf-8').toLowerCase();
+    } catch {
+      continue;
+    }
+    if (/library\s*\(\s*["']?plumber["']?\s*\)/.test(content)) detected.push('plumber');
+    if (/library\s*\(\s*["']?shiny["']?\s*\)/.test(content)) detected.push('shiny');
+  }
+
+  if (!detected.length) detected.push('r-generic');
   return detected;
 }
 

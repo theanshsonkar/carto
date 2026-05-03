@@ -172,6 +172,7 @@ Leave `carto watch` running in a background terminal. Every file save updates AG
 | Python | FastAPI, Pydantic |
 | JavaScript | Express, Next.js |
 | TypeScript | Express, Next.js, Prisma |
+| R | Plumber, Shiny |
 | HTML | fetch() calls |
 
 More languages via community — open an issue or see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -249,7 +250,7 @@ Carto never writes secrets into AGENTS.md. `.cartoignore` blocks `.env` files, s
 
 ## Contributing
 
-Python and JS/TS today. Want Go, Ruby, Django, Rails? Open an issue — or read [CONTRIBUTING.md](CONTRIBUTING.md) to add it yourself.
+Python, JS/TS, and R today. Want Go, Ruby, Django, Rails? Open an issue — or read [CONTRIBUTING.md](CONTRIBUTING.md) to add it yourself.
 
 ---
 
