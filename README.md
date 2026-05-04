@@ -135,14 +135,13 @@ npx carto-md init
 # 1. Go to your project
 cd your-project
 
-# 2. Generate AGENTS.md (run once)
+# 2. Run once — like git init
 carto init
-
-# 3. Keep it live while you work
-carto watch
 ```
 
-Leave `carto watch` running in a background terminal. Every file save updates AGENTS.md automatically.
+That's it. Carto installs a git hook. Every `git commit` syncs AGENTS.md automatically — no watching, no manual runs, nothing to remember.
+
+Want live updates on every file save too? Run `carto watch` in a background terminal.
 
 ---
 
@@ -150,17 +149,17 @@ Leave `carto watch` running in a background terminal. Every file save updates AG
 
 | Command | What it does |
 |---------|-------------|
-| `carto init` | Detect stack, generate AGENTS.md, install git hook |
-| `carto watch` | Watch files, update AGENTS.md on every save |
-| `carto sync` | One-time refresh, no watcher |
+| `carto init` | Detect stack, generate AGENTS.md, install git hook — auto-syncs on every commit |
+| `carto watch` | Live updates on every file save — optional, for between commits |
+| `carto sync` | One-time manual refresh |
 | `carto impact <file>` | Show blast radius before touching a file |
 | `carto remove` | Remove AGENTS.md and .carto/ from this project |
 | `carto --version` | Show version |
 
 **When to use each:**
-- `init` — once, when you add Carto to a project
-- `watch` — every work session, leave it running
-- `sync` — skipped watch and need a fresh snapshot
+- `init` — once per project, sets everything up
+- `watch` — optional, if you want updates between commits
+- `sync` — if you skipped watch and need a fresh snapshot
 - `impact` — before editing anything critical
 
 ---
