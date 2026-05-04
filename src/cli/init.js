@@ -17,11 +17,13 @@ async function run(projectRoot) {
   // Count files for reporting
   const pyCount = files.routeFiles.filter(f => f.endsWith('.py')).length;
   const jsCount = files.routeFiles.filter(f => /\.(js|ts|jsx|tsx)$/.test(f)).length;
+  const rCount = files.routeFiles.filter(f => /\.[rR]$/.test(f)).length;
   const htmlCount = files.frontendFiles.length;
 
   const parts = [];
   if (pyCount > 0) parts.push(`${pyCount} Python files`);
   if (jsCount > 0) parts.push(`${jsCount} JS/TS files`);
+  if (rCount > 0) parts.push(`${rCount} R files`);
   if (htmlCount > 0) parts.push(`${htmlCount} HTML files`);
   console.log(`[CARTO] Found ${parts.join(', ') || '0 files'}`);
 

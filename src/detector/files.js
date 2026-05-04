@@ -9,6 +9,7 @@ const BASE_UTILITY_BUDGET = 20;
 const PYTHON_IGNORE = new Set(['__pycache__', '.venv', 'venv', 'migrations', 'node_modules', '.git', '.carto']);
 const JS_IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.carto', '.next', '.turbo', 'coverage', 'out', '.cache', 'generated', '__generated__', 'storybook-static', 'public', 'static']);
 const HTML_IGNORE = new Set(['node_modules', '.git', '.carto']);
+const R_IGNORE = new Set(['.Rhistory', '.RData', 'packrat', 'renv', 'node_modules', '.git', '__pycache__', '.carto']);
 
 /**
  * discoverFiles(projectRoot, framework, isIgnored, secondaryFramework) → { routeFiles, modelFiles, frontendFiles }
@@ -58,6 +59,20 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
     }
 
     return smartSelect(jsFiles, htmlFiles, projectRoot);
+  }
+
+  if (['plumber', 'shiny', 'r-generic'].includes(framework)) {
+    const rFiles = findFilesRecursive(projectRoot, ['.r'], R_IGNORE, ignoreFn)
+      .filter(f => {
+        const base = path.basename(f);
+        return !base.startsWith('test_') && !base.startsWith('test-') && !base.endsWith('_test.R');
+      });
+
+    if (rFiles.length <= MAX_FILES_TOTAL) {
+      return { routeFiles: rFiles, modelFiles: rFiles, frontendFiles: [] };
+    }
+
+    return smartSelect(rFiles, [], projectRoot);
   }
 
   // Unknown framework

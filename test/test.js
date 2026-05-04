@@ -8,6 +8,7 @@ const pythonPlugin = require('../src/extractors/languages/python');
 const prismaPlugin = require('../src/extractors/languages/prisma');
 const { mergeIntoAgentsMd, START_MARKER, END_MARKER } = require('../src/agents/merger');
 const { extractImports } = require('../src/extractors/imports');
+const rPlugin = require('../src/extractors/languages/r');
 
 // ── Helpers ─────────────────────────────────────────────────────────
 const results = { passed: 0, failed: 0, failures: [] };
@@ -305,11 +306,94 @@ test('Import graph', "import X from 'express' (package, not relative) → not in
 fs.rmSync(importTmpDir, { recursive: true, force: true });
 
 // ═══════════════════════════════════════════════════════════════════
+// 5. R extractor (5 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const rCode = `
+#* Countries
+#* @get /countries
+function(continent = "all") { }
+
+#* @post /data
+function(req, res) { }
+
+processData <- function(x, y = 10) { }
+.internalHelper <- function() { }
+
+computeResult <- function(
+  alpha,
+  beta,
+  gamma = NULL
+) { }
+
+setClass("Person", slots = list(name = "character", age = "numeric"))
+
+UserTable <- data.frame(id = integer(), email = character())
+
+Counter <- R6::R6Class("Counter",
+  public = list(
+    count = 0,
+    increment = function() { self$count <- self$count + 1 }
+  )
+)
+
+key <- Sys.getenv("API_KEY")
+url <- Sys.getenv("DATABASE_URL")
+db <- Sys.getenv("db_secret")
+`;
+
+test('R extractor', 'extractRoutes: methods uppercase, description-derived and path-derived names', () => {
+  const out = rPlugin.extract(rCode, 'api.R');
+  assert.strictEqual(out.routes.length, 2);
+  const get = out.routes.find(r => r.method === 'GET');
+  const post = out.routes.find(r => r.method === 'POST');
+  assert.ok(get, 'GET route must be present');
+  assert.strictEqual(get.functionName, 'Countries');
+  assert.ok(post, 'POST route must be present');
+  assert.strictEqual(post.functionName, 'data');
+});
+
+test('R extractor', 'extractFunctions: named functions extracted, dot-prefix and multiline handled', () => {
+  const out = rPlugin.extract(rCode, 'api.R');
+  const pd = out.functions.find(f => f.name === 'processData');
+  assert.ok(pd, 'processData must be extracted');
+  assert.strictEqual(pd.params, 'x, y');
+  assert.strictEqual(out.functions.find(f => f.name === '.internalHelper'), undefined);
+  const cr = out.functions.find(f => f.name === 'computeResult');
+  assert.ok(cr, 'computeResult must be extracted');
+  assert.strictEqual(cr.params, 'alpha, beta, gamma');
+});
+
+test('R extractor', 'extractModels: S4, data.frame and R6 classes with correct fields', () => {
+  const out = rPlugin.extract(rCode, 'api.R');
+  const person = out.models.find(m => m.className === 'Person');
+  assert.ok(person, 'Person model must be extracted');
+  assert.deepStrictEqual(person.fields, [{ name: 'name', type: 'character' }, { name: 'age', type: 'numeric' }]);
+  const table = out.models.find(m => m.className === 'UserTable');
+  assert.ok(table, 'UserTable model must be extracted');
+  assert.ok(table.fields.find(f => f.name === 'id' && f.type === 'integer'), 'id:integer must be present');
+  const counter = out.models.find(m => m.className === 'Counter');
+  assert.ok(counter, 'Counter model must be extracted');
+  assert.ok(counter.fields.find(f => f.name === 'count' && f.type === 'numeric'), 'count:numeric must be present');
+  assert.strictEqual(counter.fields.find(f => f.name === 'increment'), undefined, 'methods must not appear as fields');
+});
+
+test('R extractor', 'extractEnvVars: uppercase SNAKE_CASE only, sorted, lowercase excluded', () => {
+  const out = rPlugin.extract(rCode, 'api.R');
+  assert.deepStrictEqual(out.envVars, ['API_KEY', 'DATABASE_URL']);
+});
+
+test('R extractor', 'error recovery: broken input returns safe empty arrays without throwing', () => {
+  const out = rPlugin.extract('setClass("Broken", slots = list(\n', 'broken.R');
+  assert.ok(Array.isArray(out.routes) && Array.isArray(out.models) && Array.isArray(out.functions) && Array.isArray(out.envVars));
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
 console.log('');
-const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph'];
+const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor'];
 for (const suite of suiteNames) {
   const s = suiteTotals[suite] || { pass: 0, total: 0 };
   const icon = s.pass === s.total ? '✓' : '✗';
