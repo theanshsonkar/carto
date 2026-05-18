@@ -2,11 +2,15 @@ const fs = require('fs');
 const path = require('path');
 const { detectFramework } = require('../detector/framework');
 const { discoverFiles } = require('../detector/files');
-const { parseCartoIgnore } = require('../security/ignore');
+const { parseCartoIgnore, writeAiIgnoreFile } = require('../security/ignore');
 const { runFullSync } = require('../sync');
 
-async function run(projectRoot) {
+async function run(projectRoot, options = {}) {
   console.log('[CARTO] Detecting project...');
+
+  if (options.ignoreAiTools) {
+    writeAiIgnoreFile(projectRoot);
+  }
 
   const detection = detectFramework(projectRoot);
   console.log(`[CARTO] Detected: ${detection.framework} (${detection.language})`);

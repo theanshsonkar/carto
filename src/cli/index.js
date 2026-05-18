@@ -14,6 +14,11 @@ Commands:
   impact <file> Show which files and routes are affected by changing a file
   remove        Remove AGENTS.md and .carto/ from this project
 
+init flags:
+  --ignore-ai-tools  Create a .cartoignore pre-populated with AI tooling
+                     directories (.claude, .cursor, .gemini, etc.) so they
+                     are excluded from AGENTS.md automatically.
+
 Options:
   --help, -h   Show this help message
 `);
@@ -30,7 +35,8 @@ if (!command || command === '--help' || command === '-h') {
 }
 
 if (command === 'init') {
-  require('./init').run(process.cwd()).catch(err => {
+  const ignoreAiTools = process.argv.slice(3).includes('--ignore-ai-tools');
+  require('./init').run(process.cwd(), { ignoreAiTools }).catch(err => {
     console.error(`[CARTO] Fatal error: ${err.message}`);
     process.exit(1);
   });

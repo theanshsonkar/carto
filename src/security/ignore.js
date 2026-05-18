@@ -40,7 +40,7 @@ function parseCartoIgnore(projectRoot) {
 
   return function isIgnored(filePath) {
     const basename = path.basename(filePath);
-    const relativePath = filePath; // can be absolute or relative
+    const relativePath = filePath;
 
     for (const pattern of allPatterns) {
       if (matchPattern(basename, pattern) || matchPattern(relativePath, pattern)) {
@@ -49,6 +49,34 @@ function parseCartoIgnore(projectRoot) {
     }
     return false;
   };
+}
+
+const AI_TOOLING_DIRS = [
+  '.claude', '.cursor', '.gemini', '.copilot', '.continue',
+  '.aider', '.codeium', '.windsurf', '.serena', '.cody',
+  '.tabnine', '.supermaven', '.qodo', '.codex', '.roo',
+];
+
+function writeAiIgnoreFile(projectRoot) {
+  const ignoreFile = path.join(projectRoot, '.cartoignore');
+  let existingContent = '';
+  let existingLines = [];
+  try {
+    existingContent = fs.readFileSync(ignoreFile, 'utf-8');
+    existingLines = existingContent.split('\n').map(l => l.trim()).filter(Boolean);
+  } catch {
+    // No existing file
+  }
+
+  const toAdd = AI_TOOLING_DIRS.filter(dir => !existingLines.includes(dir));
+  if (toAdd.length === 0) return;
+
+  const prefix = existingContent ? existingContent.trimEnd() + '\n\n' : '';
+  fs.writeFileSync(
+    ignoreFile,
+    prefix + '# AI tooling directories\n' + toAdd.join('\n') + '\n',
+    'utf-8'
+  );
 }
 
 /**
@@ -63,4 +91,4 @@ function matchPattern(str, pattern) {
   return regex.test(str);
 }
 
-module.exports = { parseCartoIgnore, DEFAULT_IGNORE_PATTERNS };
+module.exports = { parseCartoIgnore, DEFAULT_IGNORE_PATTERNS, AI_TOOLING_DIRS, writeAiIgnoreFile };
