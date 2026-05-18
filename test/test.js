@@ -228,7 +228,7 @@ test('Merger', 'Empty string input → produces valid AGENTS.md with markers', (
 fs.rmSync(mergerTmpDir, { recursive: true, force: true });
 
 // ═══════════════════════════════════════════════════════════════════
-// 4. Import graph (5 tests)
+// 4. Import graph (6 tests)
 // ═══════════════════════════════════════════════════════════════════
 
 const importTmpDir = '/tmp/carto-test';
@@ -277,6 +277,17 @@ test('Import graph', "require('./config') resolves correctly", () => {
     importTmpDir
   );
   assert.ok(imports.includes('config.js'), `Expected 'config.js' in ${JSON.stringify(imports)}`);
+});
+
+test('Import graph', 'A file with no imports returns []', () => {
+  const emptyPath = path.join(importTmpDir, 'empty.js');
+  fs.writeFileSync(emptyPath, 'const x = 42;\nconsole.log(x);', 'utf-8');
+  const imports = extractImports(
+    fs.readFileSync(emptyPath, 'utf-8'),
+    emptyPath,
+    importTmpDir
+  );
+  assert.deepStrictEqual(imports, []);
 });
 
 test('Import graph', 'R: library/require records package names, source() resolves local file', () => {
