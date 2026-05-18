@@ -389,11 +389,166 @@ test('R extractor', 'error recovery: broken input returns safe empty arrays with
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// 6. --ignore-ai-tools flag (5 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const { AI_TOOLING_DIRS, writeAiIgnoreFile, parseCartoIgnore } = require('../src/security/ignore');
+const aiIgnoreTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-aiignore-'));
+
+test('--ignore-ai-tools flag', 'AI_TOOLING_DIRS exports all 16 known AI tool directories', () => {
+  const expected = [
+    '.claude', '.cursor', '.gemini', '.copilot', '.continue',
+    '.aider', '.codeium', '.windsurf', '.serena', '.cody',
+    '.tabnine', '.supermaven', '.qodo', '.codex', '.roo', '.vscode',
+  ];
+  assert.ok(Array.isArray(AI_TOOLING_DIRS), 'AI_TOOLING_DIRS must be an array');
+  assert.strictEqual(AI_TOOLING_DIRS.length, 16, `Expected 16 entries, got ${AI_TOOLING_DIRS.length}`);
+  for (const dir of expected) {
+    assert.ok(AI_TOOLING_DIRS.includes(dir), `AI_TOOLING_DIRS must include ${dir}`);
+  }
+});
+
+test('--ignore-ai-tools flag', 'writeAiIgnoreFile creates .cartoignore with all AI dirs when absent', () => {
+  const dir = path.join(aiIgnoreTmpDir, 'new-project');
+  fs.mkdirSync(dir, { recursive: true });
+
+  writeAiIgnoreFile(dir);
+
+  const ignoreFile = path.join(dir, '.cartoignore');
+  assert.ok(fs.existsSync(ignoreFile), '.cartoignore must be created');
+  const content = fs.readFileSync(ignoreFile, 'utf-8');
+  for (const aiDir of AI_TOOLING_DIRS) {
+    assert.ok(content.includes(aiDir), `.cartoignore must contain ${aiDir}`);
+  }
+});
+
+test('--ignore-ai-tools flag', 'writeAiIgnoreFile appends only missing entries to existing .cartoignore', () => {
+  const dir = path.join(aiIgnoreTmpDir, 'partial-project');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, '.cartoignore'), 'dist/\n.claude\n.cursor\n', 'utf-8');
+
+  writeAiIgnoreFile(dir);
+
+  const content = fs.readFileSync(path.join(dir, '.cartoignore'), 'utf-8');
+  assert.ok(content.includes('dist/'), 'existing entry dist/ must be preserved');
+  const claudeCount = content.split('\n').filter(l => l.trim() === '.claude').length;
+  assert.strictEqual(claudeCount, 1, '.claude must appear exactly once (no duplicate)');
+  assert.ok(content.includes('.gemini'), 'missing .gemini must be appended');
+});
+
+test('--ignore-ai-tools flag', 'writeAiIgnoreFile is a no-op when all AI dirs are already present', () => {
+  const dir = path.join(aiIgnoreTmpDir, 'full-project');
+  fs.mkdirSync(dir, { recursive: true });
+  const initialContent = AI_TOOLING_DIRS.join('\n') + '\n';
+  fs.writeFileSync(path.join(dir, '.cartoignore'), initialContent, 'utf-8');
+
+  writeAiIgnoreFile(dir);
+
+  const afterContent = fs.readFileSync(path.join(dir, '.cartoignore'), 'utf-8');
+  assert.strictEqual(afterContent, initialContent, 'file must not be modified when all entries present');
+});
+
+test('--ignore-ai-tools flag', 'carto init --ignore-ai-tools creates .cartoignore in the project', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-init-ai-'));
+  try {
+    const { spawnSync } = require('child_process');
+    const result = spawnSync('node', [
+      path.resolve(__dirname, '../src/cli/index.js'),
+      'init',
+      '--ignore-ai-tools',
+    ], { cwd: dir, timeout: 15000, encoding: 'utf-8' });
+
+    const ignoreFile = path.join(dir, '.cartoignore');
+    assert.ok(
+      fs.existsSync(ignoreFile),
+      `.cartoignore must exist after carto init --ignore-ai-tools\nstdout: ${result.stdout}\nstderr: ${result.stderr}`
+    );
+    const content = fs.readFileSync(ignoreFile, 'utf-8');
+    assert.ok(content.includes('.claude'), '.cartoignore must include .claude');
+    assert.ok(content.includes('.cursor'), '.cartoignore must include .cursor');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+fs.rmSync(aiIgnoreTmpDir, { recursive: true, force: true });
+
+// ═══════════════════════════════════════════════════════════════════
+// 7. Ignore patterns (5 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+test('Ignore patterns', 'directory name in .cartoignore ignores files nested inside that directory', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ig-'));
+  try {
+    fs.writeFileSync(path.join(dir, '.cartoignore'), '.claude\n', 'utf-8');
+    const isIgnored = parseCartoIgnore(dir);
+    assert.ok(
+      isIgnored(path.join(dir, '.claude', 'config.json')),
+      'file inside .claude/ must be ignored when .claude is in .cartoignore'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Ignore patterns', '!pattern un-ignores a directory that was listed as a positive pattern', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ig-'));
+  try {
+    fs.writeFileSync(path.join(dir, '.cartoignore'), '.claude\n!.claude\n', 'utf-8');
+    const isIgnored = parseCartoIgnore(dir);
+    assert.ok(
+      !isIgnored(path.join(dir, '.claude', 'config.json')),
+      '.claude/config.json must NOT be ignored when !.claude is present'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Ignore patterns', '!pattern with no matching positive pattern leaves the file unignored', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ig-'));
+  try {
+    fs.writeFileSync(path.join(dir, '.cartoignore'), '!.cursor\n', 'utf-8');
+    const isIgnored = parseCartoIgnore(dir);
+    assert.ok(
+      !isIgnored(path.join(dir, '.cursor', 'settings.json')),
+      'file must remain not ignored when only a negation pattern exists'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Ignore patterns', 'default pattern *.key applies even without a .cartoignore file', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ig-'));
+  try {
+    const isIgnored = parseCartoIgnore(dir);
+    assert.ok(isIgnored('secret.key'), 'secret.key must be ignored by the built-in default pattern');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Ignore patterns', '!pattern overrides a built-in default pattern', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ig-'));
+  try {
+    fs.writeFileSync(path.join(dir, '.cartoignore'), '!*.key\n', 'utf-8');
+    const isIgnored = parseCartoIgnore(dir);
+    assert.ok(
+      !isIgnored('secret.key'),
+      'secret.key must NOT be ignored when !*.key negates the default'
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
 console.log('');
-const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor'];
+const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', '--ignore-ai-tools flag', 'Ignore patterns'];
 for (const suite of suiteNames) {
   const s = suiteTotals[suite] || { pass: 0, total: 0 };
   const icon = s.pass === s.total ? '✓' : '✗';
