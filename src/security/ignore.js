@@ -40,7 +40,7 @@ function parseCartoIgnore(projectRoot) {
 
   return function isIgnored(filePath) {
     const basename = path.basename(filePath);
-    const relativePath = filePath;
+    const relativePath = filePath; // can be absolute or relative
 
     for (const pattern of allPatterns) {
       if (matchPattern(basename, pattern) || matchPattern(relativePath, pattern)) {
