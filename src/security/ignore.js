@@ -23,38 +23,48 @@ const DEFAULT_IGNORE_PATTERNS = [
  * Returns a function that checks if a file path matches any ignore pattern.
  */
 function parseCartoIgnore(projectRoot) {
-  let userPatterns = [];
+  let positiveUserPatterns = [];
+  let negativePatterns = [];
 
   const ignoreFile = path.join(projectRoot, '.cartoignore');
   try {
     const content = fs.readFileSync(ignoreFile, 'utf-8');
-    userPatterns = content
+    const lines = content
       .split('\n')
       .map(line => line.trim())
       .filter(line => line && !line.startsWith('#'));
+    for (const line of lines) {
+      if (line.startsWith('!')) {
+        negativePatterns.push(line.slice(1));
+      } else {
+        positiveUserPatterns.push(line);
+      }
+    }
   } catch {
     // No .cartoignore file — that's fine, use defaults only
   }
 
-  const allPatterns = [...DEFAULT_IGNORE_PATTERNS, ...userPatterns];
+  const allPositive = [...DEFAULT_IGNORE_PATTERNS, ...positiveUserPatterns];
 
   return function isIgnored(filePath) {
     const basename = path.basename(filePath);
     const relativePath = filePath; // can be absolute or relative
+    const parts = relativePath.replace(/\\/g, '/').split('/').filter(Boolean);
 
-    for (const pattern of allPatterns) {
-      if (matchPattern(basename, pattern) || matchPattern(relativePath, pattern)) {
-        return true;
-      }
-    }
-    return false;
+    const matchesAny = (pattern) =>
+      matchPattern(basename, pattern) ||
+      matchPattern(relativePath, pattern) ||
+      parts.some(part => matchPattern(part, pattern));
+
+    if (!allPositive.some(matchesAny)) return false;
+    return !negativePatterns.some(matchesAny);
   };
 }
 
 const AI_TOOLING_DIRS = [
   '.claude', '.cursor', '.gemini', '.copilot', '.continue',
   '.aider', '.codeium', '.windsurf', '.serena', '.cody',
-  '.tabnine', '.supermaven', '.qodo', '.codex', '.roo',
+  '.tabnine', '.supermaven', '.qodo', '.codex', '.roo', '.vscode',
 ];
 
 function writeAiIgnoreFile(projectRoot) {
