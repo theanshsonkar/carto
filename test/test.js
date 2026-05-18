@@ -9,6 +9,7 @@ const prismaPlugin = require('../src/extractors/languages/prisma');
 const { mergeIntoAgentsMd, START_MARKER, END_MARKER } = require('../src/agents/merger');
 const { extractImports } = require('../src/extractors/imports');
 const rPlugin = require('../src/extractors/languages/r');
+const { discoverFiles } = require('../src/detector/files');
 
 // ── Helpers ─────────────────────────────────────────────────────────
 const results = { passed: 0, failed: 0, failures: [] };
@@ -389,11 +390,161 @@ test('R extractor', 'error recovery: broken input returns safe empty arrays with
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// 6. R test file filter (4 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const filterTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-r-filter-'));
+
+// Use distinct base names to avoid macOS case-insensitive FS collisions
+fs.writeFileSync(path.join(filterTmpDir, 'server.r'),       '# normal file\n');
+fs.writeFileSync(path.join(filterTmpDir, 'controller_test.R'), '# uppercase suffix — should be excluded\n');
+fs.writeFileSync(path.join(filterTmpDir, 'model_test.r'),   '# lowercase suffix — THE BUG\n');
+fs.writeFileSync(path.join(filterTmpDir, 'test_utils.r'),   '# test_ prefix — should be excluded\n');
+
+const rDiscovered = discoverFiles(filterTmpDir, 'r-generic').routeFiles.map(f => path.basename(f));
+
+test('R test file filter', 'normal .r file is included in discovered files', () => {
+  assert.ok(rDiscovered.includes('server.r'), `server.r missing from ${JSON.stringify(rDiscovered)}`);
+});
+
+test('R test file filter', '_test.R (uppercase) is excluded — regression guard', () => {
+  assert.ok(!rDiscovered.includes('controller_test.R'), `controller_test.R must be excluded, got ${JSON.stringify(rDiscovered)}`);
+});
+
+test('R test file filter', '_test.r (lowercase) is excluded', () => {
+  assert.ok(!rDiscovered.includes('model_test.r'), `model_test.r must be excluded, got ${JSON.stringify(rDiscovered)}`);
+});
+
+test('R test file filter', 'test_ prefix with lowercase .r is excluded', () => {
+  assert.ok(!rDiscovered.includes('test_utils.r'), `test_utils.r must be excluded, got ${JSON.stringify(rDiscovered)}`);
+});
+
+fs.rmSync(filterTmpDir, { recursive: true, force: true });
+
+// ═══════════════════════════════════════════════════════════════════
+// 7. R import graph (4 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const rImportTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-r-imports-'));
+
+test('R import graph', 'library(pkg) in an .R file is returned as an import', () => {
+  const filePath = path.join(rImportTmpDir, 'analysis.R');
+  fs.writeFileSync(filePath, 'library(ggplot2)\nlibrary(dplyr)\n');
+  const imports = extractImports(fs.readFileSync(filePath, 'utf-8'), filePath, rImportTmpDir);
+  assert.ok(imports.includes('ggplot2'), `ggplot2 missing from ${JSON.stringify(imports)}`);
+  assert.ok(imports.includes('dplyr'), `dplyr missing from ${JSON.stringify(imports)}`);
+});
+
+test('R import graph', 'require(pkg) in an .R file is returned as an import', () => {
+  const filePath = path.join(rImportTmpDir, 'model.R');
+  fs.writeFileSync(filePath, 'require(tidyr)\n');
+  const imports = extractImports(fs.readFileSync(filePath, 'utf-8'), filePath, rImportTmpDir);
+  assert.ok(imports.includes('tidyr'), `tidyr missing from ${JSON.stringify(imports)}`);
+});
+
+test('R import graph', 'source("./utils.R") resolves to the local file when it exists', () => {
+  const utilsPath = path.join(rImportTmpDir, 'utils.R');
+  const mainPath  = path.join(rImportTmpDir, 'main.R');
+  fs.writeFileSync(utilsPath, '# helpers\n');
+  fs.writeFileSync(mainPath, 'source("./utils.R")\n');
+  const imports = extractImports(fs.readFileSync(mainPath, 'utf-8'), mainPath, rImportTmpDir);
+  assert.ok(imports.includes('utils.R'), `utils.R missing from ${JSON.stringify(imports)}`);
+});
+
+test('R import graph', '.R file with no library/source calls returns []', () => {
+  const filePath = path.join(rImportTmpDir, 'pure.R');
+  fs.writeFileSync(filePath, 'x <- 1 + 1\n');
+  const imports = extractImports(fs.readFileSync(filePath, 'utf-8'), filePath, rImportTmpDir);
+  assert.deepStrictEqual(imports, []);
+});
+
+fs.rmSync(rImportTmpDir, { recursive: true, force: true });
+
+// ═══════════════════════════════════════════════════════════════════
+// 8. R extractor — S7 (3 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const s7Code = `
+Dog <- new_class("Dog",
+  properties = list(
+    name = class_character,
+    age  = class_numeric
+  )
+)
+
+Shape <- new_class("Shape",
+  properties = list(
+    color = class_character
+  )
+)
+`;
+
+test('R extractor — S7', 'new_class() extracts the class name', () => {
+  const out = rPlugin.extract(s7Code, 'models.R');
+  const dog = out.models.find(m => m.className === 'Dog');
+  assert.ok(dog, `Dog class missing from ${JSON.stringify(out.models.map(m => m.className))}`);
+});
+
+test('R extractor — S7', 'new_class() extracts typed properties as fields', () => {
+  const out = rPlugin.extract(s7Code, 'models.R');
+  const dog = out.models.find(m => m.className === 'Dog');
+  assert.ok(dog, 'Dog must be present');
+  assert.ok(dog.fields.find(f => f.name === 'name' && f.type === 'character'), 'name:character must be present');
+  assert.ok(dog.fields.find(f => f.name === 'age'  && f.type === 'numeric'),   'age:numeric must be present');
+});
+
+test('R extractor — S7', 'multiple new_class() calls in same file are all extracted', () => {
+  const out = rPlugin.extract(s7Code, 'models.R');
+  const shape = out.models.find(m => m.className === 'Shape');
+  assert.ok(shape, `Shape class missing from ${JSON.stringify(out.models.map(m => m.className))}`);
+});
+
+// Real-world patterns sourced from the {rapid} package (github.com/jonthegeek/rapid)
+// and the roxygen2 S7 support issue (github.com/r-lib/roxygen2/issues/1484)
+const s7RealCode = `
+class_scopes <- S7::new_class(
+  name = "scopes",
+  package = "rapid",
+  properties = list(
+    name = class_character,
+    description = class_character
+  )
+)
+
+Pet <- S7::new_class("Pet",
+  properties = list(
+    name = S7::class_character,
+    age  = S7::class_numeric
+  )
+)
+`;
+
+test('R extractor — S7', 'S7::new_class() with named name= argument extracts class name', () => {
+  const out = rPlugin.extract(s7RealCode, 'models.R');
+  const scopes = out.models.find(m => m.className === 'scopes');
+  assert.ok(scopes, `scopes class missing. Got: ${JSON.stringify(out.models.map(m => m.className))}`);
+});
+
+test('R extractor — S7', 'S7::new_class() namespaced positional call extracts class', () => {
+  const out = rPlugin.extract(s7RealCode, 'models.R');
+  const pet = out.models.find(m => m.className === 'Pet');
+  assert.ok(pet, `Pet class missing. Got: ${JSON.stringify(out.models.map(m => m.className))}`);
+});
+
+test('R extractor — S7', 'S7::class_character namespaced type is extracted as character', () => {
+  const out = rPlugin.extract(s7RealCode, 'models.R');
+  const pet = out.models.find(m => m.className === 'Pet');
+  assert.ok(pet, 'Pet must be present');
+  assert.ok(pet.fields.find(f => f.name === 'name' && f.type === 'character'), `name:character missing. Fields: ${JSON.stringify(pet?.fields)}`);
+  assert.ok(pet.fields.find(f => f.name === 'age'  && f.type === 'numeric'),   `age:numeric missing. Fields: ${JSON.stringify(pet?.fields)}`);
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
 console.log('');
-const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor'];
+const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'R test file filter', 'R import graph', 'R extractor — S7'];
 for (const suite of suiteNames) {
   const s = suiteTotals[suite] || { pass: 0, total: 0 };
   const icon = s.pass === s.total ? '✓' : '✗';

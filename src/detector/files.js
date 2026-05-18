@@ -64,8 +64,8 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
   if (['plumber', 'shiny', 'r-generic'].includes(framework)) {
     const rFiles = findFilesRecursive(projectRoot, ['.r'], R_IGNORE, ignoreFn)
       .filter(f => {
-        const base = path.basename(f);
-        return !base.startsWith('test_') && !base.startsWith('test-') && !base.endsWith('_test.R');
+        const lbase = path.basename(f).toLowerCase();
+        return !lbase.startsWith('test_') && !lbase.startsWith('test-') && !lbase.endsWith('_test.r');
       });
 
     if (rFiles.length <= MAX_FILES_TOTAL) {

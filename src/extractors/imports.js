@@ -20,6 +20,10 @@ const fs = require('fs');
  *   from app.module import X     (local package — resolved if file exists)
  *   import .module               (relative)
  *
+ * R patterns:
+ *   library(pkg) / require(pkg)  (package name recorded as-is)
+ *   source("./file.R")           (resolved if file exists)
+ *
  * Only includes paths that resolve to actual files in the project.
  * Skips: node_modules, non-code files, anything that doesn't resolve.
  */
@@ -33,6 +37,8 @@ function extractImports(content, filePath, projectRoot) {
     rawImports = extractJSImports(content);
   } else if (ext === '.py') {
     rawImports = extractPythonImports(content, filePath, projectRoot);
+  } else if (ext === '.r') {
+    return extractRImports(content, filePath, projectRoot);
   }
 
   // Resolve and deduplicate
@@ -70,6 +76,32 @@ function extractJSImports(content) {
   }
 
   return imports;
+}
+
+/**
+ * Extract imports from R content.
+ * library(pkg) / require(pkg) → package name recorded directly.
+ * source("./file.R") → resolved relative path if the file exists.
+ */
+function extractRImports(content, filePath, projectRoot) {
+  const results = new Set();
+  const fileDir = path.dirname(filePath);
+
+  const pkgRe = /(?:library|require)\s*\(\s*["']?(\w[\w.]+)["']?\s*\)/g;
+  let m;
+  while ((m = pkgRe.exec(content)) !== null) {
+    results.add(m[1]);
+  }
+
+  const sourceRe = /source\s*\(\s*["']([^"']+)["']\s*\)/g;
+  while ((m = sourceRe.exec(content)) !== null) {
+    const abs = path.resolve(fileDir, m[1]);
+    if (fs.existsSync(abs)) {
+      results.add(path.relative(projectRoot, abs));
+    }
+  }
+
+  return [...results].sort();
 }
 
 /**
