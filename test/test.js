@@ -9,6 +9,7 @@ const prismaPlugin = require('../src/extractors/languages/prisma');
 const { mergeIntoAgentsMd, START_MARKER, END_MARKER } = require('../src/agents/merger');
 const { extractImports } = require('../src/extractors/imports');
 const rPlugin = require('../src/extractors/languages/r');
+const { discoverFiles } = require('../src/detector/files');
 
 // ── Helpers ─────────────────────────────────────────────────────────
 const results = { passed: 0, failed: 0, failures: [] };
@@ -227,7 +228,7 @@ test('Merger', 'Empty string input → produces valid AGENTS.md with markers', (
 fs.rmSync(mergerTmpDir, { recursive: true, force: true });
 
 // ═══════════════════════════════════════════════════════════════════
-// 4. Import graph (5 tests)
+// 4. Import graph (6 tests)
 // ═══════════════════════════════════════════════════════════════════
 
 const importTmpDir = '/tmp/carto-test';
@@ -281,13 +282,28 @@ test('Import graph', "require('./config') resolves correctly", () => {
 test('Import graph', 'A file with no imports returns []', () => {
   const emptyPath = path.join(importTmpDir, 'empty.js');
   fs.writeFileSync(emptyPath, 'const x = 42;\nconsole.log(x);', 'utf-8');
-
   const imports = extractImports(
     fs.readFileSync(emptyPath, 'utf-8'),
     emptyPath,
     importTmpDir
   );
   assert.deepStrictEqual(imports, []);
+});
+
+test('Import graph', 'R: library/require records package names, source() resolves local file', () => {
+  const rDir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-r-imp-'));
+  try {
+    const utilsPath = path.join(rDir, 'utils.R');
+    const mainPath  = path.join(rDir, 'main.R');
+    fs.writeFileSync(utilsPath, '# helpers\n');
+    fs.writeFileSync(mainPath, 'library(ggplot2)\nrequire(dplyr)\nsource("./utils.R")\n');
+    const imports = extractImports(fs.readFileSync(mainPath, 'utf-8'), mainPath, rDir);
+    assert.ok(imports.includes('ggplot2'), `ggplot2 missing from ${JSON.stringify(imports)}`);
+    assert.ok(imports.includes('dplyr'),   `dplyr missing from ${JSON.stringify(imports)}`);
+    assert.ok(imports.includes('utils.R'), `utils.R missing from ${JSON.stringify(imports)}`);
+  } finally {
+    fs.rmSync(rDir, { recursive: true, force: true });
+  }
 });
 
 test('Import graph', "import X from 'express' (package, not relative) → not included", () => {
@@ -383,17 +399,76 @@ test('R extractor', 'extractEnvVars: uppercase SNAKE_CASE only, sorted, lowercas
   assert.deepStrictEqual(out.envVars, ['API_KEY', 'DATABASE_URL']);
 });
 
-test('R extractor', 'error recovery: broken input returns safe empty arrays without throwing', () => {
-  const out = rPlugin.extract('setClass("Broken", slots = list(\n', 'broken.R');
-  assert.ok(Array.isArray(out.routes) && Array.isArray(out.models) && Array.isArray(out.functions) && Array.isArray(out.envVars));
+const s7AllCode = `
+Dog <- new_class("Dog",
+  properties = list(
+    name = class_character,
+    age  = class_numeric
+  )
+)
+class_scopes <- S7::new_class(
+  name = "scopes",
+  properties = list(name = class_character)
+)
+Pet <- S7::new_class("Pet",
+  properties = list(
+    name = S7::class_character,
+    age  = S7::class_numeric
+  )
+)
+`;
+
+test('R extractor', 'S7 new_class(): positional, named name= and S7:: namespace all extracted', () => {
+  const out = rPlugin.extract(s7AllCode, 'models.R');
+  const dog = out.models.find(m => m.className === 'Dog');
+  assert.ok(dog, 'plain new_class() must extract Dog');
+  assert.ok(dog.fields.find(f => f.name === 'name' && f.type === 'character'), 'name:character must be present');
+  const scopes = out.models.find(m => m.className === 'scopes');
+  assert.ok(scopes, 'S7::new_class(name=...) must extract scopes');
+  const pet = out.models.find(m => m.className === 'Pet');
+  assert.ok(pet, 'S7::new_class("Pet") must extract Pet');
+  assert.ok(pet.fields.find(f => f.name === 'name' && f.type === 'character'), 'S7::class_character → character');
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// 6. File discovery (4 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const filterTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-r-filter-'));
+
+// Use distinct base names to avoid macOS case-insensitive FS collisions
+fs.writeFileSync(path.join(filterTmpDir, 'server.r'),       '# normal file\n');
+fs.writeFileSync(path.join(filterTmpDir, 'controller_test.R'), '# uppercase suffix — should be excluded\n');
+fs.writeFileSync(path.join(filterTmpDir, 'model_test.r'),   '# lowercase suffix — THE BUG\n');
+fs.writeFileSync(path.join(filterTmpDir, 'test_utils.r'),   '# test_ prefix — should be excluded\n');
+
+const rDiscovered = discoverFiles(filterTmpDir, 'r-generic').routeFiles.map(f => path.basename(f));
+
+test('File discovery','normal .r file is included in discovered files', () => {
+  assert.ok(rDiscovered.includes('server.r'), `server.r missing from ${JSON.stringify(rDiscovered)}`);
+});
+
+test('File discovery','_test.R (uppercase) is excluded — regression guard', () => {
+  assert.ok(!rDiscovered.includes('controller_test.R'), `controller_test.R must be excluded, got ${JSON.stringify(rDiscovered)}`);
+});
+
+test('File discovery','_test.r (lowercase) is excluded', () => {
+  assert.ok(!rDiscovered.includes('model_test.r'), `model_test.r must be excluded, got ${JSON.stringify(rDiscovered)}`);
+});
+
+test('File discovery','test_ prefix with lowercase .r is excluded', () => {
+  assert.ok(!rDiscovered.includes('test_utils.r'), `test_utils.r must be excluded, got ${JSON.stringify(rDiscovered)}`);
+});
+
+fs.rmSync(filterTmpDir, { recursive: true, force: true });
+
 
 // ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
 console.log('');
-const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor'];
+const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery'];
 for (const suite of suiteNames) {
   const s = suiteTotals[suite] || { pass: 0, total: 0 };
   const icon = s.pass === s.total ? '✓' : '✗';

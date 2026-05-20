@@ -201,6 +201,25 @@ function extractModels(content) {
     models.push({ className, fields });
   }
 
+  const s7Re = /^(\w+)\s*<-\s*(?:S7::)?new_class\s*\(\s*(?:name\s*=\s*)?["'](\w+)["']/gm;
+  while ((m = s7Re.exec(collapsed)) !== null) {
+    const className = m[2];
+    const propsIdx = collapsed.indexOf('properties', m.index);
+    if (propsIdx === -1 || propsIdx > m.index + 400) continue;
+    const listIdx = collapsed.indexOf('list(', propsIdx);
+    if (listIdx === -1) continue;
+    const openPos = listIdx + 4;
+    const closePos = findBalancedEnd(collapsed, openPos);
+    const propsContent = collapsed.slice(openPos + 1, closePos);
+    const fields = [];
+    const propRe = /(\w+)\s*=\s*(?:S7::)?class_(\w+)/g;
+    let pm;
+    while ((pm = propRe.exec(propsContent)) !== null) {
+      fields.push({ name: pm[1], type: pm[2] });
+    }
+    models.push({ className, fields });
+  }
+
   return models;
 }
 
