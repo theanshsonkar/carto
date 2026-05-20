@@ -171,7 +171,7 @@ Want live updates on every file save too? Run `carto watch` in a background term
 | Python | FastAPI, Pydantic |
 | JavaScript | Express, Next.js |
 | TypeScript | Express, Next.js, Prisma |
-| R | Plumber, Shiny |
+| R | Plumber, Shiny, R6, S7 |
 | HTML | fetch() calls |
 
 More languages via community — open an issue or see [CONTRIBUTING.md](CONTRIBUTING.md).

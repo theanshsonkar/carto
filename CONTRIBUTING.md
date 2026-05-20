@@ -8,9 +8,9 @@ Carto is free, open source, and community-maintained. The core team owns the mer
 
 ### Tier 1 — Languages (safe to add, easy to review)
 
-New language support lives in `src/ast/languages/`. Each language is an isolated module.
+New language support lives in `src/extractors/languages/`. Each language is an isolated module.
 
-Currently supported: JavaScript/TypeScript, Python.
+Currently supported: JavaScript/TypeScript, Python, R.
 
 Wanted: Go, Rust, Ruby, Java, PHP, C#.
 
@@ -18,7 +18,7 @@ Wanted: Go, Rust, Ruby, Java, PHP, C#.
 
 Framework-specific route and model extraction lives in `src/extractors/`. Each framework is an isolated module.
 
-Currently supported: FastAPI, Express, Next.js App Router, Prisma, HTML fetch().
+Currently supported: FastAPI, Express, Next.js App Router, Prisma, HTML fetch(), Plumber, Shiny.
 
 Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
 
@@ -38,10 +38,10 @@ Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
 3. Return:
 ```js
 {
-  functions: [{ name, params, returns }],
-  classes: [{ name, fields }],
-  imports: [{ from, symbols }],
-  exports: [{ name }]
+  routes: [{ method, path, functionName }],
+  models: [{ className, fields: [{ name, type }] }],
+  functions: [{ name, params }],
+  envVars: ['VAR_NAME']
 }
 ```
 4. Add it to `src/extractors/loader.js` language map
@@ -81,7 +81,7 @@ Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
 
 ```bash
 git clone https://github.com/theanshsonkar/carto
-cd carto-ansh
+cd carto
 npm install
 node src/cli/index.js init   # test in any project
 ```
