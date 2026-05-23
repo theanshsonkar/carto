@@ -1,6 +1,18 @@
+# Generated files — never ship these
+.carto/
+AGENTS.md
+mcp.md
 CARTO_BRAIN.md
+
+# Internal specs and notes
+KIRO_SPEC*.md
 PROGRESS.md
-.kiro/
+
+# Tests
 test/
-*.log
+
+# Dev tools
+.kiro/
 .DS_Store
+*.log
+*.tmp
