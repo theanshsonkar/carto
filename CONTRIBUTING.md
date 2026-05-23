@@ -1,6 +1,6 @@
 # Contributing to Carto
 
-Carto is free, open source, and community-maintained. The core team owns the merger logic, AST engine, and CLI. The community owns language and framework extractors.
+Carto is free, open source, and community-maintained. The core team owns the merger logic, MCP server, graph clustering, and CLI. The community owns language and framework extractors.
 
 ---
 
@@ -18,14 +18,15 @@ Wanted: Go, Rust, Ruby, Java, PHP, C#.
 
 Framework-specific route and model extraction lives in `src/extractors/`. Each framework is an isolated module.
 
-Currently supported: FastAPI, Express, Next.js App Router, Prisma, HTML fetch(), Plumber, Shiny.
+Currently supported: FastAPI, Express, Next.js App Router, Prisma, tRPC, HTML fetch(), Plumber, Shiny.
 
 Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
 
 ### Tier 3 — Core (review carefully before merging)
 
-- `src/agents/merger.js` — merger logic. One bad merge = developer loses manual notes = project dies. Changes here need strong justification and full test coverage.
-- `src/ast/` — AST engine. Wrong extraction = wrong AGENTS.md = AI gets confident with wrong facts. Worse than no AGENTS.md.
+- `src/agents/merger.js` — merger logic. One bad merge = developer loses manual notes = project dies.
+- `src/agents/domains.js` — graph-based domain clustering. Wrong clusters = wrong context files.
+- `src/mcp/server.js` — MCP server tools. Breaking changes affect Kiro/Cursor/Claude integration.
 - `src/detector/` — framework detection logic.
 - `src/cli/` — CLI commands.
 
@@ -34,36 +35,46 @@ Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
 ## How to add a language
 
 1. Create `src/extractors/languages/yourlanguage.js`
-2. Export a single function: `extractFromFile(filePath, fileContent)`
-3. Return:
+2. Export a plugin object:
 ```js
-{
-  routes: [{ method, path, functionName }],
-  models: [{ className, fields: [{ name, type }] }],
-  functions: [{ name, params }],
-  envVars: ['VAR_NAME']
-}
+module.exports = {
+  name: 'yourlanguage',
+  extensions: ['.ext'],
+  extract(content, relPath) {
+    return {
+      routes: [{ method, path, functionName }],
+      models: [{ className, fields: [{ name, type }] }],
+      functions: [{ name, params, returnType }],
+      envVars: ['VAR_NAME'],
+      dbTables: [{ tableName, modelName }],
+      fetches: [],
+      storageKeys: []
+    };
+  }
+};
 ```
-4. Add it to `src/extractors/loader.js` language map
-5. Test on at least 3 real open-source projects
-6. Open a PR with before/after AGENTS.md examples
+3. The loader auto-discovers it — no changes to `loader.js` needed
+4. Test on at least 3 real open-source projects
+5. Open a PR with before/after AGENTS.md examples
 
 ---
 
 ## How to add a framework extractor
 
-1. Create `src/extractors/yourframework.js`
-2. Export:
+1. Add detection to `src/detector/framework.js`
+2. Add route/model patterns to the relevant language plugin or create a new extractor in `src/extractors/`
+3. Test on at least 2 real projects using that framework
+4. Open a PR with before/after AGENTS.md examples
+
+---
+
+## How to add a domain keyword
+
+Domain clustering lives in `src/agents/domains.js`. The `DOMAIN_MAP` array maps keywords to domain names. If your framework creates a new domain category, add it:
+
 ```js
-{
-  detect(projectRoot, files) → boolean,
-  extractRoutes(filePath, fileContent) → [{ method, path, functionName }],
-  extractModels(filePath, fileContent) → [{ name, fields: [{ name, type }] }]
-}
+{ keywords: ['graphql', 'resolver', 'mutation'], domain: 'GRAPHQL' },
 ```
-3. Add detection logic to `src/detector/framework.js`
-4. Test on at least 2 real projects using that framework
-5. Open a PR with before/after AGENTS.md examples
 
 ---
 
@@ -72,7 +83,7 @@ Wanted: Django, Rails, Laravel, NestJS, Hono, Gin, Spring.
 - **Never break the merger.** Manual sections in AGENTS.md are sacred. If your change could corrupt them, it needs a full merger test suite pass.
 - **Wrong output is worse than no output.** If your extractor produces incorrect routes or models, AI gets confident with wrong facts. Only ship when accurate on real projects.
 - **Test on unknown repos.** Don't just test on projects you wrote. Find a real open-source repo using the framework and verify the output is correct.
-- **No cloud, no telemetry, no tracking.** Carto is local only. Forever. Don't add any network calls.
+- **No cloud, no telemetry, no tracking.** Carto is local only. Forever. Don't add any network calls except the existing npm update check.
 - **No paid features.** Free forever. MIT. Don't propose monetization.
 
 ---
@@ -84,6 +95,8 @@ git clone https://github.com/theanshsonkar/carto
 cd carto
 npm install
 node src/cli/index.js init   # test in any project
+node src/cli/index.js serve  # test MCP server
+npm test                     # run test suite
 ```
 
 ---
@@ -101,8 +114,9 @@ node src/cli/index.js init   # test in any project
 
 ## Issues
 
-- **Bug**: Open an issue with the project type, command run, and what AGENTS.md produced vs what you expected.
-- **Language request**: Open an issue titled "Language: [name]" — someone from the community will pick it up.
-- **Framework request**: Open an issue titled "Framework: [name]".
+- **Bug**: Open an issue with the project type, command run, and what AGENTS.md or domain files produced vs what you expected.
+- **Language request**: Open an issue titled "Language: [name]"
+- **Framework request**: Open an issue titled "Framework: [name]"
+- **Domain keyword**: Open an issue titled "Domain: [name]" if your codebase doesn't cluster correctly
 
 All issues acknowledged within 24 hours.
