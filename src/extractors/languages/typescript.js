@@ -50,7 +50,7 @@ module.exports = {
       routes.push({ method, path: `/trpc/${name}`, functionName: name });
     }
 
-    // Pattern 3: router({ name: procedure.query/mutation }) — cal.com / older tRPC style
+    // Pattern 3: router({ name: procedure.query/mutation }) — older tRPC style
     const trpcRouterAltPattern = /(?:=\s*|^)router\s*\(\s*\{([\s\S]*?)\n\}\s*\)/gm;
     let altMatch;
     while ((altMatch = trpcRouterAltPattern.exec(content)) !== null) {
