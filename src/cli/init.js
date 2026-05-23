@@ -65,6 +65,9 @@ async function run(projectRoot) {
   const syncConfig = resolveConfig(projectRoot, config);
   await runFullSync(syncConfig);
 
+  // Auto-wire MCP config into installed AI tools
+  wireIDEs(projectRoot);
+
   console.log('[CARTO] AGENTS.md generated. Carto will sync on every git commit.');
 }
 
@@ -106,6 +109,61 @@ function installGitHook(projectRoot) {
 
   fs.chmodSync(hookPath, '755');
   console.log('[CARTO] Git pre-commit hook installed.');
+}
+
+function wireIDEs(projectRoot) {
+  const os = require('os');
+  const home = os.homedir();
+  const wired = [];
+
+  // Kiro
+  const kiroDir = path.join(home, '.kiro', 'settings');
+  if (fs.existsSync(path.join(home, '.kiro'))) {
+    try {
+      fs.mkdirSync(kiroDir, { recursive: true });
+      const mcpPath = path.join(kiroDir, 'mcp.json');
+      const config = fs.existsSync(mcpPath)
+        ? JSON.parse(fs.readFileSync(mcpPath, 'utf-8'))
+        : { mcpServers: {} };
+      config.mcpServers = config.mcpServers || {};
+      config.mcpServers.carto = { command: 'carto', args: ['serve'], cwd: projectRoot };
+      fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      wired.push('Kiro');
+    } catch {}
+  }
+
+  // Claude Desktop
+  const claudeConfig = path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+  if (fs.existsSync(path.dirname(claudeConfig))) {
+    try {
+      const config = fs.existsSync(claudeConfig)
+        ? JSON.parse(fs.readFileSync(claudeConfig, 'utf-8'))
+        : { mcpServers: {} };
+      config.mcpServers = config.mcpServers || {};
+      config.mcpServers.carto = { command: 'carto', args: ['serve'], cwd: projectRoot };
+      fs.writeFileSync(claudeConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      wired.push('Claude Desktop');
+    } catch {}
+  }
+
+  // Cursor
+  const cursorConfig = path.join(home, '.cursor', 'mcp.json');
+  if (fs.existsSync(path.join(home, '.cursor'))) {
+    try {
+      const config = fs.existsSync(cursorConfig)
+        ? JSON.parse(fs.readFileSync(cursorConfig, 'utf-8'))
+        : { mcpServers: {} };
+      config.mcpServers = config.mcpServers || {};
+      config.mcpServers.carto = { command: 'carto', args: ['serve'], cwd: projectRoot };
+      fs.writeFileSync(cursorConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      wired.push('Cursor');
+    } catch {}
+  }
+
+  if (wired.length > 0) {
+    console.log(`[CARTO] MCP wired into: ${wired.join(', ')}`);
+    console.log('[CARTO] Run `carto serve` to start the MCP server.');
+  }
 }
 
 module.exports = { run, resolveConfig };

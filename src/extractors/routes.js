@@ -43,6 +43,7 @@ function extractRoutes(content) {
   const lines = collapsed.split('\n');
 
   for (let i = 0; i < lines.length; i++) {
+    if (/^\s*#/.test(lines[i])) { decoratorPattern.lastIndex = 0; continue; }
     const match = decoratorPattern.exec(lines[i]);
     if (match) {
       // Look ahead up to 5 lines for the function definition

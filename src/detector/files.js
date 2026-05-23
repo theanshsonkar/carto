@@ -1,13 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 
-const MAX_FILES_TOTAL = 80;
-const BASE_ROUTE_BUDGET = 20;
-const MODEL_BUDGET = 10;
-const BASE_UTILITY_BUDGET = 20;
+const MAX_ROUTE_FILES = 150;    // all route files up to this — routes are never crowded out
+const MAX_MODEL_FILES = 50;     // all model/schema files up to this
+const MAX_UTILITY_FILES = 100;  // top N utilities by import count
 
 const PYTHON_IGNORE = new Set(['__pycache__', '.venv', 'venv', 'migrations', 'node_modules', '.git', '.carto']);
-const JS_IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.carto', '.next', '.turbo', 'coverage', 'out', '.cache', 'generated', '__generated__', 'storybook-static', 'public', 'static']);
+const JS_IGNORE = new Set(['node_modules', '.git', 'dist', 'build', '.carto', '.next', '.turbo', 'coverage', 'out', '.cache', 'generated', '__generated__', 'storybook-static', 'public', 'static', 'playwright', 'e2e', '__tests__', 'fixtures', 'mocks', '__mocks__', 'cypress']);
 const HTML_IGNORE = new Set(['node_modules', '.git', '.carto']);
 const R_IGNORE = new Set(['.Rhistory', '.RData', 'packrat', 'renv', 'node_modules', '.git', '__pycache__', '.carto']);
 
@@ -39,7 +38,7 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
       });
     const htmlFiles = findFilesRecursive(projectRoot, ['.html'], HTML_IGNORE, ignoreFn);
 
-    if (pyFiles.length <= MAX_FILES_TOTAL) {
+    if (pyFiles.length <= MAX_ROUTE_FILES + MAX_MODEL_FILES + MAX_UTILITY_FILES) {
       return { routeFiles: pyFiles, modelFiles: pyFiles, frontendFiles: htmlFiles };
     }
 
@@ -50,11 +49,20 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
     const jsFiles = findFilesRecursive(projectRoot, ['.js', '.ts', '.jsx', '.tsx', '.prisma'], JS_IGNORE, ignoreFn)
       .filter(f => {
         const base = path.basename(f);
-        return !base.includes('.test.') && !base.includes('.spec.');
+        const rel = f.toLowerCase().replace(/\\/g, '/');
+        return !base.includes('.test.') &&
+               !base.includes('.spec.') &&
+               !base.includes('.stories.') &&
+               !rel.includes('/test/') &&
+               !rel.includes('/tests/') &&
+               !rel.includes('/e2e/') &&
+               !rel.includes('/playwright/') &&
+               !rel.includes('/__tests__/') &&
+               !rel.includes('/fixtures/');
       });
     const htmlFiles = findFilesRecursive(projectRoot, ['.html'], HTML_IGNORE, ignoreFn);
 
-    if (jsFiles.length <= MAX_FILES_TOTAL) {
+    if (jsFiles.length <= MAX_ROUTE_FILES + MAX_MODEL_FILES + MAX_UTILITY_FILES) {
       return { routeFiles: jsFiles, modelFiles: jsFiles, frontendFiles: htmlFiles };
     }
 
@@ -68,7 +76,7 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
         return !lbase.startsWith('test_') && !lbase.startsWith('test-') && !lbase.endsWith('_test.r');
       });
 
-    if (rFiles.length <= MAX_FILES_TOTAL) {
+    if (rFiles.length <= MAX_ROUTE_FILES + MAX_MODEL_FILES + MAX_UTILITY_FILES) {
       return { routeFiles: rFiles, modelFiles: rFiles, frontendFiles: [] };
     }
 
@@ -79,19 +87,15 @@ function discoverForFramework(projectRoot, framework, ignoreFn) {
   const allCode = findFilesRecursive(projectRoot, ['.py', '.js', '.ts'], new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.carto']), ignoreFn);
   const htmlFiles = findFilesRecursive(projectRoot, ['.html'], HTML_IGNORE, ignoreFn);
 
-  if (allCode.length <= MAX_FILES_TOTAL) {
+  if (allCode.length <= MAX_ROUTE_FILES + MAX_MODEL_FILES + MAX_UTILITY_FILES) {
     return { routeFiles: allCode, modelFiles: allCode, frontendFiles: htmlFiles };
   }
 
   return smartSelect(allCode, htmlFiles, projectRoot);
 }
 
-/**
- * Smart file selection within the 50-file budget.
- * Allocates: up to 20 route files, up to 10 model files, up to 20 utility files.
- */
 function smartSelect(allFiles, htmlFiles, projectRoot) {
-  console.warn(`[CARTO] Warning: Found ${allFiles.length} files, selecting top ${MAX_FILES_TOTAL} by importance`);
+  console.warn(`[CARTO] Warning: Found ${allFiles.length} files, selecting by tier`);
 
   const routeCandidates = [];
   const modelCandidates = [];
@@ -107,18 +111,23 @@ function smartSelect(allFiles, htmlFiles, projectRoot) {
     }
   }
 
-  // Dynamic route budget — expand if many route files, compensate from utility budget
-  const routeBudget = routeCandidates.length > BASE_ROUTE_BUDGET
-    ? Math.min(routeCandidates.length, 40)
-    : BASE_ROUTE_BUDGET;
-  const utilityBudget = Math.max(10, MAX_FILES_TOTAL - routeBudget - MODEL_BUDGET);
+  // Tier 1 — routes: all of them up to MAX_ROUTE_FILES
+  // Split tRPC routers and REST routes, tRPC gets up to 50 slots
+  const trpcRouters = routeCandidates.filter(f => f.includes('/routers/'));
+  const restRoutes = routeCandidates.filter(f => !f.includes('/routers/'));
 
-  routeCandidates.sort((a, b) => scoreRoute(b) - scoreRoute(a));
-  const selectedRoutes = routeCandidates.slice(0, routeBudget);
+  trpcRouters.sort((a, b) => scoreRoute(b) - scoreRoute(a));
+  restRoutes.sort((a, b) => scoreRoute(b) - scoreRoute(a));
 
+  const trpcSelected = trpcRouters.slice(0, Math.min(trpcRouters.length, 50));
+  const restSelected = restRoutes.slice(0, Math.min(restRoutes.length, MAX_ROUTE_FILES - trpcSelected.length));
+  const selectedRoutes = [...trpcSelected, ...restSelected];
+
+  // Tier 2 — models: all of them up to MAX_MODEL_FILES
   modelCandidates.sort((a, b) => scoreModel(b) - scoreModel(a));
-  const selectedModels = modelCandidates.slice(0, MODEL_BUDGET);
+  const selectedModels = modelCandidates.slice(0, MAX_MODEL_FILES);
 
+  // Tier 3 — utilities: top N by import count
   const importCounts = countImportReferences(allFiles, projectRoot);
   otherFiles.sort((a, b) => {
     const relA = path.relative(projectRoot, a);
@@ -127,12 +136,13 @@ function smartSelect(allFiles, htmlFiles, projectRoot) {
   });
 
   const alreadySelected = new Set([...selectedRoutes, ...selectedModels]);
-  const remainingBudget = MAX_FILES_TOTAL - alreadySelected.size;
   const selectedUtilities = otherFiles
     .filter(f => !alreadySelected.has(f))
-    .slice(0, Math.min(utilityBudget, remainingBudget));
+    .slice(0, MAX_UTILITY_FILES);
 
   const allSelected = [...new Set([...selectedRoutes, ...selectedModels, ...selectedUtilities])];
+
+  console.warn(`[CARTO] Selected: ${selectedRoutes.length} route files, ${selectedModels.length} model files, ${selectedUtilities.length} utility files`);
 
   return {
     routeFiles: allSelected,
@@ -146,6 +156,7 @@ function isRouteFile(filePath) {
   const base = path.basename(p);
   if (base === 'route.ts' || base === 'route.js' || base === 'routes.ts' || base === 'routes.js') return true;
   if (p.includes('/api/') || p.includes('/routes/') || p.includes('/route/')) return true;
+  if (p.includes('/routers/')) return true;
   if (base === 'main.py' || base === 'app.py' || base === 'server.ts' || base === 'server.js') return true;
   if (p.includes('/pages/api/')) return true;
   return false;
@@ -167,6 +178,7 @@ function scoreRoute(filePath) {
   if (base === 'main.py' || base === 'app.py' || base === 'server.ts' || base === 'server.js') return 10;
   if (p.includes('/app/api/')) return 9;
   if (p.includes('/pages/api/')) return 8;
+  if (p.includes('/routers/')) return 9;
   if (p.includes('/routes/') || p.includes('/api/')) return 7;
   return 5;
 }

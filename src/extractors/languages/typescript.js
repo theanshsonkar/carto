@@ -21,8 +21,52 @@ module.exports = {
       return { routes: [], models: [], functions: [], envVars: [], dbTables: [], fetches: [], storageKeys: [] };
     }
 
+    const routes = jsPlugin._extractExpressRoutes(ast, filename);
+
+    // tRPC procedure extraction
+    // Pattern 1: inside createTRPCRouter({ name: procedure.query/mutation/subscription })
+    const trpcRouterPattern = /createTRPCRouter\s*\(\s*\{([\s\S]*?)\n\}\s*\)/g;
+    let trpcMatch;
+    while ((trpcMatch = trpcRouterPattern.exec(content)) !== null) {
+      const routerBody = trpcMatch[1];
+      // Match: procedureName: someProcedure.query/mutation/subscription
+      const procPattern = /(\w+)\s*:\s*\w*[Pp]rocedure[\s\S]*?\.(query|mutation|subscription)\s*\(/g;
+      let procMatch;
+      while ((procMatch = procPattern.exec(routerBody)) !== null) {
+        const name = procMatch[1];
+        const type = procMatch[2];
+        const method = type === 'query' ? 'GET' : type === 'mutation' ? 'POST' : 'SUBSCRIBE';
+        routes.push({ method, path: `/trpc/${name}`, functionName: name });
+      }
+    }
+
+    // Pattern 2: export const name = procedure.query/mutation/subscription
+    const trpcExportPattern = /export\s+const\s+(\w+)\s*=\s*\w*[Pp]rocedure[\s\S]*?\.(query|mutation|subscription)\s*\(/g;
+    let exportMatch;
+    while ((exportMatch = trpcExportPattern.exec(content)) !== null) {
+      const name = exportMatch[1];
+      const type = exportMatch[2];
+      const method = type === 'query' ? 'GET' : type === 'mutation' ? 'POST' : 'SUBSCRIBE';
+      routes.push({ method, path: `/trpc/${name}`, functionName: name });
+    }
+
+    // Pattern 3: router({ name: procedure.query/mutation }) — cal.com / older tRPC style
+    const trpcRouterAltPattern = /(?:=\s*|^)router\s*\(\s*\{([\s\S]*?)\n\}\s*\)/gm;
+    let altMatch;
+    while ((altMatch = trpcRouterAltPattern.exec(content)) !== null) {
+      const routerBody = altMatch[1];
+      const procPattern = /(\w+)\s*:\s*\w*[Pp]rocedure[\s\S]*?\.(query|mutation|subscription)\s*\(/g;
+      let procMatch;
+      while ((procMatch = procPattern.exec(routerBody)) !== null) {
+        const name = procMatch[1];
+        const type = procMatch[2];
+        const method = type === 'query' ? 'GET' : type === 'mutation' ? 'POST' : 'SUBSCRIBE';
+        routes.push({ method, path: `/trpc/${name}`, functionName: name });
+      }
+    }
+
     return {
-      routes:      jsPlugin._extractExpressRoutes(ast, filename),
+      routes,
       models:      extractTSInterfaces(ast),
       functions:   extractTSFunctions(ast),
       envVars:     jsPlugin._extractProcessEnv(ast),

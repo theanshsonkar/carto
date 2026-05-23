@@ -40,49 +40,10 @@ function run(projectRoot, fileArg) {
   }
   importedBy.sort();
 
-  // Find affected routes — a route is affected if its handler file
-  // imports the target file directly or transitively (up to 3 hops)
-  const affectedRoutes = [];
-  const routeFiles = new Set();
-
   // Collect all files that depend on matchedFile (up to 3 hops)
   const dependentFiles = collectDependents(matchedFile, imports, 3);
   // Also include the file itself — routes in the target file are affected
   dependentFiles.add(matchedFile);
-
-  for (const route of routes) {
-    // Find which file contains this route by checking if any dependent file
-    // has this route's handler as a function
-    // Since we don't have a direct file→route mapping, check if any file
-    // that depends on matchedFile is an entry point with routes
-    for (const depFile of dependentFiles) {
-      if (imports[depFile] && imports[depFile].includes(matchedFile) || depFile === matchedFile) {
-        // Check if this file has routes by seeing if it appears as a key
-        // and has routes in the routes array
-        routeFiles.add(depFile);
-      }
-    }
-  }
-
-  // Match routes to files — routes whose handler files are in the dependent set
-  // Since map.json routes don't have a file field, match by checking which
-  // entry point files contain routes
-  for (const route of routes) {
-    // A route is affected if any file in the dependency chain has routes
-    affectedRoutes.push(route);
-  }
-
-  // Better approach: only include routes from files that are in the dependent chain
-  // We need to re-derive which file each route came from
-  // For now, if the target file or any of its direct importers have routes, show all routes
-  // from those files
-  const filesWithRoutes = new Set();
-  for (const depFile of dependentFiles) {
-    // Check if this file is known to have routes
-    // (it appears as a key in imports AND has routes — we approximate by checking
-    // if any route handler matches a function in that file)
-    filesWithRoutes.add(depFile);
-  }
 
   // Print output
   console.log(`\nImpact analysis: ${matchedFile}\n`);
@@ -97,28 +58,37 @@ function run(projectRoot, fileArg) {
   }
 
   console.log('\nRoutes affected:');
-  // Only show routes from files that transitively depend on the target
-  if (routes.length > 0 && dependentFiles.size > 0) {
-    // Find which files in the dependent chain are entry points with routes
-    // A route is affected if its file (the entry point) is in the dependent set
+  // Use routesByFile for precise file→route mapping
+  const affectedRoutes = new Set();
+  for (const affectedFile of dependentFiles) {
+    const fileRoutes = map.routesByFile && map.routesByFile[affectedFile];
+    if (fileRoutes) {
+      for (const r of fileRoutes) affectedRoutes.add(r);
+    }
+  }
+  // Also check the target file itself
+  if (map.routesByFile && map.routesByFile[matchedFile]) {
+    for (const r of map.routesByFile[matchedFile]) affectedRoutes.add(r);
+  }
+
+  // Fall back to all routes only if no file-specific routes found and an entry point is hit
+  if (affectedRoutes.size === 0) {
     const entryPointsInChain = map.entryPoints
       ? map.entryPoints.filter(ep => dependentFiles.has(ep))
       : [];
-    // If any entry point depends on this file, all routes through it are affected
     if (entryPointsInChain.length > 0) {
-      const shown = new Set();
       for (const route of routes) {
-        const key = `${route.method} ${route.path}`;
-        if (!shown.has(key)) {
-          console.log(`  → ${route.method} ${route.path}`);
-          shown.add(key);
-        }
+        affectedRoutes.add(`${route.method} ${route.path}`);
       }
-    } else {
-      console.log('  (none — no route-serving files in the dependency chain)');
+    }
+  }
+
+  if (affectedRoutes.size > 0) {
+    for (const r of [...affectedRoutes].sort()) {
+      console.log(`  → ${r}`);
     }
   } else {
-    console.log('  (none)');
+    console.log('  (none — no route-serving files in the dependency chain)');
   }
 
   // Risk level

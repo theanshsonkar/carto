@@ -13,6 +13,7 @@ Commands:
   sync          Read .carto/config.json, run one sync, exit
   impact <file> Show which files and routes are affected by changing a file
   remove        Remove AGENTS.md and .carto/ from this project
+  serve         Start MCP server for AI tool integration
 
 Options:
   --help, -h   Show this help message
@@ -49,6 +50,8 @@ if (command === 'init') {
   require('./impact').run(process.cwd(), fileArg);
 } else if (command === 'remove') {
   require('./remove').run(process.cwd());
+} else if (command === 'serve') {
+  require('./serve').run(process.cwd());
 } else {
   console.error(`[CARTO] Unknown command: ${command}`);
   printUsage();

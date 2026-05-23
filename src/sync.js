@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const { loadLanguagePlugins, getPluginForFile } = require('./extractors/loader');
-const { formatSections } = require('./agents/formatter');
+const { formatSections, formatDomainFile } = require('./agents/formatter');
+const { clusterByDomain } = require('./agents/domains');
 const { mergeIntoAgentsMd } = require('./agents/merger');
 const { inferResponsibility } = require('./extractors/filemap');
 const { validateExtracted } = require('./agents/validator');
@@ -68,6 +69,7 @@ async function runFullSync(config) {
   let allStorageKeys = [];
   const functionsMap = {};
   const routeCountMap = {};
+  const routesByFile = {};
   const envVarMap = new Map();
   const dbTableList = [];
   const processedFiles = new Set();
@@ -90,20 +92,23 @@ async function runFullSync(config) {
 
     allRoutes = allRoutes.concat(result.routes);
     routeCountMap[filePath] = result.routes.length;
+    if (result.routes.length > 0) {
+      routesByFile[relPath] = result.routes.map(r => `${r.method} ${r.path}`);
+    }
 
     allModels = allModels.concat(result.models);
 
     if (result.functions.length > 0 && basename !== '__init__.py') {
-      functionsMap[basename] = result.functions;
+      functionsMap[relPath] = result.functions;
     }
 
     for (const varName of result.envVars) {
       if (!envVarMap.has(varName)) envVarMap.set(varName, new Set());
-      envVarMap.get(varName).add(basename);
+      envVarMap.get(varName).add(relPath);
     }
 
     for (const t of result.dbTables) {
-      dbTableList.push({ tableName: t.tableName, modelName: t.modelName, file: basename });
+      dbTableList.push({ tableName: t.tableName, modelName: t.modelName, file: relPath });
     }
 
     allFetches = allFetches.concat(result.fetches);
@@ -183,7 +188,7 @@ async function runFullSync(config) {
   for (const filePath of allCodeFiles) {
     const basename = path.basename(filePath);
     const relPath = path.relative(projectRoot, filePath);
-    const funcCount = (functionsMap[basename] || []).length;
+    const funcCount = (functionsMap[relPath] || []).length;
     const routeCount = routeCountMap[filePath] || 0;
     const responsibility = inferResponsibility(basename, funcCount, routeCount);
     if (responsibility && responsibility !== '\u2014') {
@@ -223,12 +228,48 @@ async function runFullSync(config) {
 
   mergeIntoAgentsMd(config.output, autoContent);
 
+  // Write domain context files into .carto/context/
+  const contextDir = path.join(projectRoot, '.carto', 'context');
+  try {
+    fs.mkdirSync(contextDir, { recursive: true });
+  } catch {}
+
+  const clusters = clusterByDomain({
+    routes: validated.routes,
+    models: validated.models,
+    functions: validated.functions,
+    envVars,
+    dbTables: dbTableList,
+    fileMap,
+    routesByFile,
+    importGraph
+  });
+
+  for (const [domain, cluster] of Object.entries(clusters)) {
+    const hasContent = cluster.routes.length > 0 ||
+                       cluster.models.length > 0 ||
+                       Object.keys(cluster.functions).length > 0 ||
+                       cluster.dbTables.length > 0;
+    if (!hasContent) continue;
+
+    const content = formatDomainFile(domain, cluster);
+    const domainPath = path.join(contextDir, `${domain}.md`);
+    const tmpPath = domainPath + '.tmp';
+    try {
+      fs.writeFileSync(tmpPath, content, 'utf-8');
+      fs.renameSync(tmpPath, domainPath);
+    } catch (err) {
+      console.warn(`[CARTO] Warning: Could not write ${domain}.md — ${err.message}`);
+    }
+  }
+
   const cartoDir = path.join(projectRoot, '.carto');
   const mapData = {
     version: '1',
     generated: new Date().toISOString(),
     imports: importGraph,
     routes: validated.routes,
+    routesByFile,
     highImpact: highImpact.map(h => ({ file: h.file, dependents: h.count })),
     entryPoints,
     stack: stackItems

@@ -5,3 +5,7 @@ node_modules/
 .env.*
 *.tmp
 .kiro/
+.carto/
+AGENTS.md
+CARTO_BRAIN.md
+mcp.md
