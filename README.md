@@ -27,6 +27,16 @@ AI coding tools are blind to your actual project. Every session starts from zero
 
 **Carto makes it live. And queryable.**
 
+| | Without Carto | With Carto |
+|---|---|---|
+| Knows blast radius before editing | Never | Always, instantly |
+| Knows which routes break | Never | Exact list |
+| Plans multi-file changes | Guesses | Fully informed |
+| Hallucinates field names | Often | Never |
+| Understands codebase on session start | 10–20 min | 0 |
+| Works across Kiro, Cursor, Claude, Copilot | Separately | One shared graph |
+| Stays current as code changes | Goes stale | Live on every save |
+
 ---
 
 ## Proof — cal.com (800k lines)
