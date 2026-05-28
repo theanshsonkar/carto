@@ -1,6 +1,6 @@
 {
   "name": "carto-md",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "The context layer for AI-native development.",
   "bin": {
     "carto": "src/cli/index.js"
