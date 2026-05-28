@@ -1,9 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const { detectFramework } = require('../detector/framework');
-const { discoverFiles } = require('../detector/files');
 const { parseCartoIgnore } = require('../security/ignore');
 const { runFullSync } = require('../sync');
+const { discoverFiles: discoverFilesV2 } = require('../store/sync-v2');
 
 async function run(projectRoot) {
   console.log('[CARTO] Detecting project...');
@@ -11,26 +11,22 @@ async function run(projectRoot) {
   const detection = detectFramework(projectRoot);
   console.log(`[CARTO] Detected: ${detection.framework} (${detection.language})`);
 
-  const isIgnored = parseCartoIgnore(projectRoot);
-  const files = discoverFiles(projectRoot, detection.framework, isIgnored, detection.secondaryFramework);
+  // V2: discover all files without cap
+  const relFiles = discoverFilesV2(projectRoot);
 
-  // Count files for reporting
-  const pyCount = files.routeFiles.filter(f => f.endsWith('.py')).length;
-  const jsCount = files.routeFiles.filter(f => /\.(js|ts|jsx|tsx)$/.test(f)).length;
-  const rCount = files.routeFiles.filter(f => /\.[rR]$/.test(f)).length;
-  const htmlCount = files.frontendFiles.length;
+  const pyCount = relFiles.filter(f => f.endsWith('.py')).length;
+  const jsCount = relFiles.filter(f => /\.(js|ts|jsx|tsx|mjs|cjs)$/.test(f)).length;
+  const rCount = relFiles.filter(f => /\.[rR]$/.test(f)).length;
+  const rsCount = relFiles.filter(f => f.endsWith('.rs')).length;
+  const goCount = relFiles.filter(f => f.endsWith('.go')).length;
 
   const parts = [];
-  if (pyCount > 0) parts.push(`${pyCount} Python files`);
   if (jsCount > 0) parts.push(`${jsCount} JS/TS files`);
+  if (pyCount > 0) parts.push(`${pyCount} Python files`);
+  if (goCount > 0) parts.push(`${goCount} Go files`);
+  if (rsCount > 0) parts.push(`${rsCount} Rust files`);
   if (rCount > 0) parts.push(`${rCount} R files`);
-  if (htmlCount > 0) parts.push(`${htmlCount} HTML files`);
-  console.log(`[CARTO] Found ${parts.join(', ') || '0 files'}`);
-
-  // Make paths relative for config storage
-  const relRouteFiles = files.routeFiles.map(f => path.relative(projectRoot, f));
-  const relModelFiles = files.modelFiles.map(f => path.relative(projectRoot, f));
-  const relFrontendFiles = files.frontendFiles.map(f => path.relative(projectRoot, f));
+  console.log(`[CARTO] Found ${parts.join(', ') || '0 files'} (${relFiles.length} total)`);
 
   // Write .carto/config.json
   const cartoDir = path.join(projectRoot, '.carto');
@@ -39,15 +35,10 @@ async function run(projectRoot) {
   }
 
   const config = {
-    version: '1',
+    version: '2',
     framework: detection.framework,
     language: detection.language,
     projectRoot: projectRoot,
-    watch: {
-      routeFiles: relRouteFiles,
-      modelFiles: relModelFiles,
-      frontendFiles: relFrontendFiles
-    },
     output: 'AGENTS.md',
     generated: new Date().toISOString()
   };
@@ -72,16 +63,17 @@ async function run(projectRoot) {
 }
 
 /**
- * Resolves relative paths in config to absolute paths.
+ * Resolves config paths to absolute paths.
+ * V2: no watch file lists — sync-v2 discovers files itself.
  */
 function resolveConfig(projectRoot, config) {
   return {
     watch: {
-      routeFiles: (config.watch.routeFiles || []).map(f => path.resolve(projectRoot, f)),
-      modelFiles: (config.watch.modelFiles || []).map(f => path.resolve(projectRoot, f)),
-      frontendFiles: (config.watch.frontendFiles || []).map(f => path.resolve(projectRoot, f))
+      routeFiles: (config.watch && config.watch.routeFiles || []).map(f => path.resolve(projectRoot, f)),
+      modelFiles: (config.watch && config.watch.modelFiles || []).map(f => path.resolve(projectRoot, f)),
+      frontendFiles: (config.watch && config.watch.frontendFiles || []).map(f => path.resolve(projectRoot, f))
     },
-    output: path.resolve(projectRoot, config.output),
+    output: path.resolve(projectRoot, config.output || 'AGENTS.md'),
     projectRoot
   };
 }
