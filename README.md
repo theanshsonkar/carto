@@ -10,7 +10,7 @@
 npm install -g carto-md
 ```
 
-Carto indexes your codebase — routes, models, import graph, blast radius, domain clusters — and keeps it live. Every AI tool you use gets accurate structural facts about your project instead of guessing.
+Carto indexes your codebase (routes, models, import graph, blast radius, domain clusters) and keeps it live. Every AI tool you use gets accurate structural facts about your project instead of guessing.
 
 ---
 
@@ -20,7 +20,7 @@ Carto indexes your codebase — routes, models, import graph, blast radius, doma
 
 ---
 
-## Proof — Supabase repo (6,335 files)
+## Proof: Supabase repo (6,335 files)
 
 Fresh `carto init`. No prior knowledge of the repo.
 
@@ -55,7 +55,7 @@ One file changed. Carto told you exactly what broke. In 129ms. On a 6,335 file m
 
 ---
 
-## Proof — cal.com (800k lines)
+## Proof: cal.com (800k lines)
 
 Same task, two Claude sessions: *"Add a `notes` field to the booking model."*
 
@@ -113,22 +113,22 @@ File saved → re-parse 1 file → update graph → ~130ms
 
 ---
 
-## 12 MCP tools — AI queries your codebase live
+## 12 MCP tools: AI queries your codebase live
 
 `carto serve` exposes a local MCP server. Kiro, Cursor, and Claude query it mid-task instead of guessing.
 
 | Tool | What it returns |
 |------|----------------|
 | `get_blast_radius(file)` | Risk level, all affected files, routes at risk per domain |
-| `get_context(file)` | Everything about a file in one call — domain, blast radius, neighbors, routes, models |
+| `get_context(file)` | Everything about a file in one call: domain, blast radius, neighbors, routes, models |
 | `get_routes()` | All API endpoints with file mapping |
 | `get_structure()` | Import graph, entry points, high-impact files, tech stack |
 | `get_domain(name)` | All routes, models, functions for AUTH / PAYMENTS / DATABASE / etc. |
-| `get_neighbors(file, hops)` | Import graph neighbors — nodes and edges |
+| `get_neighbors(file, hops)` | Import graph neighbors: nodes and edges |
 | `get_cross_domain()` | Import edges that cross domain boundaries |
 | `search_routes(query)` | Search API routes by path or method |
 | `get_models(domain?)` | All data models, optionally filtered by domain |
-| `get_high_impact_files(n)` | Top N files by blast radius — highest-risk to change |
+| `get_high_impact_files(n)` | Top N files by blast radius, highest-risk to change |
 | `get_env_vars(domain?)` | All env vars with domain mapping |
 | `get_domains_list()` | All detected domains with file, route, model counts |
 
@@ -138,13 +138,13 @@ File saved → re-parse 1 file → update graph → ~130ms
 
 | Category | What Carto finds |
 |----------|-----------------|
-| **Routes** | FastAPI, Express, Next.js App/Pages Router, tRPC procedures, Django URLs, Gin/Echo (Go) |
+| **Routes** | FastAPI, Express, Next.js App/Pages Router, React Router (JSX + createBrowserRouter), tRPC procedures, Django URLs, Gin/Echo (Go) |
 | **Models** | Prisma, Pydantic, SQLAlchemy, Django ORM, TypeScript interfaces/types, Zod schemas, Drizzle tables |
-| **Graph** | Full import graph — who imports what, transitive dependencies up to 5 hops |
+| **Graph** | Full import graph: who imports what, transitive dependencies up to 5 hops |
 | **Blast radius** | Risk level (HIGH/MEDIUM/LOW) per file and per route |
-| **Domains** | AUTH, PAYMENTS, DATABASE, EVENTS, TRPC, NOTIFICATIONS, CORE — auto-clustered from imports |
+| **Domains** | AUTH, PAYMENTS, DATABASE, EVENTS, TRPC, NOTIFICATIONS, CORE, auto-clustered from imports |
 | **Events** | EventEmitter listeners, webhook handlers, queue jobs, cron schedules |
-| **Env vars** | Every `process.env` / `os.Getenv` call — names only, never values |
+| **Env vars** | Every `process.env` / `os.Getenv` call (names only, never values) |
 | **Functions** | Signatures with param names and return types |
 
 ---
@@ -153,14 +153,14 @@ File saved → re-parse 1 file → update graph → ~130ms
 
 | Language | Frameworks |
 |----------|------------|
-| TypeScript / JavaScript | Express, Next.js (App + Pages Router), tRPC, Drizzle, Zod |
+| TypeScript / JavaScript | Express, Next.js (App + Pages Router), React Router, tRPC, Drizzle, Zod |
 | Python | FastAPI, Pydantic, SQLAlchemy, Django |
 | Go | Gin, Echo, Chi, net/http |
 | R | Plumber, Shiny, R6, S7 |
 | Schema | Prisma |
 | HTML | fetch() calls |
 
-More via community — see [CONTRIBUTING.md](CONTRIBUTING.md).
+More via community. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -171,7 +171,7 @@ More via community — see [CONTRIBUTING.md](CONTRIBUTING.md).
 | `carto init` | Detect project, index codebase, generate AGENTS.md, wire MCP |
 | `carto watch` | Incremental live re-index on every file save (~130ms) |
 | `carto sync` | One-time manual re-index |
-| `carto impact <file>` | Blast radius — risk level, affected files, routes at risk |
+| `carto impact <file>` | Blast radius: risk level, affected files, routes at risk |
 | `carto check` | Cross-domain violations, high-risk uncommitted changes, domain health |
 | `carto serve` | Start MCP server for Kiro / Cursor / Claude |
 | `carto remove` | Remove AGENTS.md and .carto/ from project |
@@ -193,14 +193,14 @@ Run before committing. Tells you what's risky before you push.
 
   ⚠️  High-risk uncommitted changes (1):
      🔴 src/lib/auth.service.ts
-        11 files depend on this — blast risk: HIGH
+        11 files depend on this, blast risk: HIGH
 
   ✅ No cross-domain dependency violations
 
   🔥 Top high-impact files:
-      83 dependents — packages/ui/src/lib/utils/cn.ts
-      35 dependents — packages/pg-meta/src/pg-format/index.ts
-      34 dependents — packages/icons/src/createSupabaseIcon.ts
+      83 dependents - packages/ui/src/lib/utils/cn.ts
+      35 dependents - packages/pg-meta/src/pg-format/index.ts
+      34 dependents - packages/icons/src/createSupabaseIcon.ts
 ```
 
 ---
@@ -232,7 +232,7 @@ Routes at risk (4):
 
 ## Programmatic API
 
-Use Carto as a module — no CLI required. This is how tools embed it.
+Use Carto as a module, no CLI required. This is how tools embed it.
 
 ```js
 const { Carto } = require('carto-md');
@@ -254,7 +254,7 @@ const ctx = carto.getContextForFile('src/auth/auth.service.ts');
 
 // Live updates
 carto.on('updated', ({ file, blastRadius }) => {
-  console.log(`${file} changed — blast risk: ${blastRadius.risk}`);
+  console.log(`${file} changed, blast risk: ${blastRadius.risk}`);
 });
 
 await carto.reindex('src/auth/auth.service.ts'); // ~130ms
@@ -264,7 +264,7 @@ await carto.reindex('src/auth/auth.service.ts'); // ~130ms
 
 ```js
 carto.getBlastRadius(file)       // Risk + affected files + routes
-carto.getNeighbors(file, hops)   // Import graph — React Flow nodes/edges
+carto.getNeighbors(file, hops)   // Import graph, React Flow nodes/edges
 carto.getCrossDomainDeps()       // Cross-boundary import edges
 carto.getHighImpactFiles(n)      // Top N by blast radius
 carto.searchRoutes(query)        // Route search
@@ -299,23 +299,23 @@ AGENTS.md                 → lean map, always loaded by every AI
 
 AI reads AGENTS.md always. Then fetches only the domain file relevant to the task. 400 lines of exact context instead of 2,900 lines of everything.
 
-Domain assignment runs on your import graph — files that import each other cluster together, regardless of folder names.
+Domain assignment runs on your import graph: files that import each other cluster together, regardless of folder names.
 
 ---
 
 ## MCP config (if auto-wire missed your IDE)
 
-**Kiro** — `~/.kiro/settings/mcp.json`
+**Kiro**: `~/.kiro/settings/mcp.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
 
-**Cursor** — `~/.cursor/mcp.json`
+**Cursor**: `~/.cursor/mcp.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
 
-**Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Claude Desktop**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
@@ -371,7 +371,7 @@ That's it.
 
 ## Origin
 
-I was building Emfirge — a cloud security agent for AWS.
+I was building Emfirge, a cloud security agent for AWS.
 
 To make the AI understand infrastructure, I built a module that mapped AWS resources into a graph. The AI stopped hallucinating. It worked with facts.
 
@@ -385,7 +385,7 @@ Carto is that.
 
 ## License
 
-MIT — free forever.
+MIT. Free forever.
 
 ---
 

@@ -38,6 +38,7 @@ module.exports = {
 
   // Expose internals for typescript.js to reuse
   _extractExpressRoutes: extractExpressRoutes,
+  _extractReactRouterRoutes: extractReactRouterRoutes,
   _extractProcessEnv: extractProcessEnv,
   _extractJSFetches: extractJSFetches,
   _extractJSFunctions: extractJSFunctions,
@@ -76,6 +77,10 @@ function extractExpressRoutes(ast, filename) {
   // Check for Next.js Pages/App Router patterns (pages/api/... or app/api/...)
   const nextRoutes = extractNextJSPagesRoutes(ast, filename);
   routes.push(...nextRoutes);
+
+  // React Router (JSX <Route> + createBrowserRouter/createHashRouter/createMemoryRouter)
+  const reactRoutes = extractReactRouterRoutes(ast);
+  routes.push(...reactRoutes);
 
   walk(ast, (node) => {
     if (node.type !== 'CallExpression') return;
@@ -132,6 +137,120 @@ function extractExpressRoutes(ast, filename) {
     seen.add(key);
     return true;
   });
+}
+
+// ---------------------------------------------------------------------------
+// React Router extraction
+// ---------------------------------------------------------------------------
+
+const REACT_ROUTER_CREATORS = new Set(['createBrowserRouter', 'createHashRouter', 'createMemoryRouter', 'useRoutes']);
+
+function extractReactRouterRoutes(ast) {
+  const routes = [];
+
+  // 1. JSX <Route path="..." component={X} /> or element={<X />}
+  walk(ast, (node) => {
+    if (node.type !== 'JSXOpeningElement') return;
+    if (!node.name || node.name.name !== 'Route') return;
+
+    let routePath = null;
+    let componentName = '[anonymous]';
+
+    for (const attr of (node.attributes || [])) {
+      if (attr.type !== 'JSXAttribute' || !attr.name) continue;
+      const attrName = attr.name.name;
+
+      if (attrName === 'path' && attr.value) {
+        if (attr.value.type === 'StringLiteral') {
+          routePath = attr.value.value;
+        }
+      }
+
+      if ((attrName === 'component' || attrName === 'element') && attr.value) {
+        if (attr.value.type === 'JSXExpressionContainer' && attr.value.expression) {
+          const expr = attr.value.expression;
+          if (expr.type === 'Identifier') {
+            componentName = expr.name;
+          } else if (expr.type === 'JSXElement' && expr.openingElement && expr.openingElement.name) {
+            componentName = expr.openingElement.name.name || '[anonymous]';
+          }
+        }
+      }
+    }
+
+    if (routePath !== null) {
+      routes.push({ method: 'VIEW', path: routePath, functionName: componentName });
+    }
+  });
+
+  // 2. createBrowserRouter / createHashRouter / createMemoryRouter / useRoutes
+  walk(ast, (node) => {
+    if (node.type !== 'CallExpression') return;
+    const callee = node.callee;
+    if (!callee) return;
+    const calleeName = callee.type === 'Identifier' ? callee.name
+      : (callee.type === 'MemberExpression' && callee.property) ? callee.property.name
+      : null;
+    if (!calleeName || !REACT_ROUTER_CREATORS.has(calleeName)) return;
+    if (!node.arguments || node.arguments.length === 0) return;
+
+    const firstArg = node.arguments[0];
+    if (firstArg.type === 'ArrayExpression') {
+      extractRoutesFromRouteArray(firstArg, routes);
+    }
+  });
+
+  const seen = new Set();
+  return routes.filter(r => {
+    const key = `VIEW::${r.path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function extractRoutesFromRouteArray(arrayNode, routes) {
+  for (const element of (arrayNode.elements || [])) {
+    if (!element || element.type !== 'ObjectExpression') continue;
+    extractRouteFromRouteObject(element, routes);
+  }
+}
+
+function extractRouteFromRouteObject(objNode, routes) {
+  let routePath = null;
+  let componentName = '[anonymous]';
+  let childrenNode = null;
+
+  for (const prop of (objNode.properties || [])) {
+    if (prop.type !== 'ObjectProperty' && prop.type !== 'Property') continue;
+    if (!prop.key) continue;
+    const key = prop.key.name || prop.key.value;
+
+    if (key === 'path' && prop.value && prop.value.type === 'StringLiteral') {
+      routePath = prop.value.value;
+    }
+
+    if ((key === 'element' || key === 'component') && prop.value) {
+      const val = prop.value;
+      if (val.type === 'Identifier') {
+        componentName = val.name;
+      } else if (val.type === 'JSXElement' && val.openingElement && val.openingElement.name) {
+        componentName = val.openingElement.name.name || '[anonymous]';
+      }
+    }
+
+    if (key === 'children' && prop.value && prop.value.type === 'ArrayExpression') {
+      childrenNode = prop.value;
+    }
+  }
+
+  if (routePath !== null) {
+    routes.push({ method: 'VIEW', path: routePath, functionName: componentName });
+  }
+
+  if (childrenNode) {
+    extractRoutesFromRouteArray(childrenNode, routes);
+  }
 }
 
 /**
