@@ -2,103 +2,162 @@
 
 const fs = require('fs');
 const path = require('path');
-const { startWatcher } = require('../watcher/watch');
-const { runFullSync } = require('../sync');
-const { resolveConfig } = require('./init');
-const { checkForUpdate } = require('./update-check');
-const { loadGraphCache, saveGraphCache, buildEmptyCache } = require('../cache/graph-cache');
-const { updateFileHash, removeFileHash } = require('../cache/file-hash');
-const { applyIncrementalUpdate, removeFileFromGraph } = require('../engine/incremental');
+const chokidar = require('chokidar');
+const { SQLiteStore } = require('../store/sqlite-store');
+const { discoverFiles, generateOutputs, buildRoutesByFile, detectLanguage } = require('../store/sync-v2');
+const { runSyncV2 } = require('../store/sync-v2');
+const { detectChangedFiles, hashFile, hashContent } = require('../store/change-detector');
 const { loadLanguagePlugins, getPluginForFile } = require('../extractors/loader');
-const { formatSections, formatDomainFile } = require('../agents/formatter');
-const { mergeIntoAgentsMd } = require('../agents/merger');
-const { validateExtracted } = require('../agents/validator');
+const { extractImports } = require('../extractors/imports');
+const { checkForUpdate } = require('./update-check');
 
 const plugins = loadLanguagePlugins();
 
 /**
- * writeOutputsFromCache(cache, resolved, projectRoot)
- * Writes AGENTS.md, domain context files, and map.json from the current cache state.
- * Called after every incremental update.
+ * applyIncrementalV2(store, relPath, projectRoot)
+ *
+ * Re-extracts a single changed file and updates SQLite atomically.
+ * Updates reverse_deps for direct neighbors only (not full recompute).
+ * Returns elapsed ms.
  */
-function writeOutputsFromCache(cache, resolved, projectRoot) {
-  let allRoutes = [];
-  let allModels = [];
-  const functionsMap = {};
-  const envVarMap = new Map();
-  const dbTableList = [];
+async function applyIncrementalV2(store, relPath, projectRoot) {
+  const start = Date.now();
+  const fullPath = path.resolve(projectRoot, relPath);
 
-  for (const [relPath, data] of Object.entries(cache.fileData)) {
-    allRoutes = allRoutes.concat(data.routes);
-    allModels = allModels.concat(data.models);
-    if (data.functions && data.functions.length > 0) functionsMap[relPath] = data.functions;
-    for (const v of (data.envVars || [])) {
-      if (!envVarMap.has(v)) envVarMap.set(v, new Set());
-      envVarMap.get(v).add(relPath);
-    }
-    for (const t of (data.dbTables || [])) {
-      dbTableList.push(t.file ? t : { ...t, file: relPath });
-    }
+  // stat + hash check
+  let stat;
+  try { stat = fs.statSync(fullPath); } catch {
+    // File deleted — remove from DB
+    store.removeFile(relPath);
+    return Date.now() - start;
   }
 
-  const envVars = [...envVarMap.keys()].sort().map(name => ({ name, files: [...envVarMap.get(name)].sort() }));
-  const validated = validateExtracted({ routes: allRoutes, models: allModels, functions: functionsMap, envVars, dbTables: dbTableList });
+  const mtime = Math.floor(stat.mtimeMs);
+  const size = stat.size;
+  const existing = store.getFileByPath(relPath);
 
-  const autoContent = formatSections({
-    routes: validated.routes,
-    models: validated.models,
-    frontend: { fetches: [], storageKeys: [] },
-    structure: [],
-    warnings: [],
-    fileMap: [],
-    functions: validated.functions,
-    dbTables: validated.dbTables,
-    envVars: validated.envVars,
-    importGraph: cache.importGraph,
-    stackItems: cache.stack || [],
-    entryPoints: cache.entryPoints || [],
-    highImpact: (cache.highImpact || []).map(h => ({ file: h.file, count: h.dependents }))
+  if (existing && existing.mtime === mtime && existing.size === size) {
+    return 0; // unchanged
+  }
+
+  const fileResult = hashFile(fullPath);
+  if (!fileResult) return 0;
+
+  const { content, hash } = fileResult;
+
+  if (existing && existing.hash === hash) {
+    store.updateFileMtime(relPath, mtime, size);
+    return Date.now() - start;
+  }
+
+  // Skip files > 1MB
+  if (size > 1024 * 1024) return 0;
+
+  // Extract
+  const plugin = getPluginForFile(plugins, fullPath);
+  let extracted = { routes: [], models: [], functions: [], envVars: [], dbTables: [] };
+  if (plugin) {
+    try { extracted = plugin.extract(content, relPath); } catch {}
+  }
+
+  let imports = [];
+  try { imports = extractImports(content, fullPath, projectRoot); } catch {}
+
+  // Write to SQLite atomically
+  const fileId = store.upsertFile(relPath, {
+    language: detectLanguage(path.extname(relPath).toLowerCase()),
+    hash,
+    mtime,
+    size
   });
 
-  mergeIntoAgentsMd(resolved.output, autoContent);
+  const resolvedImports = imports.map(impPath => {
+    const resolved = store.getFileByPath(impPath);
+    return { path: impPath, resolvedFileId: resolved ? resolved.id : null };
+  });
 
-  // Write domain context files
-  const contextDir = path.join(projectRoot, '.carto', 'context');
-  try { fs.mkdirSync(contextDir, { recursive: true }); } catch {}
+  const symbols = (extracted.functions || []).map(name => ({
+    name: typeof name === 'string' ? name : name.name || 'unknown',
+    kind: 'function',
+    exported: true
+  }));
 
-  for (const [domain, cluster] of Object.entries(cache.domains || {})) {
-    const hasContent = (cluster.routes || []).length > 0 ||
-                       (cluster.models || []).length > 0 ||
-                       Object.keys(cluster.functions || {}).length > 0 ||
-                       (cluster.dbTables || []).length > 0;
-    if (!hasContent) continue;
-    const content = formatDomainFile(domain, cluster);
-    const domainPath = path.join(contextDir, `${domain}.md`);
-    const tmp = domainPath + '.tmp';
-    try { fs.writeFileSync(tmp, content, 'utf-8'); fs.renameSync(tmp, domainPath); } catch {}
+  store.storeExtraction(fileId, {
+    imports: resolvedImports,
+    symbols,
+    routes: extracted.routes || [],
+    models: extracted.models || [],
+    envVars: extracted.envVars || [],
+    dbTables: extracted.dbTables || []
+  });
+
+  // Partial reverse_deps update — only recompute for this file's direct neighbors
+  updateReverseDepsPartial(store, fileId);
+
+  return Date.now() - start;
+}
+
+/**
+ * Recompute reverse_deps for a single file and its direct import neighbors.
+ * Much cheaper than full recompute — O(neighbors) not O(all files).
+ */
+function updateReverseDepsPartial(store, fileId) {
+  // Get direct imports of this file
+  const outgoing = store.db.prepare(
+    'SELECT to_file_id FROM imports WHERE from_file_id = ? AND to_file_id IS NOT NULL'
+  ).all(fileId).map(r => r.to_file_id);
+
+  // Get files that import this file
+  const incoming = store.db.prepare(
+    'SELECT from_file_id FROM imports WHERE to_file_id = ?'
+  ).all(fileId).map(r => r.from_file_id);
+
+  const affectedIds = new Set([fileId, ...outgoing, ...incoming]);
+
+  // Delete and recompute reverse_deps only for affected files
+  const del = store.db.prepare('DELETE FROM reverse_deps WHERE file_id = ? OR dependent_file_id = ?');
+  const ins = store.db.prepare(
+    'INSERT OR IGNORE INTO reverse_deps (file_id, dependent_file_id, hop_distance) VALUES (?,?,?)'
+  );
+
+  // Build local reverse map for affected files
+  const allEdges = store.db.prepare(
+    'SELECT from_file_id, to_file_id FROM imports WHERE to_file_id IS NOT NULL'
+  ).all();
+
+  const reverseDirect = new Map();
+  for (const e of allEdges) {
+    if (!reverseDirect.has(e.to_file_id)) reverseDirect.set(e.to_file_id, []);
+    reverseDirect.get(e.to_file_id).push(e.from_file_id);
   }
 
-  // Write map.json
-  const cartoDir = path.join(projectRoot, '.carto');
-  const mapData = {
-    version: '2',
-    generated: cache.generated,
-    imports: cache.importGraph,
-    routes: validated.routes,
-    routesByFile: cache.routesByFile,
-    models: validated.models,
-    highImpact: cache.highImpact,
-    entryPoints: cache.entryPoints,
-    stack: cache.stack,
-    domains: Object.keys(cache.domains || {}),
-    meta: cache.meta
-  };
-  try {
-    const tmp = path.join(cartoDir, 'map.tmp.json');
-    const mapPath = path.join(cartoDir, 'map.json');
-    fs.writeFileSync(tmp, JSON.stringify(mapData, null, 2) + '\n', 'utf-8');
-    fs.renameSync(tmp, mapPath);
-  } catch {}
+  const tx = store.db.transaction(() => {
+    for (const fid of affectedIds) {
+      del.run(fid, fid);
+      let frontier = new Set(reverseDirect.get(fid) || []);
+      const visited = new Set();
+      for (let hop = 1; hop <= 5; hop++) {
+        const next = new Set();
+        for (const depId of frontier) {
+          if (visited.has(depId) || depId === fid) continue;
+          visited.add(depId);
+          ins.run(fid, depId, hop);
+          for (const nd of (reverseDirect.get(depId) || [])) {
+            if (!visited.has(nd) && nd !== fid) next.add(nd);
+          }
+        }
+        if (next.size === 0) break;
+        frontier = next;
+      }
+    }
+  });
+  tx();
+
+  // Update centrality for affected files
+  const updateCentrality = store.db.prepare(
+    'UPDATE files SET centrality = (SELECT COUNT(DISTINCT dependent_file_id) FROM reverse_deps WHERE file_id = files.id) WHERE id = ?'
+  );
+  for (const fid of affectedIds) updateCentrality.run(fid);
 }
 
 async function run(projectRoot) {
@@ -110,78 +169,129 @@ async function run(projectRoot) {
     process.exit(1);
   }
 
-  let config;
-  try {
-    config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-  } catch (err) {
-    console.error(`[CARTO] Error reading .carto/config.json: ${err.message}`);
-    process.exit(1);
-  }
-
-  const resolved = resolveConfig(projectRoot, config);
-
-  // Initial sync (cache-aware — only parses changed files)
+  // Initial full sync using V2
   console.log('[CARTO] Starting initial sync...');
-  let cache = await runFullSync(resolved);
-  if (!cache) {
-    cache = loadGraphCache(projectRoot) || buildEmptyCache();
-  }
+  await runSyncV2({
+    projectRoot,
+    output: path.join(projectRoot, 'AGENTS.md')
+  });
   console.log('[CARTO] Initial sync complete. Watching for changes...');
 
-  const allFiles = new Set([
-    ...resolved.watch.routeFiles,
-    ...resolved.watch.modelFiles,
-    ...resolved.watch.frontendFiles
-  ]);
-  const watchPaths = [...allFiles];
+  // Open store for incremental updates
+  const store = new SQLiteStore(projectRoot);
+  store.open();
 
-  // onChange: incremental update — only re-parse the 1 changed file
-  const onChange = async (changedFile) => {
-    const start = Date.now();
-    const relPath = path.relative(projectRoot, changedFile);
-    let content;
-    try {
-      content = fs.readFileSync(changedFile, 'utf-8');
-    } catch {
-      return;
+  // Recursive directory watcher — one watch on the project root, not per-file
+  const watcher = chokidar.watch(projectRoot, {
+    persistent: true,
+    ignoreInitial: true,
+    ignored: [
+      /(^|[/\\])\../, // dotfiles
+      /node_modules/,
+      /\.carto/,
+      /dist/,
+      /build/,
+      /\.next/,
+      /coverage/,
+      /tmp-bench/
+    ],
+    awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 50 }
+  });
+
+  const debounceMap = new Map(); // relPath → timer
+
+  // ── Dirty-flag domain recluster ──────────────────────────────────────────
+  // If a file's imports change AND cross a domain boundary, mark domains dirty.
+  // Recluster after 5 min idle (not on every save).
+  let domainsDirty = false;
+  let reclusterTimer = null;
+  const RECLUSTER_IDLE_MS = 5 * 60 * 1000; // 5 minutes
+
+  function markDomainsDirty() {
+    domainsDirty = true;
+    if (reclusterTimer) clearTimeout(reclusterTimer);
+    reclusterTimer = setTimeout(async () => {
+      reclusterTimer = null;
+      if (!domainsDirty) return;
+      domainsDirty = false;
+      console.log('[CARTO] Idle 5min — reclustering domains...');
+      try {
+        await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+        console.log('[CARTO] Domain recluster complete.');
+      } catch (err) {
+        console.error(`[CARTO] Recluster error: ${err.message}`);
+      }
+    }, RECLUSTER_IDLE_MS);
+  }
+
+  function checkImportsCrossDomain(store, relPath) {
+    const file = store.getFileByPath(relPath);
+    if (!file) return false;
+    const fileDomain = store.getDomainForFile(relPath);
+    if (!fileDomain) return false;
+
+    const imports = store.db.prepare(
+      'SELECT to_file_id FROM imports WHERE from_file_id = ? AND to_file_id IS NOT NULL'
+    ).all(file.id);
+
+    for (const imp of imports) {
+      const impFile = store.getFileById(imp.to_file_id);
+      if (!impFile) continue;
+      const impDomain = store.getDomainForFile(impFile.path);
+      if (impDomain && impDomain !== fileDomain) return true;
     }
+    return false;
+  }
 
-    const plugin = getPluginForFile(plugins, changedFile);
-    if (!plugin) return;
+  const handleChange = async (fullPath, eventType) => {
+    const relPath = path.relative(projectRoot, fullPath);
+    const ext = path.extname(relPath).toLowerCase();
 
-    const extracted = plugin.extract(content, relPath);
-    applyIncrementalUpdate(cache, relPath, extracted, content, projectRoot);
-    cache.generated = new Date().toISOString();
+    // Only process known code extensions
+    const CODE_EXTS = new Set(['.ts','.tsx','.js','.jsx','.mjs','.cjs','.py','.r','.R','.prisma','.go','.rb','.rs','.java','.cs','.cpp','.cc','.h','.hpp','.swift','.kt']);
+    if (!CODE_EXTS.has(ext)) return;
 
-    writeOutputsFromCache(cache, resolved, projectRoot);
-    updateFileHash(projectRoot, relPath, content);
-    saveGraphCache(projectRoot, cache);
-
-    const elapsed = Date.now() - start;
-    console.log(`[CARTO] ${path.basename(changedFile)} → re-indexed in ${elapsed}ms`);
+    // Debounce per file (50ms)
+    if (debounceMap.has(relPath)) clearTimeout(debounceMap.get(relPath));
+    debounceMap.set(relPath, setTimeout(async () => {
+      debounceMap.delete(relPath);
+      try {
+        const elapsed = await applyIncrementalV2(store, relPath, projectRoot);
+        if (elapsed > 0) {
+          console.log(`[CARTO] ${path.basename(relPath)} → updated in ${elapsed}ms`);
+          // Check if imports now cross domain boundaries → schedule recluster
+          if (checkImportsCrossDomain(store, relPath)) {
+            markDomainsDirty();
+          }
+        }
+      } catch (err) {
+        console.error(`[CARTO] Incremental error for ${relPath}: ${err.message}`);
+      }
+    }, 50));
   };
 
-  // onAdd: treat new files as changed
-  const onAdd = async (filePath) => {
-    await onChange(filePath);
-    console.log(`[CARTO] New file detected: ${path.relative(projectRoot, filePath)}`);
-  };
-
-  // onRemove: remove from graph
-  const onRemove = async (filePath) => {
-    const relPath = path.relative(projectRoot, filePath);
-    removeFileFromGraph(cache, relPath);
-    writeOutputsFromCache(cache, resolved, projectRoot);
-    removeFileHash(projectRoot, relPath);
-    saveGraphCache(projectRoot, cache);
+  watcher.on('change', (p) => handleChange(p, 'change'));
+  watcher.on('add', (p) => handleChange(p, 'add'));
+  watcher.on('unlink', async (fullPath) => {
+    const relPath = path.relative(projectRoot, fullPath);
+    store.removeFile(relPath);
     console.log(`[CARTO] Removed: ${relPath}`);
+  });
+
+  watcher.on('error', (err) => console.error(`[CARTO] Watcher error: ${err.message}`));
+
+  // Graceful shutdown
+  const shutdown = () => {
+    console.log('\n[CARTO] Shutting down...');
+    if (reclusterTimer) clearTimeout(reclusterTimer);
+    watcher.close();
+    store.close();
+    process.exit(0);
   };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 
-  startWatcher(watchPaths, onChange, onAdd, onRemove);
-
-  console.log('[CARTO] Watching files (incremental mode):');
-  for (const p of watchPaths) console.log(`  → ${p}`);
-  console.log(`  → Output: ${resolved.output}`);
+  console.log(`[CARTO] Watching ${projectRoot} (recursive, incremental mode)`);
 }
 
-module.exports = { run };
+module.exports = { run, applyIncrementalV2 };
