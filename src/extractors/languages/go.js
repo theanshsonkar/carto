@@ -2,21 +2,33 @@
 
 /**
  * Go extractor — Gin, Echo, Chi, net/http routes + struct types as models.
+ * Uses tree-sitter for imports + symbols; regex for routes/models/env vars.
  */
+const tsParser = require('../tree-sitter-parser');
+
 module.exports = {
   name: 'go',
   extensions: ['.go'],
   extract(content, filename) {
+    // Fast path: tree-sitter for imports + symbols
+    const { imports: tsImports, symbols: tsSymbols } = tsParser.isAvailable()
+      ? tsParser.extractAll(content, '.go')
+      : { imports: [], symbols: [] };
+
     return {
       routes:      extractGoRoutes(content),
       models:      extractGoStructs(content),
-      functions:   extractGoFunctions(content),
+      functions:   tsSymbols.length > 0
+        ? tsSymbols.filter(s => s.kind === 'function' || s.kind === 'method').map(s => ({ name: s.name, params: '—' }))
+        : extractGoFunctions(content),
       envVars:     extractGoEnvVars(content),
       dbTables:    [],
       fetches:     [],
       storageKeys: [],
       events:      [],
       jobs:        extractGoCron(content),
+      _tsImports:  tsImports,
+      _tsSymbols:  tsSymbols,
     };
   }
 };

@@ -35,7 +35,12 @@ parentPort.on('message', (task) => {
     return;
   }
 
+  // Use tree-sitter imports if the plugin produced them (faster, no file I/O)
+  // Fall back to the regex-based extractImports for resolution
   const imports = extractImports(content, filePath, projectRoot);
+
+  // Attach tree-sitter symbols if available (richer than legacy functions array)
+  const tsSymbols = extracted._tsSymbols || null;
 
   parentPort.postMessage({
     id,
@@ -50,6 +55,7 @@ parentPort.on('message', (task) => {
       fetches: extracted.fetches || [],
       storageKeys: extracted.storageKeys || [],
       imports,
+      tsSymbols,
     }
   });
 });

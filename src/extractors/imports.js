@@ -41,16 +41,50 @@ function extractImports(content, filePath, projectRoot) {
     return extractRImports(content, filePath, projectRoot);
   } else if (ext === '.go') {
     return extractGoImports(content, filePath, projectRoot);
+  } else if (ext === '.rs') {
+    return extractRustImports(content, filePath, projectRoot);
+  } else if (['.java'].includes(ext)) {
+    return extractJavaImports(content, filePath, projectRoot);
+  } else if (ext === '.rb') {
+    return extractRubyImports(content, filePath, projectRoot);
   }
 
   // Resolve and deduplicate
   const resolved = new Set();
 
   for (const imp of rawImports) {
-    const resolvedPath = resolveImportPath(imp, fileDir, projectRoot, ext);
+    let resolvedPath;
+    if (imp.startsWith('.')) {
+      // Relative import
+      resolvedPath = resolveImportPath(imp, fileDir, projectRoot, ext);
+    } else {
+      // Aliased import (@/, ~/, #/, etc.)
+      const aliasedAbs = resolveAliasedImport(imp, projectRoot);
+      if (aliasedAbs) {
+        resolvedPath = resolveImportPath(aliasedAbs, path.dirname(aliasedAbs), projectRoot, ext);
+        if (!resolvedPath) {
+          // Try treating aliasedAbs as the base directly
+          const extensions = ['.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs'];
+          if (fs.existsSync(aliasedAbs) && fs.statSync(aliasedAbs).isFile()) {
+            resolvedPath = aliasedAbs;
+          } else {
+            for (const e of extensions) {
+              if (fs.existsSync(aliasedAbs + e)) { resolvedPath = aliasedAbs + e; break; }
+            }
+            if (!resolvedPath) {
+              for (const e of extensions) {
+                const idx = path.join(aliasedAbs, 'index' + e);
+                if (fs.existsSync(idx)) { resolvedPath = idx; break; }
+              }
+            }
+          }
+        }
+      }
+    }
     if (resolvedPath) {
-      // Store as relative to project root
-      const rel = path.relative(projectRoot, resolvedPath);
+      const rel = path.isAbsolute(resolvedPath)
+        ? path.relative(projectRoot, resolvedPath)
+        : resolvedPath;
       resolved.add(rel);
     }
   }
@@ -59,25 +93,97 @@ function extractImports(content, filePath, projectRoot) {
 }
 
 /**
- * Extract import paths from JS/TS content. Relative paths only.
+ * Extract import paths from JS/TS content — both relative and aliased.
  */
 function extractJSImports(content) {
   const imports = [];
 
-  // import ... from './path'  or  import './path'
-  const importPattern = /import\s+(?:[\s\S]*?\s+from\s+)?['"](\.[^'"]+)['"]/g;
+  // import ... from 'path' — capture relative and aliased imports
+  const importPattern = /import\s+(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;
   let match;
   while ((match = importPattern.exec(content)) !== null) {
-    imports.push(match[1]);
+    const p = match[1];
+    if (p.startsWith('.') || p.startsWith('@') || p.startsWith('~') || p.startsWith('#')) {
+      imports.push(p);
+    }
   }
 
-  // require('./path')
-  const requirePattern = /require\s*\(\s*['"](\.[^'"]+)['"]\s*\)/g;
+  // require('./path') or require('@/path')
+  const requirePattern = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
   while ((match = requirePattern.exec(content)) !== null) {
-    imports.push(match[1]);
+    const p = match[1];
+    if (p.startsWith('.') || p.startsWith('@') || p.startsWith('~') || p.startsWith('#')) {
+      imports.push(p);
+    }
   }
 
   return imports;
+}
+
+// Cache for path alias configs per projectRoot
+const _aliasCache = new Map();
+
+/**
+ * loadPathAliases(projectRoot) → Map<prefix, absoluteDir>
+ * Reads tsconfig.json / jsconfig.json / vite.config.* for path aliases.
+ * e.g. "@/*" → "src/*" becomes "@/" → "/abs/path/to/src"
+ */
+function loadPathAliases(projectRoot) {
+  if (_aliasCache.has(projectRoot)) return _aliasCache.get(projectRoot);
+
+  const aliases = new Map();
+
+  // Try tsconfig.json / jsconfig.json
+  for (const configFile of ['tsconfig.json', 'jsconfig.json']) {
+    const configPath = path.join(projectRoot, configFile);
+    try {
+      const raw = fs.readFileSync(configPath, 'utf-8');
+      // Strip comments (tsconfig allows them)
+      const cleaned = raw.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+      const config = JSON.parse(cleaned);
+      const paths = config?.compilerOptions?.paths || {};
+      const baseUrl = config?.compilerOptions?.baseUrl || '.';
+      const base = path.resolve(projectRoot, baseUrl);
+
+      for (const [alias, targets] of Object.entries(paths)) {
+        if (!Array.isArray(targets) || targets.length === 0) continue;
+        // "@/*" → strip trailing "/*" to get prefix "@/"
+        const prefix = alias.replace(/\/\*$/, '/').replace(/\*$/, '');
+        // targets[0] like "src/*" → strip "/*" → "src"
+        const targetDir = targets[0].replace(/\/\*$/, '').replace(/\*$/, '');
+        aliases.set(prefix, path.resolve(base, targetDir));
+      }
+      break; // use first found
+    } catch {}
+  }
+
+  // Common conventions if no config found
+  if (aliases.size === 0) {
+    const srcDir = path.join(projectRoot, 'src');
+    if (fs.existsSync(srcDir)) {
+      aliases.set('@/', srcDir);
+      aliases.set('~/', srcDir);
+      aliases.set('#/', srcDir);
+    }
+  }
+
+  _aliasCache.set(projectRoot, aliases);
+  return aliases;
+}
+
+/**
+ * resolveAliasedImport(importPath, projectRoot) → string | null
+ * Resolves a path alias like "@/components/Button" to an absolute path.
+ */
+function resolveAliasedImport(importPath, projectRoot) {
+  const aliases = loadPathAliases(projectRoot);
+  for (const [prefix, targetDir] of aliases) {
+    if (importPath.startsWith(prefix)) {
+      const rest = importPath.slice(prefix.length);
+      return path.join(targetDir, rest);
+    }
+  }
+  return null;
 }
 
 /**
@@ -322,3 +428,221 @@ function buildImportGraph(fileContents, projectRoot) {
 }
 
 module.exports = { extractImports, buildImportGraph };
+
+// ─── Rust imports ─────────────────────────────────────────────────────────────
+
+/**
+ * extractRustImports(content, filePath, projectRoot) → Array<string>
+ *
+ * Resolves Rust `use` declarations to actual .rs files in the project.
+ * Handles:
+ *   use crate::module::submodule  → src/module/submodule.rs or src/module/submodule/mod.rs
+ *   use super::module             → ../module.rs
+ *   use self::module              → ./module.rs
+ *
+ * External crates (std::, tokio::, etc.) are skipped — only local crate paths.
+ */
+function extractRustImports(content, filePath, projectRoot) {
+  const results = new Set();
+  const fileDir = path.dirname(filePath);
+
+  // For Rust, `crate::` refers to the root of the current crate.
+  // The crate root is typically the src/ directory containing this file.
+  // We find it by walking up to the nearest src/ directory.
+  const crateRoot = _findRustCrateRoot(filePath);
+
+  let m;
+
+  // Extract mod declarations (these declare submodules = file dependencies)
+  // mod thread_switcher; → thread_switcher.rs or thread_switcher/mod.rs
+  const modPattern = /^(?:pub\s+)?mod\s+(\w+)\s*;/gm;
+  while ((m = modPattern.exec(content)) !== null) {
+    const modName = m[1];
+    const resolved = _resolveRustModule([modName], fileDir, projectRoot);
+    if (resolved) results.add(resolved);
+  }
+
+  // Extract use declarations — handle both single and grouped
+  // use crate::module;
+  // use crate::{module1, module2};
+  // use crate::module::sub;
+  const usePattern = /^use\s+(crate|super|self)(::[\w:{}*,\s]+)?;/gm;
+  while ((m = usePattern.exec(content)) !== null) {
+    const prefix = m[1];
+    const rest = (m[2] || '').replace(/^::/, '');
+    if (!rest) continue;
+
+    // Extract module paths from potentially grouped imports
+    // e.g. "{module1, module2::sub}" → ["module1", "module2::sub"]
+    const modulePaths = _expandRustUsePaths(rest);
+
+    for (const modPath of modulePaths) {
+      const parts = modPath.split('::').filter(p => p && p !== '*');
+      if (parts.length === 0) continue;
+
+      let baseDir;
+      if (prefix === 'crate') {
+        baseDir = crateRoot;
+      } else if (prefix === 'super') {
+        baseDir = path.dirname(fileDir);
+      } else { // self
+        baseDir = fileDir;
+      }
+
+      const resolved = _resolveRustModule(parts, baseDir, projectRoot);
+      if (resolved) results.add(resolved);
+    }
+  }
+
+  return [...results].sort();
+}
+
+function _findRustCrateRoot(filePath) {
+  // Walk up from the file to find the nearest src/ directory
+  let dir = path.dirname(filePath);
+  while (dir !== path.dirname(dir)) {
+    if (path.basename(dir) === 'src') return dir;
+    dir = path.dirname(dir);
+  }
+  return path.dirname(filePath);
+}
+
+function _expandRustUsePaths(rest) {
+  // Handle grouped imports: {module1, module2::sub} → ["module1", "module2::sub"]
+  // Handle simple: module::sub → ["module::sub"]
+  const trimmed = rest.trim();
+  if (trimmed.startsWith('{')) {
+    const inner = trimmed.slice(1, trimmed.lastIndexOf('}'));
+    return inner.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return [trimmed];
+}
+
+function _resolveRustModule(moduleParts, baseDir, projectRoot) {
+  if (moduleParts.length === 0) return null;
+
+  const name = moduleParts[0];
+  // Rust files are always lowercase; struct/type names in use paths are PascalCase
+  // Try both the exact name and lowercase version
+  const candidates = name === name.toLowerCase() ? [name] : [name.toLowerCase(), name];
+
+  for (const candidate of candidates) {
+    // Try: baseDir/module.rs
+    const asFile = path.join(baseDir, candidate + '.rs');
+    if (fs.existsSync(asFile)) {
+      const rel = path.relative(projectRoot, asFile);
+      if (moduleParts.length === 1) return rel;
+      return _resolveRustModule(moduleParts.slice(1), path.join(baseDir, candidate), projectRoot) || rel;
+    }
+
+    // Try: baseDir/module/mod.rs
+    const asMod = path.join(baseDir, candidate, 'mod.rs');
+    if (fs.existsSync(asMod)) {
+      const rel = path.relative(projectRoot, asMod);
+      if (moduleParts.length === 1) return rel;
+      return _resolveRustModule(moduleParts.slice(1), path.join(baseDir, candidate), projectRoot) || rel;
+    }
+  }
+
+  return null;
+}
+
+// ─── Java imports ─────────────────────────────────────────────────────────────
+
+/**
+ * extractJavaImports(content, filePath, projectRoot) → Array<string>
+ *
+ * Resolves Java import statements to actual .java files in the project.
+ * Only resolves imports that match files in the project (skips java.*, javax.*, etc.)
+ */
+function extractJavaImports(content, filePath, projectRoot) {
+  const results = new Set();
+
+  const importPattern = /^import\s+(?:static\s+)?([\w.]+);/gm;
+  let m;
+  while ((m = importPattern.exec(content)) !== null) {
+    const importPath = m[1];
+    const parts = importPath.split('.');
+
+    // Skip standard library and common external packages
+    if (['java', 'javax', 'org', 'com', 'net', 'io', 'android'].includes(parts[0])) {
+      // Only resolve if it might be a local package
+      // Try to find the file anyway
+    }
+
+    // Convert com.example.UserService → com/example/UserService.java
+    const filePath2 = parts.join(path.sep) + '.java';
+
+    // Search for this file in the project
+    const candidates = [
+      path.join(projectRoot, 'src', 'main', 'java', filePath2),
+      path.join(projectRoot, 'src', filePath2),
+      path.join(projectRoot, filePath2),
+    ];
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        results.add(path.relative(projectRoot, candidate));
+        break;
+      }
+    }
+  }
+
+  return [...results].sort();
+}
+
+// ─── Ruby imports ─────────────────────────────────────────────────────────────
+
+/**
+ * extractRubyImports(content, filePath, projectRoot) → Array<string>
+ *
+ * Resolves Ruby require/require_relative to actual .rb files.
+ * require_relative 'path' → resolved relative to current file
+ * require 'path' → resolved from project root (local files only)
+ */
+function extractRubyImports(content, filePath, projectRoot) {
+  const results = new Set();
+  const fileDir = path.dirname(filePath);
+
+  // require_relative 'path' — always relative to current file
+  const relPattern = /require_relative\s+['"]([^'"]+)['"]/g;
+  let m;
+  while ((m = relPattern.exec(content)) !== null) {
+    const resolved = _resolveRubyPath(m[1], fileDir, projectRoot);
+    if (resolved) results.add(resolved);
+  }
+
+  // require 'path' — try relative to project root lib/ and app/ dirs
+  const absPattern = /\brequire\s+['"]([^'"]+)['"]/g;
+  while ((m = absPattern.exec(content)) !== null) {
+    const reqPath = m[1];
+    // Skip gems (no slashes or known gem names)
+    if (!reqPath.includes('/') && !reqPath.startsWith('.')) continue;
+
+    const searchBases = [
+      projectRoot,
+      path.join(projectRoot, 'lib'),
+      path.join(projectRoot, 'app'),
+    ];
+    for (const base of searchBases) {
+      const resolved = _resolveRubyPath(reqPath, base, projectRoot);
+      if (resolved) { results.add(resolved); break; }
+    }
+  }
+
+  return [...results].sort();
+}
+
+function _resolveRubyPath(reqPath, baseDir, projectRoot) {
+  const base = path.resolve(baseDir, reqPath);
+  // Try exact
+  if (fs.existsSync(base) && fs.statSync(base).isFile()) {
+    return path.relative(projectRoot, base);
+  }
+  // Try with .rb extension
+  const withExt = base + '.rb';
+  if (fs.existsSync(withExt)) {
+    return path.relative(projectRoot, withExt);
+  }
+  return null;
+}
