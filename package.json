@@ -5,7 +5,7 @@
   "bin": {
     "carto": "src/cli/index.js"
   },
-  "main": "./src/sync.js",
+  "main": "./index.js",
   "scripts": {
     "test": "node test/test.js"
   },
