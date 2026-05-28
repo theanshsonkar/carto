@@ -1,13 +1,15 @@
 {
   "name": "carto-md",
   "version": "2.0.0",
-  "description": "The context layer for AI-native development.",
+  "description": "Structural intelligence layer for AI coding tools. Indexes your codebase into SQLite — routes, models, import graph, blast radius, domains — and exposes 16 MCP tools for Kiro, Cursor, and Claude.",
   "bin": {
     "carto": "src/cli/index.js"
   },
   "main": "./index.js",
   "scripts": {
-    "test": "node test/test.js"
+    "test": "node test/test.js",
+    "test:correctness": "node test/correctness.js",
+    "test:benchmark": "node test/benchmark.js"
   },
   "dependencies": {
     "@babel/parser": "^7.29.3",
@@ -41,6 +43,14 @@
     "codebase",
     "developer-tools",
     "cursor",
-    "copilot"
+    "copilot",
+    "mcp",
+    "model-context-protocol",
+    "tree-sitter",
+    "sqlite",
+    "blast-radius",
+    "import-graph",
+    "kiro",
+    "claude"
   ]
 }
