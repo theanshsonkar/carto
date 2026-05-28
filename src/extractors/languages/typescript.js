@@ -3,6 +3,7 @@
 const parser = require('@babel/parser');
 const path = require('path');
 const jsPlugin = require('./javascript');
+const tsParser = require('../tree-sitter-parser');
 
 const TS_PARSE_OPTIONS = {
   sourceType: 'module',
@@ -15,17 +16,57 @@ module.exports = {
   name: 'typescript',
   extensions: ['.ts', '.tsx'],
   extract(content, filename) {
+    // Fast path: tree-sitter for imports + symbols (runs on ALL TS files)
+    const ext = path.extname(filename) || '.ts';
+    const { imports: tsImports, symbols: tsSymbols } = tsParser.isAvailable()
+      ? tsParser.extractAll(content, ext)
+      : { imports: [], symbols: [] };
+
+    // Convert tree-sitter symbols to legacy functions format
+    const functions = tsSymbols
+      .filter(s => s.kind === 'function' || s.kind === 'variable')
+      .map(s => ({ name: s.name, params: '—', returnType: '—' }));
+
+    // Check if this is an API handler file (needs deep Babel extraction)
+    if (!jsPlugin._isApiHandlerFile(filename, tsImports, content)) {
+      // Non-API file: tree-sitter only, no Babel
+      return {
+        routes:      [],
+        models:      [],
+        functions,
+        envVars:     _extractEnvVarsRegex(content),
+        dbTables:    [],
+        fetches:     [],
+        storageKeys: [],
+        events:      extractEventListeners(content),
+        jobs:        extractQueueAndCron(content),
+        _tsImports:  tsImports,
+        _tsSymbols:  tsSymbols,
+      };
+    }
+
+    // API handler file: run Babel for deep route/model/tRPC extraction
     let ast;
     try {
       ast = parser.parse(content, TS_PARSE_OPTIONS);
     } catch (err) {
-      console.warn(`[CARTO] TS parse failed on ${filename}: ${err.message} — skipping`);
-      return { routes: [], models: [], functions: [], envVars: [], dbTables: [], fetches: [], storageKeys: [], events: [], jobs: [] };
+      console.warn(`[CARTO] TS Babel parse failed on ${filename}: ${err.message} — using tree-sitter only`);
+      return {
+        routes:      [],
+        models:      [],
+        functions,
+        envVars:     _extractEnvVarsRegex(content),
+        dbTables:    [],
+        fetches:     [],
+        storageKeys: [],
+        events:      extractEventListeners(content),
+        jobs:        extractQueueAndCron(content),
+        _tsImports:  tsImports,
+        _tsSymbols:  tsSymbols,
+      };
     }
 
     const routes = jsPlugin._extractExpressRoutes(ast, filename);
-
-    // tRPC procedures (patterns 1-3)
     extractTRPCRoutes(content, routes);
 
     return {
@@ -38,9 +79,19 @@ module.exports = {
       storageKeys: [],
       events:      extractEventListeners(content),
       jobs:        extractQueueAndCron(content),
+      _tsImports:  tsImports,
+      _tsSymbols:  tsSymbols,
     };
   }
 };
+
+function _extractEnvVarsRegex(content) {
+  const vars = new Set();
+  const pattern = /process\.env\.([A-Z_][A-Z0-9_]*)|process\.env\[['"]([A-Z_][A-Z0-9_]*)['"]]/g;
+  let m;
+  while ((m = pattern.exec(content)) !== null) vars.add(m[1] || m[2]);
+  return [...vars].sort();
+}
 
 // ─── tRPC ────────────────────────────────────────────────────────────────────
 

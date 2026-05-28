@@ -1,5 +1,6 @@
 const parser = require('@babel/parser');
 const path = require('path');
+const tsParser = require('../tree-sitter-parser');
 
 const PARSE_OPTIONS = {
   sourceType: 'module',
@@ -13,16 +14,87 @@ const ROUTER_NAMES = new Set(['app', 'router', 'server', 'api']);
 // HTTP methods
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch']);
 
+// Path patterns that identify API handler files
+const API_PATH_PATTERNS = [
+  /\/pages\/api\//,
+  /\/app\/api\//,
+  /\/routes\//,
+  /\/controllers\//,
+  /\/routers\//,
+];
+
+// Framework imports that identify API handler files
+const API_FRAMEWORK_IMPORTS = new Set(['express', 'fastify', '@trpc/server', 'next', 'koa', 'hapi', '@hapi/hapi']);
+
+// Content patterns that identify API handler files (when imports aren't explicit)
+const API_CONTENT_PATTERNS = [
+  /createTRPCRouter\s*\(/,
+  /router\s*\(\s*\{/,
+  /publicProcedure\./,
+  /protectedProcedure\./,
+  /authedProcedure\./,
+];
+
+/**
+ * isApiHandlerFile(filename, imports, content) → boolean
+ * Returns true if this JS file should get deep Babel route/model extraction.
+ */
+function isApiHandlerFile(filename, imports, content) {
+  const normalized = ('/' + filename).replace(/\\/g, '/');
+  if (API_PATH_PATTERNS.some(p => p.test(normalized))) return true;
+  if (imports && imports.some(imp => API_FRAMEWORK_IMPORTS.has(imp))) return true;
+  if (content && API_CONTENT_PATTERNS.some(p => p.test(content))) return true;
+  return false;
+}
+
 module.exports = {
   name: 'javascript',
   extensions: ['.js', '.jsx', '.mjs', '.cjs'],
   extract(content, filename) {
+    // Fast path: tree-sitter for imports + symbols (runs on ALL JS files)
+    const ext = path.extname(filename) || '.js';
+    const { imports: tsImports, symbols: tsSymbols } = tsParser.isAvailable()
+      ? tsParser.extractAll(content, ext)
+      : { imports: [], symbols: [] };
+
+    // Convert tree-sitter symbols to the legacy functions format
+    const functions = tsSymbols
+      .filter(s => s.kind === 'function' || s.kind === 'variable')
+      .map(s => ({ name: s.name, params: '—', returnType: '—' }));
+
+    // Check if this is an API handler file (needs deep Babel extraction)
+    if (!isApiHandlerFile(filename, tsImports, content)) {
+      // Non-API file: tree-sitter only, no Babel
+      return {
+        routes:      [],
+        models:      [],
+        functions,
+        envVars:     _extractEnvVarsFromImports(content),
+        dbTables:    [],
+        fetches:     [],
+        storageKeys: [],
+        _tsImports:  tsImports,
+        _tsSymbols:  tsSymbols,
+      };
+    }
+
+    // API handler file: run Babel for deep route/model extraction
     let ast;
     try {
       ast = parser.parse(content, PARSE_OPTIONS);
     } catch (err) {
-      console.warn(`[CARTO] JS parse failed on ${filename}: ${err.message} — skipping`);
-      return { routes: [], models: [], functions: [], envVars: [], dbTables: [], fetches: [], storageKeys: [] };
+      console.warn(`[CARTO] JS Babel parse failed on ${filename}: ${err.message} — using tree-sitter only`);
+      return {
+        routes:      [],
+        models:      [],
+        functions,
+        envVars:     _extractEnvVarsFromImports(content),
+        dbTables:    [],
+        fetches:     [],
+        storageKeys: [],
+        _tsImports:  tsImports,
+        _tsSymbols:  tsSymbols,
+      };
     }
 
     return {
@@ -33,6 +105,8 @@ module.exports = {
       dbTables:    [],
       fetches:     extractJSFetches(ast),
       storageKeys: [],
+      _tsImports:  tsImports,
+      _tsSymbols:  tsSymbols,
     };
   },
 
@@ -43,7 +117,22 @@ module.exports = {
   _extractJSFetches: extractJSFetches,
   _extractJSFunctions: extractJSFunctions,
   _PARSE_OPTIONS: PARSE_OPTIONS,
+  _isApiHandlerFile: isApiHandlerFile,
 };
+
+/**
+ * Fast regex-based env var extraction as fallback when Babel isn't run.
+ * Covers process.env.VAR and process.env['VAR'] patterns.
+ */
+function _extractEnvVarsFromImports(content) {
+  const vars = new Set();
+  const pattern = /process\.env\.([A-Z_][A-Z0-9_]*)|process\.env\[['"]([A-Z_][A-Z0-9_]*)['"]]/g;
+  let m;
+  while ((m = pattern.exec(content)) !== null) {
+    vars.add(m[1] || m[2]);
+  }
+  return [...vars].sort();
+}
 
 // ---------------------------------------------------------------------------
 // AST traversal helper
