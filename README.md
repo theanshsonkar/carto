@@ -4,38 +4,54 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![npm downloads](https://img.shields.io/npm/dm/carto-md)](https://www.npmjs.com/package/carto-md)
 
-**The codebase intelligence layer every AI tool queries instead of guessing.**
+**The structural intelligence layer for AI coding tools.**
 
 ```bash
 npm install -g carto-md
 ```
 
-Carto maps your codebase — routes, models, import graph, domain context — and exposes it as a live MCP server that Kiro, Cursor, and Claude can query mid-task. No hallucinations about your own project. No rebuilding context every session.
+Carto indexes your codebase — routes, models, import graph, blast radius, domain clusters — and keeps it live. Every AI tool you use gets accurate structural facts about your project instead of guessing.
 
 ---
 
-## The problem
+## What it does in one sentence
 
-AI coding tools are blind to your actual project. Every session starts from zero.
+**Your file changes. Carto re-indexes in ~130ms. Every AI tool instantly knows what broke.**
 
-- Claude hallucinates your schema
-- Copilot suggests wrong field names
-- Kiro asks what framework you're using
-- You rebuild context manually, every time
+---
 
-`AGENTS.md` fixes this — a standard file every AI tool reads. But it's static. You write it manually. It gets stale the moment your code changes.
+## Proof — Supabase repo (6,335 files)
 
-**Carto makes it live. And queryable.**
+Fresh `carto init`. No prior knowledge of the repo.
 
-| | Without Carto | With Carto |
-|---|---|---|
-| Knows blast radius before editing | Never | Always, instantly |
-| Knows which routes break | Never | Exact list |
-| Plans multi-file changes | Guesses | Fully informed |
-| Hallucinates field names | Often | Never |
-| Understands codebase on session start | 10–20 min | 0 |
-| Works across Kiro, Cursor, Claude, Copilot | Separately | One shared graph |
-| Stays current as code changes | Goes stale | Live on every save |
+```
+Detected:   nextjs (javascript)
+Indexed:    310 files in 422ms
+Routes:     104 API endpoints
+Models:     3,598 extracted
+Domains:    AUTH · DATABASE · PAYMENTS · EVENTS · NOTIFICATIONS · TRPC · CORE
+Import edges: 5,248
+```
+
+Then a file changes:
+
+```
+packages/ui/src/lib/utils/cn.ts updated
+
+Re-indexed in 129ms.
+
+Risk: 🔴 HIGH
+Directly affected: 55 files
+Potentially affected: 83 files total
+
+Files that depend on this:
+  → packages/ui/src/components/Button/Button.tsx
+  → packages/ui/src/components/Modal/Modal.tsx
+  → packages/ui/src/components/shadcn/ui/button.tsx
+  → ...83 more
+```
+
+One file changed. Carto told you exactly what broke. In 129ms. On a 6,335 file monorepo.
 
 ---
 
@@ -44,22 +60,36 @@ AI coding tools are blind to your actual project. Every session starts from zero
 Same task, two Claude sessions: *"Add a `notes` field to the booking model."*
 
 **Without Carto:**
-- Wrong API route: suggested `POST /api/bookings` → actual is `POST /v2/bookings`
-- Wrong handler: suggested `handleNewBooking.ts` → not the creation path
-- Wrong file paths: pointed to v1 API → v1 is legacy
-- Wrong tRPC file: `bookings.tsx` → actual is `bookings/_router.tsx`
-- Field list: ~15 fields guessed → missing 20+ real fields
 
-**With Carto:**
-- Correct API route ✅
-- Correct controller path ✅
-- Correct tRPC file ✅
-- All 35+ booking fields returned accurately ✅
-- Answered in one shot. No follow-up needed.
+| | What AI suggested | Reality |
+|--|---|---|
+| API route | `POST /api/bookings` | `POST /v2/bookings` |
+| Handler | `handleNewBooking.ts` | Not the creation path |
+| File path | v1 API files | v1 is legacy |
+| tRPC file | `bookings.tsx` | `bookings/_router.tsx` |
+| Fields found | ~15 guessed | 35+ actual fields |
 
-**4 wrong file paths → 0. 20 missing fields → 0. Zero follow-up clarifications.**
+**With Carto:** Correct route, correct handler, correct file, all 35+ fields. One shot. Zero follow-ups.
+
+**4 wrong paths → 0. 20 missing fields → 0.**
 
 Not smarter AI. The same AI with accurate facts.
+
+---
+
+## Performance
+
+Tested on Supabase (6,335 files, 310 watched):
+
+| Operation | Time |
+|-----------|------|
+| Cold start (first `carto init`) | 422ms |
+| Warm start (files cached) | 66ms |
+| One file change (incremental re-index) | ~130ms |
+| Blast radius lookup | <5ms |
+| Route search | <1ms |
+
+The secret: file hashes. On warm runs, Carto skips every file whose content hasn't changed. On a file save, only that one file gets re-parsed. The rest loads from disk cache in milliseconds.
 
 ---
 
@@ -67,172 +97,70 @@ Not smarter AI. The same AI with accurate facts.
 
 ```
 carto init
-      ↓
-Carto maps your codebase
-  → AGENTS.md (79 lines — lean map every AI reads)
-  → .carto/context/AUTH.md, PAYMENTS.md, TRPC.md, DATABASE.md
-  → .carto/map.json (import graph, routes, blast radius)
-  → MCP server auto-wired into Kiro, Cursor, Claude Desktop
-      ↓
-carto watch  (keeps everything live on every file save)
-carto serve  (MCP server — AI tools query graph mid-task)
+  ↓
+Hashes every file → skips unchanged on re-runs
+Builds import graph → knows who depends on who
+Extracts routes, models, functions, env vars
+Clusters into domains (AUTH, PAYMENTS, DATABASE...)
+Calculates blast radius for every file
+Writes AGENTS.md + .carto/context/*.md
+Auto-wires MCP into Kiro, Cursor, Claude Desktop
+  ↓
+carto watch
+  ↓
+File saved → re-parse 1 file → update graph → ~130ms
 ```
 
 ---
 
-## MCP — AI queries your codebase live
+## 12 MCP tools — AI queries your codebase live
 
-`carto init` auto-wires the MCP config into Kiro, Cursor, and Claude Desktop automatically. When Kiro or Cursor is mid-task, it can call Carto directly instead of guessing:
+`carto serve` exposes a local MCP server. Kiro, Cursor, and Claude query it mid-task instead of guessing.
 
-**`get_blast_radius("src/lib/payments.ts")`**
-```
-Files affected:
-  → apps/web/app/api/checkout/route.ts
-  → apps/web/app/api/webhook/route.ts
-  → packages/trpc/routers/billing.ts
-
-Routes at risk:
-  → POST /api/checkout
-  → POST /api/webhook
-  → POST /trpc/createSubscription
-```
-
-**`get_routes()`**
-```
-| Method | Path                        | Handler             |
-|--------|-----------------------------|---------------------|
-| POST   | /api/auth/signup            | POST                |
-| GET    | /api/auth/oauth/me          | GET                 |
-| POST   | /trpc/createBooking         | createBooking       |
-| GET    | /trpc/getAvailability       | getAvailability     |
-| ...    | ...                         | ...                 |
-```
-
-**`get_domain("AUTH")`**
-Returns `AUTH.md` — all auth routes, session models, JWT functions, env vars.
-
-**`get_structure()`**
-Returns import graph, entry points, high impact files, tech stack.
-
-### Manual MCP config (if auto-wire didn't detect your IDE)
-
-**Kiro** — add to `~/.kiro/settings/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "carto": {
-      "command": "carto",
-      "args": ["serve"],
-      "cwd": "/path/to/your/project"
-    }
-  }
-}
-```
-
-**Cursor** — add to `~/.cursor/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "carto": {
-      "command": "carto",
-      "args": ["serve"],
-      "cwd": "/path/to/your/project"
-    }
-  }
-}
-```
-
-**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
-```json
-{
-  "mcpServers": {
-    "carto": {
-      "command": "carto",
-      "args": ["serve"],
-      "cwd": "/path/to/your/project"
-    }
-  }
-}
-```
-
-Then run `carto serve` in your project directory alongside `carto watch`.
+| Tool | What it returns |
+|------|----------------|
+| `get_blast_radius(file)` | Risk level, all affected files, routes at risk per domain |
+| `get_context(file)` | Everything about a file in one call — domain, blast radius, neighbors, routes, models |
+| `get_routes()` | All API endpoints with file mapping |
+| `get_structure()` | Import graph, entry points, high-impact files, tech stack |
+| `get_domain(name)` | All routes, models, functions for AUTH / PAYMENTS / DATABASE / etc. |
+| `get_neighbors(file, hops)` | Import graph neighbors — nodes and edges |
+| `get_cross_domain()` | Import edges that cross domain boundaries |
+| `search_routes(query)` | Search API routes by path or method |
+| `get_models(domain?)` | All data models, optionally filtered by domain |
+| `get_high_impact_files(n)` | Top N files by blast radius — highest-risk to change |
+| `get_env_vars(domain?)` | All env vars with domain mapping |
+| `get_domains_list()` | All detected domains with file, route, model counts |
 
 ---
 
-## Domain context files
+## What gets extracted
 
-Large codebases kill AI accuracy. A 2900-line AGENTS.md means AI reads 500 lines and guesses the rest.
-
-Carto splits context by domain automatically:
-
-```
-AGENTS.md                  → 79 lines, always loaded
-.carto/context/
-  AUTH.md                  → auth routes, session models, JWT functions
-  PAYMENTS.md              → Stripe routes, billing models
-  TRPC.md                  → all tRPC procedures
-  DATABASE.md              → every model, schema, table
-  EVENTS.md                → webhooks, queues, cron jobs
-  CORE.md                  → shared utilities
-```
-
-AI reads AGENTS.md always. Then reads only the relevant domain file for the current task. 400 lines of exact context instead of 2900 lines of everything.
-
-Domain assignment uses your import graph — files that import each other cluster together, regardless of folder names.
+| Category | What Carto finds |
+|----------|-----------------|
+| **Routes** | FastAPI, Express, Next.js App/Pages Router, tRPC procedures, Django URLs, Gin/Echo (Go) |
+| **Models** | Prisma, Pydantic, SQLAlchemy, Django ORM, TypeScript interfaces/types, Zod schemas, Drizzle tables |
+| **Graph** | Full import graph — who imports what, transitive dependencies up to 5 hops |
+| **Blast radius** | Risk level (HIGH/MEDIUM/LOW) per file and per route |
+| **Domains** | AUTH, PAYMENTS, DATABASE, EVENTS, TRPC, NOTIFICATIONS, CORE — auto-clustered from imports |
+| **Events** | EventEmitter listeners, webhook handlers, queue jobs, cron schedules |
+| **Env vars** | Every `process.env` / `os.Getenv` call — names only, never values |
+| **Functions** | Signatures with param names and return types |
 
 ---
 
-## Know what breaks before you break it
+## Languages and frameworks
 
-```bash
-carto impact apps/web/app/api/auth/signup/route.ts
+| Language | Frameworks |
+|----------|------------|
+| TypeScript / JavaScript | Express, Next.js (App + Pages Router), tRPC, Drizzle, Zod |
+| Python | FastAPI, Pydantic, SQLAlchemy, Django |
+| Go | Gin, Echo, Chi, net/http |
+| R | Plumber, Shiny, R6, S7 |
+| Schema | Prisma |
+| HTML | fetch() calls |
 
-# Impact analysis: apps/web/app/api/auth/signup/route.ts
-#
-# Imported by:
-#   → apps/web/app/api/auth/signup/handlers/calcomSignupHandler.ts
-#   → apps/web/app/api/auth/signup/handlers/selfHostedHandler.ts
-#
-# Routes at risk:
-#   → POST /api/auth/signup
-#   → ALL /api/auth/signup/handlers
-#
-# Risk: MEDIUM
-```
-
-No AI. No cloud. Runs in under a second. From your live import graph.
-
----
-
-## Install
-
-```bash
-npm install -g carto-md
-```
-
-Or without installing:
-
-```bash
-npx carto-md init
-```
-
----
-
-## Usage
-
-```bash
-cd your-project
-carto init
-```
-
-That's it. Carto:
-- Maps your codebase
-- Generates AGENTS.md + domain context files
-- Auto-wires MCP into Kiro, Cursor, Claude Desktop
-- Installs a git hook — syncs on every commit
-
-Run `carto watch` in background for live updates on every file save.
-Run `carto serve` to start the MCP server manually if needed.
+More via community — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -240,54 +168,165 @@ Run `carto serve` to start the MCP server manually if needed.
 
 | Command | What it does |
 |---------|-------------|
-| `carto init` | Map codebase, generate context files, wire MCP into IDEs |
-| `carto watch` | Live updates on every file save |
-| `carto sync` | One-time manual refresh |
-| `carto serve` | Start MCP server for Kiro/Cursor/Claude queries |
-| `carto impact <file>` | Show blast radius before touching a file |
-| `carto remove` | Remove AGENTS.md and .carto/ from this project |
+| `carto init` | Detect project, index codebase, generate AGENTS.md, wire MCP |
+| `carto watch` | Incremental live re-index on every file save (~130ms) |
+| `carto sync` | One-time manual re-index |
+| `carto impact <file>` | Blast radius — risk level, affected files, routes at risk |
+| `carto check` | Cross-domain violations, high-risk uncommitted changes, domain health |
+| `carto serve` | Start MCP server for Kiro / Cursor / Claude |
+| `carto remove` | Remove AGENTS.md and .carto/ from project |
 | `carto --version` | Show version |
 
 ---
 
-## Works with
+## `carto check`
 
-| Language | Frameworks |
-|----------|------------|
-| Python | FastAPI, Pydantic |
-| JavaScript | Express, Next.js |
-| TypeScript | Express, Next.js, Prisma, tRPC |
-| R | Plumber, Shiny, R6, S7 |
-| HTML | fetch() calls |
+Run before committing. Tells you what's risky before you push.
 
-More languages via community — open an issue or see [CONTRIBUTING.md](CONTRIBUTING.md).
+```
+── Carto Check ───────────────────────────────────────
+
+  Files indexed : 310
+  Routes found  : 104
+  Import edges  : 5,248
+  Domains       : AUTH · DATABASE · PAYMENTS · EVENTS · CORE
+
+  ⚠️  High-risk uncommitted changes (1):
+     🔴 src/lib/auth.service.ts
+        11 files depend on this — blast risk: HIGH
+
+  ✅ No cross-domain dependency violations
+
+  🔥 Top high-impact files:
+      83 dependents — packages/ui/src/lib/utils/cn.ts
+      35 dependents — packages/pg-meta/src/pg-format/index.ts
+      34 dependents — packages/icons/src/createSupabaseIcon.ts
+```
 
 ---
 
-## What gets extracted
+## `carto impact`
 
-- API routes — FastAPI, Express, Next.js App Router, tRPC procedures
-- Data models — Pydantic, Prisma, TypeScript interfaces
-- Function signatures — across all files
-- Import graph — which files depend on which
-- Domain clusters — AUTH, PAYMENTS, TRPC, DATABASE, EVENTS
-- Blast radius — what breaks if you change a file
-- Environment variable names — never values
-- Database tables — SQLAlchemy, Django ORM, Prisma
+```bash
+carto impact src/middleware.ts
+
+Impact analysis: src/middleware.ts
+
+Risk: 🔴 HIGH
+Directly affected: 11 files across 2 domain(s)
+Domains impacted: AUTH, PAYMENTS
+
+Files that depend on this (11):
+  → src/routes/auth.ts
+  → src/routes/billing.ts
+  → ...
+
+Routes at risk (4):
+  🔴 POST /api/auth/login
+  🔴 POST /api/billing/checkout
+  🟡 GET  /api/users/me
+  🟢 GET  /api/health
+```
 
 ---
 
-## What Carto never touches
+## Programmatic API
 
-Your manual sections stay yours forever. Carto only rewrites between its own markers:
+Use Carto as a module — no CLI required. This is how tools embed it.
+
+```js
+const { Carto } = require('carto-md');
+
+const carto = new Carto();
+await carto.index('/path/to/project');
+
+// Everything about a file in one call
+const ctx = carto.getContextForFile('src/auth/auth.service.ts');
+// {
+//   domain: 'AUTH',
+//   routes: ['POST /api/auth/login', 'GET /api/auth/me'],
+//   models: ['User', 'Session'],
+//   blastRadius: { risk: 'HIGH', directlyAffected: { files: 8, domains: 2 } },
+//   neighbors: { nodes: [...], edges: [...] },  // React Flow compatible
+//   crossDomainDeps: [...],
+//   domainContext: '...AUTH.md content...'
+// }
+
+// Live updates
+carto.on('updated', ({ file, blastRadius }) => {
+  console.log(`${file} changed — blast risk: ${blastRadius.risk}`);
+});
+
+await carto.reindex('src/auth/auth.service.ts'); // ~130ms
+```
+
+**Full API:**
+
+```js
+carto.getBlastRadius(file)       // Risk + affected files + routes
+carto.getNeighbors(file, hops)   // Import graph — React Flow nodes/edges
+carto.getCrossDomainDeps()       // Cross-boundary import edges
+carto.getHighImpactFiles(n)      // Top N by blast radius
+carto.searchRoutes(query)        // Route search
+carto.getRoutes()                // All API routes
+carto.getDomain(name)            // Domain cluster + context file
+carto.getDomainsList()           // All domains with counts
+carto.getModels(domain?)         // All models
+carto.getEnvVars(domain?)        // Env vars with domain mapping
+carto.getMeta()                  // Index stats
+```
+
+Events: `status` · `indexed` · `updated`
+
+---
+
+## Domain context files
+
+Large codebases kill AI accuracy. A 2,900-line AGENTS.md means the AI reads 500 lines and guesses the rest.
+
+Carto splits context by domain automatically:
 
 ```
-<!-- CARTO:AUTO:START -->
-... auto-generated content ...
-<!-- CARTO:AUTO:END -->
-
-Your manual notes here. Never touched.
+AGENTS.md                 → lean map, always loaded by every AI
+.carto/context/
+  AUTH.md                 → auth routes, session models, JWT functions, middleware
+  PAYMENTS.md             → Stripe routes, billing models, webhook handlers
+  DATABASE.md             → every model, schema, table, migration pattern
+  EVENTS.md               → webhooks, queues, cron jobs, event emitters
+  TRPC.md                 → all procedures with input/output schemas
+  CORE.md                 → shared utilities
 ```
+
+AI reads AGENTS.md always. Then fetches only the domain file relevant to the task. 400 lines of exact context instead of 2,900 lines of everything.
+
+Domain assignment runs on your import graph — files that import each other cluster together, regardless of folder names.
+
+---
+
+## MCP config (if auto-wire missed your IDE)
+
+**Kiro** — `~/.kiro/settings/mcp.json`
+```json
+{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+**Cursor** — `~/.cursor/mcp.json`
+```json
+{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+**Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`
+```json
+{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+---
+
+## AI tools that read AGENTS.md natively
+
+Cursor · GitHub Copilot · Kiro · Claude Desktop · Claude Code · Codex · VS Code · Gemini CLI · Devin · Jules
+
+Carto generates the file they all read. One source of truth. Every tool stays accurate.
 
 ---
 
@@ -298,59 +337,49 @@ Carto fixes **factual hallucination about your own project**:
 - AI guessing wrong routes → fixed
 - AI guessing wrong field names → fixed
 - AI assuming wrong framework → fixed
-- AI guessing wrong DB schema → fixed
 - AI not knowing blast radius → fixed
+- AI losing context between sessions → fixed
+- Rebuilding project context every session → gone
 
-What Carto does not fix: AI reasoning badly, wrong implementation logic, misunderstanding what you want. Carto makes AI **accurate** about your project. Not smarter. Accurate. Different thing.
-
----
-
-## AI tools that read AGENTS.md
-
-- **Cursor** — via context rules + MCP
-- **GitHub Copilot** — via workspace instructions
-- **Kiro** — natively + MCP
-- **Claude Desktop** — via MCP
-- **Claude Code** — natively
-- **Codex** — natively
-- **VS Code** — via workspace context
-- **Gemini CLI** — natively
-- **Devin** — natively
-- **Jules** — natively
+What Carto does not fix: AI reasoning badly, wrong implementation logic, misunderstanding requirements. Carto makes AI **accurate** about your project. Not smarter. Accurate. Different thing.
 
 ---
 
-## What it does NOT do
+## What Carto never does
 
-- No cloud. No servers. No telemetry. No tracking.
-- Your code never leaves your machine.
-- No paid tiers. Free forever. MIT license.
-
----
-
-## Security
-
-Carto never writes secrets into AGENTS.md. `.cartoignore` blocks `.env` files, secret files, key files, and credential files by default. The sanitizer strips API key patterns from extracted code.
+- Sends your code anywhere. Local only.
+- Writes secrets into AGENTS.md. `.cartoignore` blocks `.env` and credential files by default.
+- Touches your manual notes. It writes only between `<!-- CARTO:AUTO:START -->` and `<!-- CARTO:AUTO:END -->`.
+- Costs money. MIT license. Free forever.
 
 ---
 
-## Contributing
+## Install
 
-Python, JS/TS, and R today. Want Go, Ruby, Django, Rails? Open an issue — or read [CONTRIBUTING.md](CONTRIBUTING.md) to add it yourself.
+```bash
+npm install -g carto-md
+```
+
+```bash
+cd your-project
+carto init
+```
+
+That's it.
 
 ---
 
 ## Origin
 
-I was building [Emfirge](https://emfirge.cloud) — a cloud security agent for AWS.
+I was building Emfirge — a cloud security agent for AWS.
 
-To make the AI inside Emfirge understand infrastructure, I wrote a module called `cartography.py`. It mapped AWS resources, built a graph of how they connected, and wrote it into a structured map. The AI stopped hallucinating. It worked with accurate facts — not guesses.
+To make the AI understand infrastructure, I built a module that mapped AWS resources into a graph. The AI stopped hallucinating. It worked with facts.
 
-Halfway through, I switched AI tools. Opened a new session. Had to explain everything again from scratch.
+Then I switched AI tools. New session. Had to explain the whole project again from scratch.
 
-I thought: *I just built a cartography system so AI can understand infrastructure. Why doesn't this exist for codebases?*
+I thought: *I just built a cartography system for infrastructure. Why doesn't this exist for codebases?*
 
-Carto is that. Same insight, different domain.
+Carto is that.
 
 ---
 
@@ -360,4 +389,4 @@ MIT — free forever.
 
 ---
 
-*Built because AGENTS.md won. Someone had to keep it alive — and make it queryable.*
+*Your code changes. Carto knows. Every AI you use knows.*
