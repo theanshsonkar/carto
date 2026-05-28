@@ -12,6 +12,7 @@ Commands:
   watch         Read .carto/config.json, start file watcher
   sync          Read .carto/config.json, run one sync, exit
   impact <file> Show which files and routes are affected by changing a file
+  check         Report cross-domain deps, high-risk uncommitted changes, domain health
   remove        Remove AGENTS.md and .carto/ from this project
   serve         Start MCP server for AI tool integration
 
@@ -48,6 +49,11 @@ if (command === 'init') {
 } else if (command === 'impact') {
   const fileArg = process.argv[3];
   require('./impact').run(process.cwd(), fileArg);
+} else if (command === 'check') {
+  require('./check').run(process.cwd()).catch(err => {
+    console.error(`[CARTO] Fatal error: ${err.message}`);
+    process.exit(1);
+  });
 } else if (command === 'remove') {
   require('./remove').run(process.cwd());
 } else if (command === 'serve') {
