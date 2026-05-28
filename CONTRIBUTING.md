@@ -20,13 +20,13 @@ Framework-specific route and model extraction lives in `src/extractors/`. Each f
 
 Currently supported:
 - **JS/TS**: Express, Next.js (App + Pages Router), tRPC, Drizzle, Zod
-- **Python**: FastAPI, Pydantic, SQLAlchemy, Django (models + URLs)
-- **Go**: Gin, Echo, Chi, net/http
+- **Python**: FastAPI, Flask, Pydantic, SQLAlchemy, Django (models + URLs)
+- **Go**: Gin, Echo, Chi, Fiber, net/http — routes, structs, import graph
 - **Schema**: Prisma
 - **Frontend**: HTML fetch()
 - **R**: Plumber, Shiny, R6, S7
 
-Wanted: Rails, Laravel, NestJS, Hono, Spring, Flask, Fastify.
+Wanted: Rails, Laravel, NestJS, Hono, Spring, Fastify.
 
 ### Tier 3 — Core (review carefully before merging)
 
@@ -83,11 +83,26 @@ module.exports = {
 
 ## How to add a domain keyword
 
-Domain clustering lives in `src/agents/domains.js`. The `DOMAIN_MAP` array maps keywords to domain names. If your framework creates a new domain category, add it:
+Domain clustering lives in `src/agents/domains.js`. The `DEFAULT_DOMAIN_MAP` array maps keywords to domain names. If your framework creates a new domain category, add it:
 
 ```js
 { keywords: ['graphql', 'resolver', 'mutation'], domain: 'GRAPHQL' },
 ```
+
+### Project-level custom domains
+
+For non-web repos (CLIs, desktop apps, compilers), users can define their own domains in `carto.config.json` at the project root without touching `domains.js`:
+
+```json
+{
+  "domains": {
+    "EDITOR": ["editor", "monaco", "text"],
+    "PLATFORM": ["platform", "service", "registry"]
+  }
+}
+```
+
+Custom config overrides the default domain map entirely for that project.
 
 ---
 

@@ -138,11 +138,11 @@ File saved → re-parse 1 file → update graph → ~130ms
 
 | Category | What Carto finds |
 |----------|-----------------|
-| **Routes** | FastAPI, Express, Next.js App/Pages Router, React Router (JSX + createBrowserRouter), tRPC procedures, Django URLs, Gin/Echo (Go) |
-| **Models** | Prisma, Pydantic, SQLAlchemy, Django ORM, TypeScript interfaces/types, Zod schemas, Drizzle tables |
-| **Graph** | Full import graph: who imports what, transitive dependencies up to 5 hops |
+| **Routes** | FastAPI, Flask, Express, Next.js App/Pages Router, React Router (JSX + createBrowserRouter), tRPC procedures, Django URLs, Gin/Echo/Chi/Fiber (Go) |
+| **Models** | Prisma, Pydantic, SQLAlchemy, Django ORM, TypeScript interfaces/types, Zod schemas, Drizzle tables, Go structs |
+| **Graph** | Full import graph: who imports what, transitive dependencies up to 5 hops — JS/TS, Python, Go, R |
 | **Blast radius** | Risk level (HIGH/MEDIUM/LOW) per file and per route |
-| **Domains** | AUTH, PAYMENTS, DATABASE, EVENTS, TRPC, NOTIFICATIONS, CORE, auto-clustered from imports |
+| **Domains** | AUTO-clustered from imports. Defaults: AUTH, PAYMENTS, DATABASE, EVENTS, TRPC, NOTIFICATIONS, CORE. Custom domains via `carto.config.json`. |
 | **Events** | EventEmitter listeners, webhook handlers, queue jobs, cron schedules |
 | **Env vars** | Every `process.env` / `os.Getenv` call (names only, never values) |
 | **Functions** | Signatures with param names and return types |
@@ -154,13 +154,32 @@ File saved → re-parse 1 file → update graph → ~130ms
 | Language | Frameworks |
 |----------|------------|
 | TypeScript / JavaScript | Express, Next.js (App + Pages Router), React Router, tRPC, Drizzle, Zod |
-| Python | FastAPI, Pydantic, SQLAlchemy, Django |
-| Go | Gin, Echo, Chi, net/http |
+| Python | FastAPI, Flask, Pydantic, SQLAlchemy, Django |
+| Go | Gin, Echo, Chi, Fiber, net/http — including full import graph |
 | R | Plumber, Shiny, R6, S7 |
 | Schema | Prisma |
 | HTML | fetch() calls |
 
 More via community. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## Custom domains (`carto.config.json`)
+
+By default Carto clusters into web-app domains (AUTH, PAYMENTS, etc.). For any other architecture — desktop apps, CLIs, compilers, monorepos — define your own:
+
+```json
+{
+  "domains": {
+    "EDITOR": ["editor", "monaco", "text", "cursor"],
+    "WORKBENCH": ["workbench", "layout", "panel", "sidebar"],
+    "PLATFORM": ["platform", "service", "registry"],
+    "BASE": ["base", "common", "util"]
+  }
+}
+```
+
+Drop `carto.config.json` in your project root. Carto picks it up on the next `carto init` or `carto sync`. The import graph and blast radius always work regardless — custom domains only affect how files are clustered and labeled.
 
 ---
 

@@ -7,6 +7,7 @@ const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 've
 const PYTHON_PRIORITY = ['fastapi', 'django', 'flask', 'python-generic'];
 const JS_PRIORITY = ['nextjs', 'express', 'react', 'node-generic'];
 const R_PRIORITY = ['plumber', 'shiny', 'r-generic'];
+const GO_PRIORITY = ['gin', 'echo', 'chi', 'fiber', 'go-generic'];
 
 /**
  * detectFramework(projectRoot) → { framework, language, confidence, secondaryFramework?, secondaryLanguage? }
@@ -17,7 +18,7 @@ const R_PRIORITY = ['plumber', 'shiny', 'r-generic'];
  * (primary = highest priority overall, secondary = the other language).
  */
 function detectFramework(projectRoot) {
-  const candidates = findFile(projectRoot, ['requirements.txt', 'package.json', 'pyproject.toml', 'DESCRIPTION'], 3);
+  const candidates = findFile(projectRoot, ['requirements.txt', 'package.json', 'pyproject.toml', 'DESCRIPTION', 'go.mod'], 3);
 
   const pythonDetections = new Set();
   const jsDetections = new Set();
@@ -43,9 +44,15 @@ function detectFramework(projectRoot) {
     for (const r of detectAllFromRFiles(projectRoot)) rDetections.add(r);
   }
 
+  const goDetections = new Set();
+  for (const f of candidates.filter(f => path.basename(f) === 'go.mod')) {
+    for (const r of detectAllFromGoMod(f)) goDetections.add(r);
+  }
+
   const bestPython = PYTHON_PRIORITY.find(fw => pythonDetections.has(fw)) || null;
   const bestJS = JS_PRIORITY.find(fw => jsDetections.has(fw)) || null;
   const bestR = R_PRIORITY.find(fw => rDetections.has(fw)) || null;
+  const bestGo = GO_PRIORITY.find(fw => goDetections.has(fw)) || null;
 
   if (bestPython && bestJS) {
     return {
@@ -57,17 +64,10 @@ function detectFramework(projectRoot) {
     };
   }
 
-  if (bestPython) {
-    return { framework: bestPython, language: 'python', confidence: 'high' };
-  }
-
-  if (bestJS) {
-    return { framework: bestJS, language: 'javascript', confidence: 'high' };
-  }
-
-  if (bestR) {
-    return { framework: bestR, language: 'r', confidence: 'high' };
-  }
+  if (bestPython) return { framework: bestPython, language: 'python', confidence: 'high' };
+  if (bestJS)     return { framework: bestJS, language: 'javascript', confidence: 'high' };
+  if (bestGo)     return { framework: bestGo, language: 'go', confidence: 'high' };
+  if (bestR)      return { framework: bestR, language: 'r', confidence: 'high' };
 
   return { framework: 'unknown', language: 'unknown', confidence: 'none' };
 }
@@ -138,6 +138,18 @@ function detectAllFromPackageJson(filePath) {
   if (deps['react'] && !deps['next']) detected.push('react');
   if (!detected.length) detected.push('node-generic');
 
+  return detected;
+}
+
+function detectAllFromGoMod(filePath) {
+  const detected = [];
+  let content;
+  try { content = fs.readFileSync(filePath, 'utf-8').toLowerCase(); } catch { return detected; }
+  if (content.includes('gin-gonic/gin'))   detected.push('gin');
+  if (content.includes('labstack/echo'))   detected.push('echo');
+  if (content.includes('go-chi/chi'))      detected.push('chi');
+  if (content.includes('gofiber/fiber'))   detected.push('fiber');
+  if (!detected.length)                    detected.push('go-generic');
   return detected;
 }
 

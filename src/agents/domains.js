@@ -1,6 +1,6 @@
 const path = require('path');
 
-const DOMAIN_MAP = [
+const DEFAULT_DOMAIN_MAP = [
   { keywords: ['auth', 'login', 'session', 'oauth', 'token', 'jwt', 'password', 'credential'], domain: 'AUTH' },
   { keywords: ['payment', 'billing', 'stripe', 'invoice', 'charge', 'subscription', 'checkout'], domain: 'PAYMENTS' },
   { keywords: ['trpc', 'router', 'routers', 'procedure'], domain: 'TRPC' },
@@ -8,6 +8,29 @@ const DOMAIN_MAP = [
   { keywords: ['webhook', 'event', 'queue', 'job', 'worker', 'cron', 'task'], domain: 'EVENTS' },
   { keywords: ['email', 'notification', 'mail', 'sms', 'alert'], domain: 'NOTIFICATIONS' },
 ];
+
+// Active domain map — replaced by setDomainMap() when carto.config.json is present
+let DOMAIN_MAP = DEFAULT_DOMAIN_MAP;
+
+/**
+ * setDomainMap(customDomains)
+ * Override the domain map from carto.config.json.
+ *
+ * customDomains format:
+ *   { "EDITOR": ["editor", "monaco"], "WORKBENCH": ["workbench", "panel"] }
+ *
+ * Pass null to reset to defaults.
+ */
+function setDomainMap(customDomains) {
+  if (!customDomains || typeof customDomains !== 'object' || Array.isArray(customDomains)) {
+    DOMAIN_MAP = DEFAULT_DOMAIN_MAP;
+    return;
+  }
+  DOMAIN_MAP = Object.entries(customDomains).map(([domain, keywords]) => ({
+    domain: domain.toUpperCase(),
+    keywords: keywords.map(k => String(k).toLowerCase()),
+  }));
+}
 
 /**
  * getDomainForFile(relPath) → domain string or null
@@ -112,7 +135,7 @@ function clusterByDomain(data) {
 
   function getCluster(domain) {
     if (!clusters[domain]) {
-      clusters[domain] = { routes: [], models: [], functions: {}, envVars: [], dbTables: [], fileMap: [] };
+      clusters[domain] = { routes: [], models: [], functions: {}, envVars: [], dbTables: [], fileMap: [], files: [] };
     }
     return clusters[domain];
   }
@@ -182,7 +205,12 @@ function clusterByDomain(data) {
     getCluster(domain).fileMap.push(entry);
   }
 
+  // Files — populate from assignments so cluster.files is always set
+  for (const [file, domain] of assignments.entries()) {
+    getCluster(domain).files.push(file);
+  }
+
   return clusters;
 }
 
-module.exports = { clusterByDomain, getDomainForFile, buildFileAssignments };
+module.exports = { clusterByDomain, getDomainForFile, buildFileAssignments, setDomainMap };

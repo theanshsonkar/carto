@@ -39,6 +39,8 @@ function extractImports(content, filePath, projectRoot) {
     rawImports = extractPythonImports(content, filePath, projectRoot);
   } else if (ext === '.r') {
     return extractRImports(content, filePath, projectRoot);
+  } else if (ext === '.go') {
+    return extractGoImports(content, filePath, projectRoot);
   }
 
   // Resolve and deduplicate
@@ -218,6 +220,79 @@ function resolveImportPath(importPath, fileDir, projectRoot, sourceExt) {
   }
 
   return null;
+}
+
+// ─── Go imports ──────────────────────────────────────────────────────────────
+
+// Cache go.mod module name per projectRoot — read once, reuse
+const _goModCache = new Map();
+
+function _getGoModuleName(projectRoot) {
+  if (_goModCache.has(projectRoot)) return _goModCache.get(projectRoot);
+  try {
+    const content = fs.readFileSync(path.join(projectRoot, 'go.mod'), 'utf-8');
+    const m = content.match(/^module\s+(\S+)/m);
+    const name = m ? m[1] : null;
+    _goModCache.set(projectRoot, name);
+    return name;
+  } catch {
+    _goModCache.set(projectRoot, null);
+    return null;
+  }
+}
+
+/**
+ * extractGoImports(content, filePath, projectRoot) → Array<string>
+ *
+ * Resolves local Go imports (same module) to actual .go files.
+ * Requires go.mod at projectRoot to determine the module name.
+ *
+ * Handles:
+ *   import "module/path/pkg"
+ *   import ( "module/path/pkg1" \n "module/path/pkg2" )
+ *   import alias "module/path/pkg"
+ */
+function extractGoImports(content, filePath, projectRoot) {
+  const moduleName = _getGoModuleName(projectRoot);
+  if (!moduleName) return [];
+
+  const results = new Set();
+
+  // Collect all import paths from both single and block imports
+  const importPaths = [];
+
+  // Single-line: import "path" or import alias "path"
+  const singleRe = /^import\s+(?:\w+\s+)?"([^"]+)"/gm;
+  let m;
+  while ((m = singleRe.exec(content)) !== null) importPaths.push(m[1]);
+
+  // Block: import ( ... )
+  const blockRe = /import\s*\(([^)]+)\)/g;
+  while ((m = blockRe.exec(content)) !== null) {
+    const block = m[1];
+    const lineRe = /"([^"]+)"/g;
+    let lm;
+    while ((lm = lineRe.exec(block)) !== null) importPaths.push(lm[1]);
+  }
+
+  // Resolve local imports only (starts with this module's name)
+  const prefix = moduleName + '/';
+  for (const imp of importPaths) {
+    if (!imp.startsWith(prefix)) continue;
+    const localPkg = imp.slice(prefix.length); // e.g. "internal/auth"
+    const pkgDir = path.join(projectRoot, localPkg);
+
+    // Find first non-test .go file in the package directory
+    try {
+      const entries = fs.readdirSync(pkgDir);
+      const goFile = entries.find(e => e.endsWith('.go') && !e.endsWith('_test.go'));
+      if (goFile) {
+        results.add(path.relative(projectRoot, path.join(pkgDir, goFile)));
+      }
+    } catch { /* directory doesn't exist or can't be read */ }
+  }
+
+  return [...results].sort();
 }
 
 /**

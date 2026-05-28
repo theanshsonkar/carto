@@ -11,7 +11,7 @@ const { WorkerPool } = require('./worker-pool');
 const { loadLanguagePlugins, getPluginForFile } = require('../extractors/loader');
 const { buildImportGraph } = require('../extractors/imports');
 const { buildStackLine } = require('../extractors/stack');
-const { getDomainForFile, buildFileAssignments } = require('../agents/domains');
+const { getDomainForFile, buildFileAssignments, setDomainMap } = require('../agents/domains');
 const { extractImports } = require('../extractors/imports');
 
 const plugins = loadLanguagePlugins();
@@ -39,6 +39,7 @@ class Carto extends EventEmitter {
     this._cache = null;
     this._projectRoot = null;
     this._pool = null;
+    this._domainByFile = null; // reverse map: relPath → domainName
   }
 
   // ─── Indexing ────────────────────────────────────────────────────────────
@@ -53,6 +54,14 @@ class Carto extends EventEmitter {
     const start = Date.now();
 
     this.emit('status', { state: 'indexing', progress: 0 });
+
+    // Load custom domain config if present
+    try {
+      const config = JSON.parse(fs.readFileSync(path.join(projectRoot, 'carto.config.json'), 'utf-8'));
+      setDomainMap(config.domains || null);
+    } catch {
+      setDomainMap(null); // reset to defaults
+    }
 
     const cartoDir = path.join(projectRoot, '.carto');
     try { fs.mkdirSync(cartoDir, { recursive: true }); } catch {}
@@ -146,6 +155,7 @@ class Carto extends EventEmitter {
     }
 
     recomputeGraphMetrics(this._cache);
+    this._buildDomainMap();
     this._cache.meta.indexDuration = Date.now() - start;
     this._cache.meta.lastIndexed = new Date().toISOString();
     this._cache.generated = new Date().toISOString();
@@ -185,6 +195,7 @@ class Carto extends EventEmitter {
     updateFileHash(this._projectRoot, relPath, content);
     saveGraphCache(this._projectRoot, this._cache);
 
+    this._buildDomainMap();
     const blastRadius = this.getBlastRadius(relPath);
     this.emit('status', { state: 'ready' });
     this.emit('updated', { file: relPath, blastRadius });
@@ -555,12 +566,17 @@ class Carto extends EventEmitter {
     return null;
   }
 
-  _getDomainForFile(relPath) {
-    const domains = this._cache.domains || {};
-    for (const [name, cluster] of Object.entries(domains)) {
-      if ((cluster.files || []).includes(relPath)) return name;
+  _buildDomainMap() {
+    this._domainByFile = {};
+    for (const [name, cluster] of Object.entries(this._cache.domains || {})) {
+      for (const file of (cluster.files || [])) {
+        this._domainByFile[file] = name;
+      }
     }
-    return null;
+  }
+
+  _getDomainForFile(relPath) {
+    return this._domainByFile ? (this._domainByFile[relPath] || null) : null;
   }
 
   _discoverFiles(projectRoot) {

@@ -25,11 +25,12 @@ function collapseMultilineDecorators(content) {
 }
 
 /**
- * Extracts HTTP routes from FastAPI and Django files.
+ * Extracts HTTP routes from FastAPI, Flask, and Django files.
  */
 function extractRoutes(content) {
   return [
     ...extractFastAPIRoutes(content),
+    ...extractFlaskRoutes(content),
     ...extractDjangoRoutes(content),
   ];
 }
@@ -58,6 +59,45 @@ function extractFastAPIRoutes(content) {
     }
     decoratorPattern.lastIndex = 0;
   }
+  return routes;
+}
+
+// ─── Flask ───────────────────────────────────────────────────────────────────
+
+function extractFlaskRoutes(content) {
+  const routes = [];
+
+  if (!content.includes('.route(') && !content.includes('from flask')) return routes;
+
+  // @app.route('/path') or @bp.route('/path', methods=['GET', 'POST'])
+  // Also handles: @api.route, @blueprint.route, any @x.route pattern
+  const decoratorRe = /@\w+\.route\s*\(\s*['"]([^'"]+)['"]\s*(?:,\s*methods\s*=\s*\[([^\]]+)\])?\s*\)/g;
+  const funcRe = /(?:async\s+)?def\s+(\w+)/;
+
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    decoratorRe.lastIndex = 0;
+    const match = decoratorRe.exec(lines[i]);
+    if (!match) continue;
+
+    const routePath = match[1];
+    const methodsRaw = match[2];
+    const methods = methodsRaw
+      ? methodsRaw.split(',').map(m => m.trim().replace(/['"]/g, '').toUpperCase()).filter(Boolean)
+      : ['GET'];
+
+    let functionName = '[anonymous]';
+    for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+      const fm = lines[j].match(funcRe);
+      if (fm) { functionName = fm[1]; break; }
+    }
+
+    for (const method of methods) {
+      routes.push({ method, path: routePath, functionName });
+    }
+  }
+
   return routes;
 }
 
