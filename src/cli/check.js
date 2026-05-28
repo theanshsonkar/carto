@@ -2,34 +2,38 @@
 
 const { execSync } = require('child_process');
 const path = require('path');
-const { Carto } = require('../../index.js');
+const fs = require('fs');
+const { SQLiteStore } = require('../store/sqlite-store');
 
 async function run(projectRoot) {
-  const carto = new Carto();
+  const dbPath = path.join(projectRoot, '.carto', 'carto.db');
 
-  try {
-    await carto.index(projectRoot, { useWorkers: false });
-  } catch (err) {
-    console.error(`[CARTO] Error loading index: ${err.message}`);
+  if (!fs.existsSync(dbPath)) {
+    console.error('[CARTO] No .carto/carto.db found. Run `carto sync` first.');
     process.exit(1);
   }
 
-  const meta = carto.getMeta();
-  const domains = carto.getDomainsList();
-  const crossDomain = carto.getCrossDomainDeps();
-  const highImpact = carto.getHighImpactFiles(20);
+  const store = new SQLiteStore(projectRoot);
+  store.open();
+
+  const structure = store.getStructure();
+  const domains = store.getDomainsList();
+  const crossDomain = store.getCrossDomainDeps();
+  const highImpact = store.getHighImpactFiles(20);
 
   let hasIssues = false;
 
   console.log('\n── Carto Check ─────────────────────────────────────────\n');
 
   // ── Summary ──────────────────────────────────────────────────────────────
-  console.log(`  Files indexed : ${meta.totalFiles}`);
-  console.log(`  Routes found  : ${meta.totalRoutes}`);
-  console.log(`  Import edges  : ${meta.totalImportEdges}`);
-  console.log(`  Domains       : ${domains.map(d => d.name).join(', ') || 'none'}`);
-  if (meta.lastIndexed) {
-    const age = Math.round((Date.now() - new Date(meta.lastIndexed).getTime()) / 1000);
+  console.log(`  Files indexed : ${structure.meta.totalFiles}`);
+  console.log(`  Routes found  : ${structure.meta.totalRoutes}`);
+  console.log(`  Import edges  : ${structure.meta.totalImportEdges}`);
+  if (domains.length > 0) {
+    console.log(`  Domains       : ${domains.map(d => d.name).join(' · ')}`);
+  }
+  if (structure.meta.lastIndexed) {
+    const age = Math.round((Date.now() - new Date(structure.meta.lastIndexed).getTime()) / 1000);
     const ageStr = age < 60 ? `${age}s ago` : age < 3600 ? `${Math.round(age / 60)}m ago` : `${Math.round(age / 3600)}h ago`;
     console.log(`  Last indexed  : ${ageStr}`);
   }
@@ -46,9 +50,10 @@ async function run(projectRoot) {
       console.log(`  ⚠️  High-risk uncommitted changes (${riskyChanges.length}):`);
       for (const f of riskyChanges) {
         const hi = highImpact.find(h => h.file === f);
-        const br = carto.getBlastRadius(f);
+        const blastDeps = store.getBlastRadius(f) || [];
+        const risk = blastDeps.length >= 10 ? 'HIGH' : blastDeps.length >= 5 ? 'MEDIUM' : 'LOW';
         console.log(`     🔴 ${f}`);
-        console.log(`        ${hi.dependents} files depend on this — blast risk: ${br ? br.risk : 'UNKNOWN'}`);
+        console.log(`        ${hi.dependents} files depend on this — blast risk: ${risk}`);
       }
       console.log('');
     } else {
@@ -86,7 +91,7 @@ async function run(projectRoot) {
   if (highImpact.length > 0) {
     console.log(`  🔥 Top high-impact files (changing these = highest blast radius):`);
     for (const f of highImpact.slice(0, 5)) {
-      console.log(`     ${f.dependents.toString().padStart(3)} dependents — ${f.file}`);
+      console.log(`     ${String(f.dependents).padStart(3)} dependents — ${f.file}`);
     }
     console.log('');
   }
@@ -95,7 +100,7 @@ async function run(projectRoot) {
   if (domains.length > 0) {
     console.log('  Domains:');
     for (const d of domains) {
-      console.log(`     ${d.name.padEnd(16)} ${d.fileCount} files  ${d.routeCount} routes  ${d.modelCount} models`);
+      console.log(`     ${d.name.padEnd(16)} ${String(d.fileCount).padStart(5)} files  ${String(d.routeCount).padStart(4)} routes  ${String(d.modelCount).padStart(4)} models`);
     }
     console.log('');
   }
@@ -104,7 +109,7 @@ async function run(projectRoot) {
   console.log(hasIssues ? '  ⚠️  Issues found above.' : '  ✅ All clear.');
   console.log('');
 
-  carto.terminate();
+  store.close();
 }
 
 function getModifiedFiles(projectRoot) {
@@ -114,8 +119,7 @@ function getModifiedFiles(projectRoot) {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe']
     });
-    const files = [...new Set(output.trim().split('\n').filter(Boolean))];
-    return files;
+    return [...new Set(output.trim().split('\n').filter(Boolean))];
   } catch {
     return [];
   }
