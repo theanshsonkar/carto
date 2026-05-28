@@ -9,3 +9,7 @@ node_modules/
 AGENTS.md
 CARTO_BRAIN.md
 mcp.md
+tmp-bench/
+BENCHMARK_RESULTS.md
+CARTO_SCALE_REPORT.md
+CARTO_V2_ARCHITECTURE.md
