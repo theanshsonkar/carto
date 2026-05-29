@@ -1,6 +1,6 @@
 {
   "name": "carto-md",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Structural intelligence layer for AI coding tools. Indexes your codebase into SQLite — routes, models, import graph, blast radius, domains — and exposes 16 MCP tools for Kiro, Cursor, and Claude.",
   "bin": {
     "carto": "src/cli/index.js"
@@ -12,6 +12,7 @@
     "test:benchmark": "node test/benchmark.js"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.22.1",
     "@babel/parser": "^7.29.3",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "11.7.0",
@@ -39,6 +40,8 @@
     "agents",
     "AGENTS.md",
     "AI",
+    "acp",
+    "agent-client-protocol",
     "context",
     "codebase",
     "developer-tools",
@@ -51,6 +54,7 @@
     "blast-radius",
     "import-graph",
     "kiro",
-    "claude"
+    "claude",
+    "zed"
   ]
 }

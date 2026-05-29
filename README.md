@@ -162,9 +162,67 @@ Custom domains via `carto.config.json`:
 | `carto sync` | Full re-index (skips unchanged files via mtime+size cache) |
 | `carto watch` | Incremental live re-index on every file save (<50ms) |
 | `carto serve` | Start MCP server for Kiro / Cursor / Claude |
+| `carto agent` | Start ACP agent mode (for Zed / JetBrains / VS Code) |
 | `carto impact <file>` | Blast radius: risk level, affected files, routes at risk |
 | `carto check` | Cross-domain violations, high-risk uncommitted changes, domain health |
 | `carto remove` | Remove AGENTS.md and .carto/ from project |
+
+---
+
+## ACP Agent (Zed / JetBrains / VS Code)
+
+Carto works as a full **ACP agent** — not just a passive tool server, but an active coding agent with architectural awareness.
+
+```
+User: "Add rate limiting to /api/users"
+  ↓
+Carto auto-queries its own SQLite:
+  - Blast radius of relevant files
+  - Domain context (AUTH)
+  - Similar patterns in codebase
+  ↓
+Builds rich prompt with structural context
+  ↓
+Sends to LLM (your API key) → streams answer + diffs back to editor
+```
+
+### Setup in Zed
+
+Add to `~/.config/zed/settings.json`:
+
+```json
+{
+  "agent_servers": {
+    "Carto": {
+      "command": "carto",
+      "args": ["agent"]
+    }
+  }
+}
+```
+
+### BYOK (Bring Your Own Key)
+
+Carto supports any LLM provider — configure in your editor:
+
+| Provider | Models |
+|----------|--------|
+| Anthropic | Claude Sonnet 4, Haiku |
+| OpenAI | GPT-4o, GPT-4o-mini, o1, o3 |
+| Google Gemini | Gemini 2.5 Pro, 2.5 Flash |
+| Ollama | Any local model (free) |
+| OpenRouter | Any model via single API |
+| Groq | Ultra-fast inference |
+| Together AI | Open-source models |
+| Azure OpenAI | Enterprise deployments |
+
+### What makes it different
+
+Other agents are smart but blind. Carto sees the architecture:
+- Auto-indexes your project on first session (1-10s depending on size)
+- Injects structural context into every LLM call (blast radius, domains, routes)
+- 12 internal tools the LLM can call during reasoning
+- Zero cost to you beyond your own API key
 
 ---
 

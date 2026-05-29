@@ -15,6 +15,7 @@ Commands:
   check         Report cross-domain deps, high-risk uncommitted changes, domain health
   remove        Remove AGENTS.md and .carto/ from this project
   serve         Start MCP server for AI tool integration
+  agent         Start ACP agent mode (for Zed, JetBrains, VS Code)
 
 Options:
   --help, -h   Show this help message
@@ -58,6 +59,8 @@ if (command === 'init') {
   require('./remove').run(process.cwd());
 } else if (command === 'serve') {
   require('./serve').run(process.cwd());
+} else if (command === 'agent') {
+  require('./agent').run();
 } else {
   console.error(`[CARTO] Unknown command: ${command}`);
   printUsage();
