@@ -7,12 +7,14 @@ CARTO_BRAIN.md
 # Internal specs and notes
 KIRO_SPEC*.md
 PROGRESS.md
+Progress/
 
 # Tests
 test/
 
 # Dev tools
 .kiro/
+.claude/
 .DS_Store
 *.log
 *.tmp
