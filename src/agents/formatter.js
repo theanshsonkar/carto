@@ -16,6 +16,9 @@ function formatSections({ routes, models, frontend, structure, warnings, fileMap
       sections.push(`- ${icon} ${entry.name}${suffix}`);
     }
   } else {
+    if (process.env.CARTO_DEBUG) {
+      console.warn('[CARTO] Warning: structure data was empty when formatting AGENTS.md');
+    }
     sections.push('_No structure data available._');
   }
 

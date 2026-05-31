@@ -464,25 +464,152 @@ fs.rmSync(filterTmpDir, { recursive: true, force: true });
 
 
 // ═══════════════════════════════════════════════════════════════════
+// 7. Top-level structure scan (4 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const { scanStructure } = require('../src/agents/scan-structure');
+
+async function asyncTest(suite, name, fn) {
+  try {
+    await fn();
+    results.passed++;
+    suiteTotals[suite] = (suiteTotals[suite] || { pass: 0, fail: 0, total: 0 });
+    suiteTotals[suite].pass++;
+    suiteTotals[suite].total++;
+  } catch (err) {
+    results.failed++;
+    suiteTotals[suite] = (suiteTotals[suite] || { pass: 0, fail: 0, total: 0 });
+    suiteTotals[suite].fail++;
+    suiteTotals[suite].total++;
+    results.failures.push({ suite, name, message: err.message });
+  }
+}
+
+async function runAsyncSuite() {
+  // ── scanStructure unit tests ─────────────────────────────────────
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-scan-struct-'));
+  fs.mkdirSync(path.join(tmp, 'src'));
+  fs.mkdirSync(path.join(tmp, 'node_modules'));
+  fs.mkdirSync(path.join(tmp, '.git'));
+  fs.mkdirSync(path.join(tmp, '.carto'));
+  fs.writeFileSync(path.join(tmp, 'README.md'), '# x\n');
+  fs.writeFileSync(path.join(tmp, 'package.json'), '{}');
+  fs.writeFileSync(path.join(tmp, 'AGENTS.md'), 'x');
+
+  await asyncTest('Project Structure', 'returns top-level dirs and files', async () => {
+    const out = await scanStructure(tmp);
+    const names = out.map(e => e.name);
+    assert.ok(names.includes('src'), `expected src in ${JSON.stringify(names)}`);
+    assert.ok(names.includes('README.md'), `expected README.md in ${JSON.stringify(names)}`);
+    assert.ok(names.includes('package.json'), `expected package.json in ${JSON.stringify(names)}`);
+  });
+
+  await asyncTest('Project Structure', 'excludes node_modules, .git, .carto, AGENTS.md', async () => {
+    const out = await scanStructure(tmp);
+    const names = out.map(e => e.name);
+    for (const banned of ['node_modules', '.git', '.carto', 'AGENTS.md']) {
+      assert.ok(!names.includes(banned), `${banned} must be excluded, got ${JSON.stringify(names)}`);
+    }
+  });
+
+  await asyncTest('Project Structure', 'directories sort before files; alphabetical within group', async () => {
+    const out = await scanStructure(tmp);
+    let sawFile = false;
+    for (const e of out) {
+      if (e.type === 'file') sawFile = true;
+      if (e.type === 'dir' && sawFile) {
+        assert.fail(`dir "${e.name}" appeared after a file — sort broken`);
+      }
+    }
+    const dirs = out.filter(e => e.type === 'dir').map(e => e.name);
+    const files = out.filter(e => e.type === 'file').map(e => e.name);
+    assert.deepStrictEqual(dirs, [...dirs].sort((a, b) => a.localeCompare(b)));
+    assert.deepStrictEqual(files, [...files].sort((a, b) => a.localeCompare(b)));
+  });
+
+  await asyncTest('Project Structure', 'missing path returns empty array (no throw)', async () => {
+    const out = await scanStructure(path.join(tmp, 'does-not-exist'));
+    assert.deepStrictEqual(out, []);
+  });
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+
+  // ── V2 sync integration test ─────────────────────────────────────
+  const { runSyncV2 } = require('../src/store/sync-v2');
+
+  await asyncTest('Project Structure', 'V2 sync writes populated structure block to AGENTS.md', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-v2-sync-'));
+    fs.mkdirSync(path.join(projectRoot, 'src'));
+    fs.mkdirSync(path.join(projectRoot, 'test'));
+    fs.writeFileSync(
+      path.join(projectRoot, 'src', 'index.js'),
+      "const express = require('express');\nconst app = express();\napp.get('/health', (req, res) => res.send('ok'));\nmodule.exports = app;\n"
+    );
+    fs.writeFileSync(path.join(projectRoot, 'test', 'noop.js'), '// placeholder\n');
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"fixture"}');
+    fs.writeFileSync(path.join(projectRoot, 'README.md'), '# Fixture\n');
+    fs.mkdirSync(path.join(projectRoot, '.carto'));
+    fs.writeFileSync(
+      path.join(projectRoot, '.carto', 'config.json'),
+      JSON.stringify({ framework: 'express' })
+    );
+
+    const agentsPath = path.join(projectRoot, 'AGENTS.md');
+    try {
+      await runSyncV2({ projectRoot, output: agentsPath });
+    } catch (err) {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+      throw err;
+    }
+
+    let content;
+    try {
+      content = fs.readFileSync(agentsPath, 'utf-8');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+
+    assert.ok(content.includes('## Project Structure (auto)'),
+      'AGENTS.md must contain Project Structure header');
+    assert.ok(!content.includes('_No structure data available._'),
+      `AGENTS.md must not contain empty fallback. Got:\n${content}`);
+    assert.ok(content.includes('📁'),
+      `AGENTS.md must list at least one directory. Got:\n${content}`);
+    assert.ok(content.includes('📄'),
+      `AGENTS.md must list at least one file. Got:\n${content}`);
+    assert.ok(/📄 (README\.md|package\.json)/.test(content),
+      `AGENTS.md must list README.md or package.json. Got:\n${content}`);
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
-console.log('');
-const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery'];
-for (const suite of suiteNames) {
-  const s = suiteTotals[suite] || { pass: 0, total: 0 };
-  const icon = s.pass === s.total ? '✓' : '✗';
-  console.log(`${icon} ${suite} — ${s.pass}/${s.total}`);
-}
-console.log('');
+(async () => {
+  await runAsyncSuite();
 
-if (results.failed > 0) {
-  console.log(`${results.failed} test(s) FAILED:\n`);
-  for (const f of results.failures) {
-    console.log(`  ✗ [${f.suite}] ${f.name}`);
-    console.log(`    ${f.message}\n`);
+  console.log('');
+  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure'];
+  for (const suite of suiteNames) {
+    const s = suiteTotals[suite] || { pass: 0, total: 0 };
+    const icon = s.pass === s.total ? '✓' : '✗';
+    console.log(`${icon} ${suite} — ${s.pass}/${s.total}`);
   }
+  console.log('');
+
+  if (results.failed > 0) {
+    console.log(`${results.failed} test(s) FAILED:\n`);
+    for (const f of results.failures) {
+      console.log(`  ✗ [${f.suite}] ${f.name}`);
+      console.log(`    ${f.message}\n`);
+    }
+    process.exit(1);
+  } else {
+    console.log(`All ${results.passed} tests passed.`);
+  }
+})().catch(err => {
+  console.error('[test runner] async suite crashed:', err);
   process.exit(1);
-} else {
-  console.log(`All ${results.passed} tests passed.`);
-}
+});

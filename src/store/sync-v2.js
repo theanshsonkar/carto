@@ -13,6 +13,7 @@ const { clusterByDomain } = require('../agents/domains');
 const { clusterByGraph } = require('../agents/leiden');
 const { formatSections, formatDomainFile } = require('../agents/formatter');
 const { mergeIntoAgentsMd } = require('../agents/merger');
+const { scanStructure } = require('../agents/scan-structure');
 const { WorkerPool, POOL_SIZE } = require('../engine/worker-pool');
 const { parseCartoIgnore } = require('../security/ignore');
 
@@ -420,7 +421,7 @@ async function runSyncV2(config) {
 
   // 8. Generate outputs (only if files changed)
   if (toProcess.length > 0) {
-    generateOutputs(store, config, projectRoot, store.getImportGraph());
+    await generateOutputs(store, config, projectRoot, store.getImportGraph());
   }
 
   console.log(`[CARTO] Indexed ${toProcess.length} files (${cached} cached) in ${elapsed}ms`);
@@ -461,12 +462,13 @@ function buildFileDataFromStore(store) {
 /**
  * Generate backward-compatible outputs (AGENTS.md, context files, map.json)
  */
-function generateOutputs(store, config, projectRoot, importGraph) {
+async function generateOutputs(store, config, projectRoot, importGraph) {
   const structure = store.getStructure();
   const routes = store.getRoutes();
   const models = store.getModels();
   const envVars = store.getEnvVars();
   const domains = store.getDomainsList();
+  const topLevelStructure = await scanStructure(projectRoot);
 
   // Write domain context files — lazy: only write if stale or missing
   const contextDir = path.join(projectRoot, '.carto', 'context');
@@ -518,7 +520,7 @@ function generateOutputs(store, config, projectRoot, importGraph) {
       routes,
       models,
       frontend: { fetches: [], storageKeys: [] },
-      structure: [],
+      structure: topLevelStructure,
       warnings: [],
       fileMap: [],
       functions: {},

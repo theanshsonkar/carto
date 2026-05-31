@@ -215,7 +215,7 @@ cd carto
 npm install
 node src/cli/index.js init   # test in any project
 node src/cli/index.js serve  # test MCP server
-npm test                     # run test suite (30 tests)
+npm test                     # run test suite (35 tests)
 node test/correctness.js     # run correctness tests (31 tests)
 node test/benchmark.js       # run benchmarks against real repos
 ```
@@ -232,7 +232,7 @@ node test/benchmark.js       # run benchmarks against real repos
 - [ ] Extension added to `CODE_EXTS` and `detectLanguage()` in `sync-v2.js`
 - [ ] No changes to merger logic (unless explicitly fixing a merger bug)
 - [ ] No network calls added
-- [ ] `npm test` passes (30/30)
+- [ ] `npm test` passes (35/35)
 - [ ] `node test/correctness.js` passes (31/31)
 
 ---

@@ -1,6 +1,6 @@
 {
   "name": "carto-md",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Structural intelligence layer for AI coding tools. Indexes your codebase into SQLite — routes, models, import graph, blast radius, domains — and exposes 16 MCP tools for Kiro, Cursor, and Claude.",
   "bin": {
     "carto": "src/cli/index.js"

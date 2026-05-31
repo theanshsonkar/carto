@@ -13,8 +13,7 @@ const { buildStackLine } = require('./extractors/stack');
 const { loadHashes, saveHashes, computeChangedFiles } = require('./cache/file-hash');
 const { loadGraphCache, saveGraphCache, buildEmptyCache } = require('./cache/graph-cache');
 const { applyIncrementalUpdate, recomputeGraphMetrics } = require('./engine/incremental');
-
-const IGNORE_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', '.idea', '.vscode', '.carto', 'AGENTS.md']);
+const { scanStructure } = require('./agents/scan-structure');
 
 // Load plugins once at module load
 const plugins = loadLanguagePlugins();
@@ -27,22 +26,6 @@ async function safeReadFile(filePath, warnings) {
     console.warn(`[CARTO] Warning: Could not read ${filePath} — skipping`);
     return null;
   }
-}
-
-async function scanStructure(basePath) {
-  const entries = [];
-  try {
-    const items = await fs.promises.readdir(basePath, { withFileTypes: true });
-    for (const item of items) {
-      if (IGNORE_DIRS.has(item.name)) continue;
-      entries.push({ name: item.name, type: item.isDirectory() ? 'dir' : 'file' });
-    }
-    entries.sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-  } catch {}
-  return entries;
 }
 
 /**
