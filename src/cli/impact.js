@@ -2,8 +2,10 @@
 
 const path = require('path');
 const { Carto } = require('../../index.js');
+const { checkForUpdate } = require('./update-check');
 
 async function run(projectRoot, fileArg) {
+  checkForUpdate(); // fire and forget
   if (!fileArg) {
     console.error('[CARTO] Usage: carto impact <file>');
     process.exit(1);

@@ -1,7 +1,9 @@
 const path = require('path');
 const fs = require('fs');
+const { checkForUpdate } = require('./update-check');
 
 function run(projectRoot) {
+  checkForUpdate(); // fire and forget
   // Prefer V2 SQLite-backed server
   const dbPath = path.join(projectRoot, '.carto', 'carto.db');
   if (fs.existsSync(dbPath)) {
