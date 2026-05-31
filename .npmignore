@@ -16,6 +16,7 @@ test/
 .kiro/
 .claude/
 .github/
+.npmrc
 .DS_Store
 *.log
 *.tmp
