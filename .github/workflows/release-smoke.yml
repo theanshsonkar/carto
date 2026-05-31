@@ -11,6 +11,9 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.npmignore'
+  # Manual trigger — useful when re-running on an existing tag or
+  # debugging. Pick any tag/branch from the GitHub UI.
+  workflow_dispatch:
 
 jobs:
   install-from-pack:
