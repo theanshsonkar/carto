@@ -677,7 +677,16 @@ function buildTestStore(spec) {
 
   store.computeReverseDeps(5);
 
-  return { store, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+  return {
+    store,
+    cleanup: () => {
+      // Close the SQLite handle BEFORE rmSync — on Windows, an open
+      // file handle prevents unlinking the .db file (EBUSY). POSIX
+      // allows unlinking open files; Windows does not.
+      try { store.close(); } catch {}
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  };
 }
 
 // ── Tokenization ──────────────────────────────────────────────────
