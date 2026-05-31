@@ -584,6 +584,369 @@ async function runAsyncSuite() {
 
 
 // ═══════════════════════════════════════════════════════════════════
+// Change plan (Spec 2): pure-module tokenizer + anchor selection +
+// graph expansion + markdown formatter
+// ═══════════════════════════════════════════════════════════════════
+
+const {
+  planChange,
+  formatPlanMarkdown,
+  tokenize,
+  pathTokens,
+  camelTokens,
+  computeIdf,
+  STOPWORDS
+} = require('../src/mcp/change-plan');
+const { SQLiteStore } = require('../src/store/sqlite-store');
+
+/**
+ * buildTestStore(spec) — creates a real on-disk SQLiteStore in a temp
+ * directory and populates it with the given spec, then computes
+ * reverse_deps so blast radius queries return real values.
+ *
+ * spec = {
+ *   files: [{ path, language? }],
+ *   symbols: [{ file, name, exported? }],
+ *   routes:  [{ file, method, path, framework? }],
+ *   imports: [{ from, to }],   // by path
+ *   domains: { DOMAIN_NAME: ['file/path', ...] }
+ * }
+ *
+ * Returns { store, cleanup() }.
+ */
+function buildTestStore(spec) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-changeplan-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  const store = new SQLiteStore(root);
+  store.open();
+
+  const fileIds = new Map();
+  for (const f of spec.files || []) {
+    const id = store.upsertFile(f.path, {
+      language: f.language || 'javascript',
+      hash: 'h', mtime: 0, size: 0
+    });
+    fileIds.set(f.path, id);
+  }
+
+  // Inject extraction data per file (symbols + routes)
+  const perFile = new Map();
+  for (const fp of fileIds.keys()) {
+    perFile.set(fp, { imports: [], symbols: [], routes: [], models: [], envVars: [], dbTables: [] });
+  }
+  for (const s of spec.symbols || []) {
+    const bucket = perFile.get(s.file);
+    if (!bucket) continue;
+    bucket.symbols.push({
+      name: s.name,
+      kind: s.kind || 'function',
+      line: 1,
+      exported: s.exported !== false,
+      isDefault: false
+    });
+  }
+  for (const r of spec.routes || []) {
+    const bucket = perFile.get(r.file);
+    if (!bucket) continue;
+    bucket.routes.push({
+      method: r.method,
+      path: r.path,
+      handler: r.handler || null,
+      framework: r.framework || 'express'
+    });
+  }
+  for (const imp of spec.imports || []) {
+    const bucket = perFile.get(imp.from);
+    if (!bucket) continue;
+    bucket.imports.push({ path: imp.to, resolvedFileId: fileIds.get(imp.to) || null });
+  }
+  for (const [fp, data] of perFile) {
+    store.storeExtraction(fileIds.get(fp), data);
+  }
+
+  // Domains
+  if (spec.domains) {
+    for (const [name, files] of Object.entries(spec.domains)) {
+      const did = store.upsertDomain(name, { fileCount: files.length });
+      for (const fp of files) {
+        const fid = fileIds.get(fp);
+        if (fid) store.assignFileToDomain(fid, did);
+      }
+    }
+  }
+
+  store.computeReverseDeps(5);
+
+  return { store, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+}
+
+// ── Tokenization ──────────────────────────────────────────────────
+
+test('Change plan', 'tokenize: rate limiting + /api/users yields path + content tokens', () => {
+  const t = tokenize('add rate limiting to /api/users');
+  assert.ok(t.content.includes('rate'), `expected "rate" in content; got ${JSON.stringify(t.content)}`);
+  assert.ok(t.content.includes('limiting'), `expected "limiting"; got ${JSON.stringify(t.content)}`);
+  assert.ok(t.content.includes('api'), `expected "api"; got ${JSON.stringify(t.content)}`);
+  assert.ok(t.content.includes('users'), `expected "users"; got ${JSON.stringify(t.content)}`);
+  assert.deepStrictEqual(t.paths, ['/api/users']);
+  assert.deepStrictEqual(t.verbs, []);
+  assert.ok(!t.content.includes('add'), '"add" must be dropped as stopword');
+  assert.ok(!t.content.includes('to'), '"to" must be dropped as stopword');
+});
+
+test('Change plan', 'tokenize: detects HTTP verb + path + 3-char dev token (jwt)', () => {
+  const t = tokenize('POST /api/login should set a JWT');
+  assert.deepStrictEqual(t.verbs, ['POST']);
+  assert.deepStrictEqual(t.paths, ['/api/login']);
+  assert.ok(t.content.includes('jwt'), `"jwt" (3 chars) MUST survive; got ${JSON.stringify(t.content)}`);
+  assert.ok(!t.content.includes('should'), '"should" is a stopword');
+  assert.ok(!t.content.includes('set'), '"set" is a stopword');
+});
+
+test('Change plan', 'tokenize: 3-char dev tokens (log, mcp, sql) survive; "every" filtered', () => {
+  const t = tokenize('log every MCP query for debugging');
+  assert.ok(t.content.includes('log'), `"log" must survive; got ${JSON.stringify(t.content)}`);
+  assert.ok(t.content.includes('mcp'), `"mcp" must survive; got ${JSON.stringify(t.content)}`);
+  assert.ok(t.content.includes('query'));
+  assert.ok(t.content.includes('debugging'));
+  assert.ok(!t.content.includes('every'), '"every" must be a stopword');
+  assert.ok(!t.content.includes('for'), '"for" must be a stopword');
+});
+
+test('Change plan', 'tokenize: empty / non-string input returns empty arrays (no throw)', () => {
+  assert.deepStrictEqual(tokenize(''), { content: [], verbs: [], paths: [] });
+  assert.deepStrictEqual(tokenize(null), { content: [], verbs: [], paths: [] });
+  assert.deepStrictEqual(tokenize(undefined), { content: [], verbs: [], paths: [] });
+});
+
+// ── Path / symbol token extraction ────────────────────────────────
+
+test('Change plan', 'pathTokens: splits on /, -, _, .', () => {
+  const t = pathTokens('src/store/sqlite-store.js');
+  for (const expected of ['src', 'store', 'sqlite', 'js']) {
+    assert.ok(t.includes(expected), `expected "${expected}" in ${JSON.stringify(t)}`);
+  }
+});
+
+test('Change plan', 'pathTokens: handles version suffix (v2) and mcp', () => {
+  const t = pathTokens('src/mcp/server-v2.js');
+  for (const expected of ['src', 'mcp', 'server', 'v2', 'js']) {
+    assert.ok(t.includes(expected), `expected "${expected}" in ${JSON.stringify(t)}`);
+  }
+});
+
+test('Change plan', 'pathTokens: deeper nesting (extractors/languages/javascript)', () => {
+  const t = pathTokens('src/extractors/languages/javascript.js');
+  for (const expected of ['src', 'extractors', 'languages', 'javascript', 'js']) {
+    assert.ok(t.includes(expected), `expected "${expected}" in ${JSON.stringify(t)}`);
+  }
+});
+
+test('Change plan', 'camelTokens: splits camelCase symbol names', () => {
+  const t = camelTokens('rateLimitMiddleware');
+  for (const expected of ['rate', 'limit', 'middleware']) {
+    assert.ok(t.includes(expected), `expected "${expected}" in ${JSON.stringify(t)}`);
+  }
+});
+
+// ── IDF weighting (regression guard for migrate.js false-positive) ──
+
+test('Change plan', 'IDF: rare token outweighs common token', () => {
+  const { store, cleanup } = buildTestStore({
+    files: [
+      { path: 'src/foo.js' },
+      { path: 'src/bar.js' },
+      { path: 'src/baz.js' },
+      { path: 'src/rate.js' }
+    ]
+  });
+  try {
+    const idf = computeIdf(store);
+    const idfRate = idf.get('rate') || 0;
+    const idfSrc = idf.get('src') || 0;
+    assert.ok(idfRate > idfSrc,
+      `expected IDF(rate) > IDF(src); got rate=${idfRate.toFixed(3)} src=${idfSrc.toFixed(3)}`);
+  } finally { cleanup(); }
+});
+
+// ── Anchor selection — README flagship example ────────────────────
+
+test('Change plan', 'planChange: matches /api/users route, NOT migrate.js (regression target)', () => {
+  const { store, cleanup } = buildTestStore({
+    files: [
+      { path: 'src/routes/users.ts' },
+      { path: 'src/routes/orders.ts' },
+      { path: 'src/utils/helpers.ts' },
+      { path: 'src/store/migrate.js' },     // contains "rate" as substring of "migrate"
+      { path: 'src/middleware/logger.ts' },
+      { path: 'src/index.ts' }
+    ],
+    routes: [
+      { file: 'src/routes/users.ts', method: 'POST', path: '/api/users' },
+      { file: 'src/routes/orders.ts', method: 'GET', path: '/api/orders' }
+    ]
+  });
+  try {
+    const plan = planChange(store, 'add rate limiting to /api/users');
+    const routeAnchors = plan.anchors.filter(a => a.kind === 'route');
+    assert.ok(routeAnchors.length >= 1, `expected at least one route anchor; got ${plan.anchors.length} anchors`);
+    const usersRoute = routeAnchors.find(a => a.value === 'POST /api/users');
+    assert.ok(usersRoute, `expected POST /api/users anchor; got ${JSON.stringify(routeAnchors.map(a => a.value))}`);
+    assert.strictEqual(usersRoute.file, 'src/routes/users.ts');
+    assert.ok(plan.filesToTouch.includes('src/routes/users.ts'),
+      `filesToTouch must include routes/users.ts; got ${JSON.stringify(plan.filesToTouch)}`);
+    // The critical regression guard:
+    assert.ok(!plan.anchors.some(a => a.file === 'src/store/migrate.js'),
+      `migrate.js must NOT appear in anchors (false-positive guard); got ${JSON.stringify(plan.anchors.map(a => a.file))}`);
+    assert.ok(!plan.filesToTouch.includes('src/store/migrate.js'),
+      'migrate.js must NOT appear in filesToTouch');
+  } finally { cleanup(); }
+});
+
+// ── Anchor selection — exported symbol match ──────────────────────
+
+test('Change plan', 'planChange: anchors on exported symbol names (rateLimitMiddleware)', () => {
+  const { store, cleanup } = buildTestStore({
+    files: [
+      { path: 'src/middleware/throttle.ts' },   // no "rate" in path
+      { path: 'src/index.ts' }
+    ],
+    symbols: [
+      { file: 'src/middleware/throttle.ts', name: 'rateLimitMiddleware', exported: true },
+      { file: 'src/index.ts', name: 'createApp', exported: true }
+    ]
+  });
+  try {
+    const plan = planChange(store, 'add rate limiting to API endpoints');
+    const ratelim = plan.anchors.find(a => a.file === 'src/middleware/throttle.ts');
+    assert.ok(ratelim, `expected anchor on throttle.ts via symbol match; got ${JSON.stringify(plan.anchors.map(a => a.file))}`);
+    assert.ok(/rateLimitMiddleware/.test(ratelim.reason),
+      `anchor reason must cite the matched symbol; got: ${ratelim.reason}`);
+    // No path-token "rate" in throttle.ts → the only signal is the symbol.
+    assert.ok(/symbol/i.test(ratelim.reason),
+      `anchor must be reported as a symbol match; got: ${ratelim.reason}`);
+  } finally { cleanup(); }
+});
+
+// ── Graph expansion: forward, backward, blast radius ──────────────
+
+test('Change plan', 'planChange: expands graph (forward+backward) + blast radius', () => {
+  // alpha.ts imports beta.ts; gamma.ts imports alpha.ts
+  const { store, cleanup } = buildTestStore({
+    files: [
+      { path: 'src/alpha.ts' },
+      { path: 'src/beta.ts' },
+      { path: 'src/gamma.ts' }
+    ],
+    imports: [
+      { from: 'src/alpha.ts', to: 'src/beta.ts' },
+      { from: 'src/gamma.ts', to: 'src/alpha.ts' }
+    ]
+  });
+  try {
+    // Anchor on alpha.ts via path-token match
+    const plan = planChange(store, 'refactor alpha module');
+    const anchorOnAlpha = plan.anchors.find(x => x.file === 'src/alpha.ts');
+    assert.ok(anchorOnAlpha, `expected anchor on src/alpha.ts; got ${JSON.stringify(plan.anchors)}`);
+    assert.ok(plan.filesToTouch.includes('src/alpha.ts'), 'filesToTouch must include the anchor');
+    assert.ok(plan.filesToTouch.includes('src/beta.ts'),
+      `filesToTouch must include forward-import beta.ts; got ${JSON.stringify(plan.filesToTouch)}`);
+    assert.ok(plan.filesToReview.includes('src/gamma.ts'),
+      `filesToReview must include backward-importer gamma.ts; got ${JSON.stringify(plan.filesToReview)}`);
+    const blastGamma = plan.blastRadius.find(b => b.file === 'src/gamma.ts');
+    assert.ok(blastGamma, `blastRadius must include gamma.ts; got ${JSON.stringify(plan.blastRadius)}`);
+    assert.strictEqual(blastGamma.hop, 1, 'gamma.ts is a 1-hop dependent of alpha.ts');
+  } finally { cleanup(); }
+});
+
+// ── No-anchor fallback ────────────────────────────────────────────
+
+test('Change plan', 'planChange: lorem ipsum returns empty anchors + guidance', () => {
+  const { store, cleanup } = buildTestStore({
+    files: [
+      { path: 'src/index.ts' },
+      { path: 'src/utils.ts' }
+    ]
+  });
+  try {
+    const plan = planChange(store, 'lorem ipsum dolor');
+    assert.strictEqual(plan.anchors.length, 0, `expected 0 anchors; got ${JSON.stringify(plan.anchors)}`);
+    assert.ok(plan.guidance && typeof plan.guidance === 'string', 'guidance must be a non-empty string');
+    assert.ok(/get_routes/.test(plan.guidance),
+      `guidance must mention get_routes; got: ${plan.guidance}`);
+    assert.ok(/get_domains_list/.test(plan.guidance),
+      `guidance must mention get_domains_list; got: ${plan.guidance}`);
+  } finally { cleanup(); }
+});
+
+test('Change plan', 'planChange: empty corpus returns guidance to run carto sync', () => {
+  const { store, cleanup } = buildTestStore({ files: [] });
+  try {
+    const plan = planChange(store, 'add rate limiting');
+    assert.strictEqual(plan.anchors.length, 0);
+    assert.ok(plan.guidance && /carto sync/.test(plan.guidance),
+      `expected sync guidance; got: ${plan.guidance}`);
+  } finally { cleanup(); }
+});
+
+// ── Markdown formatter shape stability ────────────────────────────
+
+test('Change plan', 'formatPlanMarkdown: preserves historical section headers', () => {
+  const { store, cleanup } = buildTestStore({
+    files: [
+      { path: 'src/routes/users.ts' },
+      { path: 'src/index.ts' }
+    ],
+    routes: [
+      { file: 'src/routes/users.ts', method: 'POST', path: '/api/users' }
+    ],
+    imports: [
+      { from: 'src/index.ts', to: 'src/routes/users.ts' }
+    ],
+    domains: { API: ['src/routes/users.ts', 'src/index.ts'] }
+  });
+  try {
+    const plan = planChange(store, 'add rate limiting to /api/users');
+    const md = formatPlanMarkdown(plan);
+    assert.ok(/^# Change Plan: /m.test(md), 'must start with title');
+    assert.ok(/## Relevant Routes/.test(md), 'must contain "## Relevant Routes"');
+    assert.ok(/## Files to Touch/.test(md), 'must contain "## Files to Touch"');
+    assert.ok(/## Affected Domains/.test(md), 'must contain "## Affected Domains"');
+    // "Files to Review (Callers)" only when non-empty — index.ts imports
+    // users.ts so should appear as a caller.
+    assert.ok(/## Files to Review \(Callers\)/.test(md),
+      `expected Files to Review section; got:\n${md}`);
+  } finally { cleanup(); }
+});
+
+test('Change plan', 'formatPlanMarkdown: omits Files to Review when empty', () => {
+  const { store, cleanup } = buildTestStore({
+    files: [{ path: 'src/lonely.ts' }]
+  });
+  try {
+    const plan = planChange(store, 'edit lonely module');
+    const md = formatPlanMarkdown(plan);
+    assert.ok(plan.filesToReview.length === 0, 'precondition: no callers');
+    assert.ok(!/## Files to Review/.test(md),
+      'Files to Review section must NOT appear when empty');
+  } finally { cleanup(); }
+});
+
+test('Change plan', 'formatPlanMarkdown: fallback message for no-anchor case', () => {
+  const { store, cleanup } = buildTestStore({
+    files: [{ path: 'src/index.ts' }]
+  });
+  try {
+    const plan = planChange(store, 'lorem ipsum dolor');
+    const md = formatPlanMarkdown(plan);
+    assert.ok(/^# Change Plan: /m.test(md));
+    assert.ok(/get_routes/.test(md) || /lorem ipsum/.test(md),
+      `expected fallback prose with get_routes hint; got:\n${md}`);
+  } finally { cleanup(); }
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
@@ -591,7 +954,7 @@ async function runAsyncSuite() {
   await runAsyncSuite();
 
   console.log('');
-  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure'];
+  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Change plan'];
   for (const suite of suiteNames) {
     const s = suiteTotals[suite] || { pass: 0, total: 0 };
     const icon = s.pass === s.total ? '✓' : '✗';
