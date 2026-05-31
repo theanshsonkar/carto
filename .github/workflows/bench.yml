@@ -26,7 +26,8 @@ jobs:
           node-version: 20
 
       - name: Install
-        run: npm ci
+        # See test.yml for the legacy-peer-deps rationale.
+        run: npm ci --legacy-peer-deps
 
       - name: Run self-bench
         # bench-ci.js indexes the carto repo on itself (no external clones).

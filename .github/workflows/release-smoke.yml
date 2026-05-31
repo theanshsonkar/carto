@@ -48,7 +48,7 @@ jobs:
           # Find the tarball that npm pack produced (single match expected).
           TARBALL=$(ls "$GITHUB_WORKSPACE"/carto-md-*.tgz | head -n1)
           echo "Installing $TARBALL"
-          npm install "$TARBALL"
+          npm install "$TARBALL" --legacy-peer-deps
 
       - name: Install the tarball into a clean dir (Windows)
         if: runner.os == 'Windows'
@@ -60,7 +60,7 @@ jobs:
           npm init -y | Out-Null
           $Tarball = Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Filter "carto-md-*.tgz" | Select-Object -First 1
           Write-Host "Installing $($Tarball.FullName)"
-          npm install "$($Tarball.FullName)"
+          npm install "$($Tarball.FullName)" --legacy-peer-deps
 
       - name: Smoke-test the binary (POSIX)
         if: runner.os != 'Windows'
