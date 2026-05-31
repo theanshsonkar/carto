@@ -589,15 +589,23 @@ async function runAsyncSuite() {
 
   // Sandbox HOME / USERPROFILE so init.run()'s wireIDEs() side effect
   // can't touch the real ~/.kiro, ~/.cursor, or Claude Desktop configs.
+  // Also opt out of the npm-registry update check so tests don't egress.
   function sandboxHome(tmpHome) {
-    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    const saved = {
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+      CARTO_NO_UPDATE_CHECK: process.env.CARTO_NO_UPDATE_CHECK
+    };
     process.env.HOME = tmpHome;
     process.env.USERPROFILE = tmpHome;
+    process.env.CARTO_NO_UPDATE_CHECK = '1';
     return () => {
       if (saved.HOME === undefined) delete process.env.HOME;
       else process.env.HOME = saved.HOME;
       if (saved.USERPROFILE === undefined) delete process.env.USERPROFILE;
       else process.env.USERPROFILE = saved.USERPROFILE;
+      if (saved.CARTO_NO_UPDATE_CHECK === undefined) delete process.env.CARTO_NO_UPDATE_CHECK;
+      else process.env.CARTO_NO_UPDATE_CHECK = saved.CARTO_NO_UPDATE_CHECK;
     };
   }
 

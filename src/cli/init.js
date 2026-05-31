@@ -3,8 +3,10 @@ const path = require('path');
 const { detectFramework } = require('../detector/framework');
 const { parseCartoIgnore } = require('../security/ignore');
 const { runSyncV2, discoverFiles: discoverFilesV2 } = require('../store/sync-v2');
+const { checkForUpdate } = require('./update-check');
 
 async function run(projectRoot) {
+  checkForUpdate(); // fire and forget
   console.log('[CARTO] Detecting project...');
 
   const detection = detectFramework(projectRoot);

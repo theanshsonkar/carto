@@ -4,8 +4,10 @@ const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { SQLiteStore } = require('../store/sqlite-store');
+const { checkForUpdate } = require('./update-check');
 
 async function run(projectRoot) {
+  checkForUpdate(); // fire and forget
   const dbPath = path.join(projectRoot, '.carto', 'carto.db');
 
   if (!fs.existsSync(dbPath)) {
