@@ -1,5 +1,6 @@
 # carto
 
+[![CI](https://github.com/theanshsonkar/carto/actions/workflows/test.yml/badge.svg)](https://github.com/theanshsonkar/carto/actions/workflows/test.yml)
 [![npm version](https://img.shields.io/npm/v/carto-md)](https://www.npmjs.com/package/carto-md)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![npm downloads](https://img.shields.io/npm/dm/carto-md)](https://www.npmjs.com/package/carto-md)

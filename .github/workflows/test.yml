@@ -1,0 +1,60 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel older in-progress runs on the same ref. Saves CI minutes when
+# someone force-pushes or pushes a fix-up commit to a PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One red cell shouldn't kill the others — we want full visibility.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [18, 20, 22]
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          # Don't use cache: 'npm' here — native build artifacts depend on
+          # (os, node-abi, arch) which the npm-cache key doesn't capture.
+          # We use a custom actions/cache step below instead.
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ~/.npm
+          key: nm-${{ runner.os }}-node${{ matrix.node }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            nm-${{ runner.os }}-node${{ matrix.node }}-
+
+      - name: Install
+        # `npm ci` enforces lockfile and fails on drift — catches the common
+        # "I edited package.json but forgot to commit the lockfile" mistake.
+        run: npm ci
+
+      - name: Test (main suite)
+        run: npm test
+
+      - name: Test (correctness)
+        run: npm run test:correctness
+
+      # Stress and benchmark intentionally NOT run here — they belong in
+      # the scheduled bench.yml workflow. test.yml must stay <8 min wall time.

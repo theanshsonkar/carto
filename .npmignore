@@ -15,6 +15,7 @@ test/
 # Dev tools
 .kiro/
 .claude/
+.github/
 .DS_Store
 *.log
 *.tmp

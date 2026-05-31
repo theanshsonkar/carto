@@ -222,6 +222,32 @@ node test/benchmark.js       # run benchmarks against real repos
 
 ---
 
+## CI
+
+Every push and PR runs the test suite on a 3 OS × 3 Node matrix (macOS, Linux, Windows × Node 18, 20, 22) via `.github/workflows/test.yml`. A red cell blocks merge; one cell failing does not cancel the others, so you see the full picture.
+
+There are three workflows:
+
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| `test.yml` | push to `main`, PRs to `main` | `npm ci` + `npm test` + `npm run test:correctness` on 9 cells |
+| `bench.yml` | Sundays 04:00 UTC + manual | Self-bench (`test/bench-ci.js`) on `ubuntu-22.04`, compared against `test/bench-baseline.json` |
+| `release-smoke.yml` | tags `v*`, PRs touching `package.json` / `package-lock.json` / `.npmignore` | `npm pack` + install tarball into a fresh dir + `carto --help` smoke on 3 OS × 2 Node |
+
+**Local equivalents** before pushing:
+
+```bash
+npm test                     # main suite
+npm run test:correctness     # correctness suite
+npm run test:bench-ci        # self-bench (matches what bench.yml runs)
+```
+
+**If a cell goes red:** click the failing job's "Details" link in the PR check section. Test failures show test names; install failures usually mean `package-lock.json` drifted from `package.json` — re-run `npm install` locally and commit the lockfile change.
+
+**If `bench.yml` reports a regression:** the failure includes which metric exceeded its tolerance and by how much. The artifact `bench-output-<run-id>` keeps the raw output for 90 days. If the regression is intentional (e.g., you traded perf for correctness), update the baseline value in `test/bench-baseline.json` in the same PR and link the bench run id in the PR description.
+
+---
+
 ## PR checklist
 
 - [ ] Tested on at least 2-3 real open-source projects

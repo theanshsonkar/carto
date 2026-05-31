@@ -1,0 +1,48 @@
+name: Benchmark
+
+on:
+  schedule:
+    # Every Sunday 04:00 UTC. Quiet runner load; results land before
+    # weekday work begins. GitHub may delay scheduled runs by ~30 min
+    # under load — don't rely on exact timing.
+    - cron: '0 4 * * 0'
+  # Manual trigger from the Actions tab — useful for debugging regressions
+  # or re-establishing the baseline after a deliberate perf change.
+  workflow_dispatch:
+
+jobs:
+  bench:
+    # Pinned to a specific Linux runner so timings are comparable
+    # run-over-run. macos-latest varies between Intel/ARM tiers; Ubuntu
+    # is more stable.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        run: npm ci
+
+      - name: Run self-bench
+        # bench-ci.js indexes the carto repo on itself (no external clones).
+        # `tee` keeps the output visible in CI logs AND saved for the
+        # regression check + artifact upload.
+        run: npm run test:bench-ci | tee bench-output.txt
+
+      - name: Compare against baseline
+        run: node test/bench-regression-check.js bench-output.txt
+
+      - name: Upload bench output
+        # Upload even if the regression check failed — we want the artifact
+        # for diagnosis when something regresses.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-output-${{ github.run_id }}
+          path: bench-output.txt
+          retention-days: 90

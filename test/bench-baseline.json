@@ -1,0 +1,36 @@
+{
+  "_comment_purpose": "Baseline floor for test/bench-regression-check.js. Numbers represent the SLOWEST acceptable run on the configured runner. CI fails if measured > value * (1 + tolerance_pct / 100).",
+  "_comment_seeding": "These initial values are conservative seeds derived from a macOS arm64 measurement (first_run=225ms, second_run=6ms) scaled ~5x for ubuntu-22.04 GitHub-hosted runners with extra slack for first-run variance. After the first real bench.yml run, update these via PR with the measurement run ID linked in the description.",
+  "_comment_update_policy": "DO NOT lower these silently. Every change must (a) link a successful bench.yml workflow run id and (b) explain why the new value is the right baseline.",
+  "runner": "ubuntu-22.04",
+  "node_version": "20",
+  "metrics": {
+    "self_repo_first_run_ms": {
+      "value": 1500,
+      "tolerance_pct": 50,
+      "_note": "Cold sync of ~70-file carto repo. ~225ms on M-series; allow 1500ms*1.5=2250ms ceiling on Linux runner."
+    },
+    "self_repo_second_run_ms": {
+      "value": 100,
+      "tolerance_pct": 100,
+      "_note": "Warm sync (mtime+size cache hits). Should be tens of ms; tolerance is generous because absolute numbers are tiny so percentage swings exaggerate."
+    },
+    "mcp_get_structure_ms": {
+      "value": 10,
+      "tolerance_pct": 200,
+      "_note": "Single MCP query. <1ms on M-series. Linux runner with cold SQLite + GH Actions noise can hit 5-15ms; the 200% tolerance lets it run 30ms before failing."
+    },
+    "mcp_get_routes_ms": {
+      "value": 10,
+      "tolerance_pct": 200
+    },
+    "mcp_get_domains_list_ms": {
+      "value": 10,
+      "tolerance_pct": 200
+    },
+    "mcp_get_blast_radius_ms": {
+      "value": 10,
+      "tolerance_pct": 200
+    }
+  }
+}
