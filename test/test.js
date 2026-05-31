@@ -580,6 +580,137 @@ async function runAsyncSuite() {
     assert.ok(/📄 (README\.md|package\.json)/.test(content),
       `AGENTS.md must list README.md or package.json. Got:\n${content}`);
   });
+
+  // ── Init flow integration tests (Spec 4) ─────────────────────────
+  // Regression target: `carto init` must use V2 indexer (runSyncV2),
+  // not the legacy V1 runFullSync that produced an empty 23ms no-op.
+  const initCli = require('../src/cli/init');
+  const { SQLiteStore: InitTestStore } = require('../src/store/sqlite-store');
+
+  // Sandbox HOME / USERPROFILE so init.run()'s wireIDEs() side effect
+  // can't touch the real ~/.kiro, ~/.cursor, or Claude Desktop configs.
+  function sandboxHome(tmpHome) {
+    const saved = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+    process.env.HOME = tmpHome;
+    process.env.USERPROFILE = tmpHome;
+    return () => {
+      if (saved.HOME === undefined) delete process.env.HOME;
+      else process.env.HOME = saved.HOME;
+      if (saved.USERPROFILE === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = saved.USERPROFILE;
+    };
+  }
+
+  await asyncTest('Init flow', 'carto init runs V2 indexer end-to-end (carto.db populated, AGENTS.md non-empty)', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-init-'));
+    const homeSandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-init-home-'));
+    const restoreHome = sandboxHome(homeSandbox);
+
+    try {
+      // Minimal fixture: an Express app + a util it imports.
+      fs.mkdirSync(path.join(projectRoot, 'src'));
+      fs.writeFileSync(
+        path.join(projectRoot, 'package.json'),
+        JSON.stringify({ name: 'init-fixture', dependencies: { express: '^4.0.0' } }, null, 2)
+      );
+      fs.writeFileSync(path.join(projectRoot, 'README.md'), '# init fixture\n');
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'server.ts'),
+        "import { greet } from './utils';\n" +
+        "import express from 'express';\n" +
+        "const app = express();\n" +
+        "app.get('/health', (req, res) => res.send(greet()));\n" +
+        "export default app;\n"
+      );
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'utils.ts'),
+        "export function greet() { return 'ok'; }\n"
+      );
+
+      await initCli.run(projectRoot);
+
+      // (1) .carto/carto.db exists and is populated.
+      const dbPath = path.join(projectRoot, '.carto', 'carto.db');
+      assert.ok(fs.existsSync(dbPath),
+        'carto init must create .carto/carto.db (V2 indexer ran)');
+
+      const store = new InitTestStore(projectRoot);
+      store.open();
+      const fileCount = store.getFileCount();
+      store.close();
+      assert.ok(fileCount >= 2,
+        `expected >= 2 indexed files in carto.db, got ${fileCount} ` +
+        '(this is the regression target — V1 produced 0)');
+
+      // (2) AGENTS.md fully populated (not the empty fallback).
+      const agentsPath = path.join(projectRoot, 'AGENTS.md');
+      assert.ok(fs.existsSync(agentsPath), 'AGENTS.md must exist after init');
+      const agents = fs.readFileSync(agentsPath, 'utf-8');
+      assert.ok(agents.includes('## Project Structure (auto)'),
+        'AGENTS.md must contain Project Structure header');
+      assert.ok(!agents.includes('_No structure data available._'),
+        `AGENTS.md must not contain empty fallback. Got:\n${agents}`);
+      assert.ok(/📁 src\//.test(agents),
+        `AGENTS.md must list 📁 src/. Got:\n${agents}`);
+
+      // (3) .carto/config.json written with version 2.
+      const cfg = JSON.parse(
+        fs.readFileSync(path.join(projectRoot, '.carto', 'config.json'), 'utf-8')
+      );
+      assert.strictEqual(cfg.version, '2', 'config.json must have version "2"');
+    } finally {
+      restoreHome();
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+      fs.rmSync(homeSandbox, { recursive: true, force: true });
+    }
+  });
+
+  await asyncTest('Init flow', 'carto init migrates leftover V1 graph-cache.json cleanly (no errors)', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-init-v1-'));
+    const homeSandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-init-v1-home-'));
+    const restoreHome = sandboxHome(homeSandbox);
+
+    try {
+      fs.mkdirSync(path.join(projectRoot, 'src'));
+      fs.writeFileSync(
+        path.join(projectRoot, 'package.json'),
+        JSON.stringify({ name: 'v1-leftover-fixture' }, null, 2)
+      );
+      fs.writeFileSync(path.join(projectRoot, 'README.md'), '# v1 leftover\n');
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'index.ts'),
+        "export const NAME = 'init-v1-fixture';\n"
+      );
+
+      // Pre-seed empty V1 state — mirrors what a previously-broken
+      // `carto init` (the bug Spec 4 fixes) left behind on disk.
+      fs.mkdirSync(path.join(projectRoot, '.carto'));
+      fs.writeFileSync(
+        path.join(projectRoot, '.carto', 'graph-cache.json'),
+        JSON.stringify({ version: '2', fileData: {}, importGraph: {} })
+      );
+      fs.writeFileSync(path.join(projectRoot, '.carto', 'hashes.json'), '{}');
+
+      // Must not throw — migrateFromJsonBlobs handles the empty V1 state.
+      await initCli.run(projectRoot);
+
+      const dbPath = path.join(projectRoot, '.carto', 'carto.db');
+      assert.ok(fs.existsSync(dbPath),
+        'carto.db must exist after init on V1-leftover state');
+
+      const store = new InitTestStore(projectRoot);
+      store.open();
+      const fileCount = store.getFileCount();
+      store.close();
+      assert.ok(fileCount >= 1,
+        'index must include real fixture files (not the empty V1 cache); ' +
+        `got ${fileCount}`);
+    } finally {
+      restoreHome();
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+      fs.rmSync(homeSandbox, { recursive: true, force: true });
+    }
+  });
 }
 
 
@@ -963,7 +1094,7 @@ test('Change plan', 'formatPlanMarkdown: fallback message for no-anchor case', (
   await runAsyncSuite();
 
   console.log('');
-  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Change plan'];
+  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Change plan', 'Init flow'];
   for (const suite of suiteNames) {
     const s = suiteTotals[suite] || { pass: 0, total: 0 };
     const icon = s.pass === s.total ? '✓' : '✗';

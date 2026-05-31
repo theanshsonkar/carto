@@ -2,8 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { detectFramework } = require('../detector/framework');
 const { parseCartoIgnore } = require('../security/ignore');
-const { runFullSync } = require('../sync');
-const { discoverFiles: discoverFilesV2 } = require('../store/sync-v2');
+const { runSyncV2, discoverFiles: discoverFilesV2 } = require('../store/sync-v2');
 
 async function run(projectRoot) {
   console.log('[CARTO] Detecting project...');
@@ -52,9 +51,13 @@ async function run(projectRoot) {
   // Install pre-commit hook
   installGitHook(projectRoot);
 
-  // Run first sync
-  const syncConfig = resolveConfig(projectRoot, config);
-  await runFullSync(syncConfig);
+  // Run first sync — V2 SQLite-backed indexer.
+  // (Previously: V1 runFullSync with empty file lists from resolveConfig — produced
+  // a 23ms no-op that left .carto/carto.db missing and AGENTS.md unpopulated.)
+  await runSyncV2({
+    projectRoot,
+    output: path.resolve(projectRoot, config.output || 'AGENTS.md')
+  });
 
   // Auto-wire MCP config into installed AI tools
   wireIDEs(projectRoot);
