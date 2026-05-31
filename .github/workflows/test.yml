@@ -53,8 +53,10 @@ jobs:
       - name: Test (main suite)
         run: npm test
 
-      - name: Test (correctness)
-        run: npm run test:correctness
-
-      # Stress and benchmark intentionally NOT run here — they belong in
-      # the scheduled bench.yml workflow. test.yml must stay <8 min wall time.
+      # Stress, benchmark, and correctness intentionally NOT run here.
+      #   - test:benchmark + correctness require external repos cloned at
+      #     tmp-bench/<name> (prisma, supabase, vscode, zed). Those are
+      #     for local maintainer validation, not per-PR CI.
+      #   - The main suite covers correctness via internal fixtures.
+      #   - test:bench-ci runs in the scheduled bench.yml workflow.
+      # test.yml must stay <8 min wall time per cell.

@@ -230,15 +230,15 @@ There are three workflows:
 
 | Workflow | Trigger | What it does |
 |----------|---------|-------------|
-| `test.yml` | push to `main`, PRs to `main` | `npm ci` + `npm test` + `npm run test:correctness` on 9 cells |
+| `test.yml` | push to `main`, PRs to `main` | `npm ci` + `npm test` on 9 cells |
 | `bench.yml` | Sundays 04:00 UTC + manual | Self-bench (`test/bench-ci.js`) on `ubuntu-22.04`, compared against `test/bench-baseline.json` |
 | `release-smoke.yml` | tags `v*`, PRs touching `package.json` / `package-lock.json` / `.npmignore` | `npm pack` + install tarball into a fresh dir + `carto --help` smoke on 3 OS × 2 Node |
 
 **Local equivalents** before pushing:
 
 ```bash
-npm test                     # main suite
-npm run test:correctness     # correctness suite
+npm test                     # main suite (matches what test.yml runs)
+npm run test:correctness     # correctness suite — needs tmp-bench/<name> clones, NOT run in CI
 npm run test:bench-ci        # self-bench (matches what bench.yml runs)
 ```
 
