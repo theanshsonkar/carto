@@ -6,6 +6,34 @@ const fs = require('fs');
 
 const SCHEMA_VERSION = '1';
 
+/**
+ * normalizePath(p) — Canonicalize a relative path for storage and query.
+ *
+ * Converts backslashes to forward slashes (Windows → POSIX), strips leading
+ * './', and rejects absolute paths (callers must `path.relative(projectRoot, p)`
+ * before passing in).
+ *
+ * Single-source-of-truth for "what does a row in `files.path` look like?".
+ * Apply this at every boundary that writes or queries the column, and every
+ * downstream join (imports.from_file_id → files.path) stays consistent.
+ *
+ * Cross-platform invariant: same code, same DB, same query results on macOS,
+ * Linux, and Windows. Closes Bug 2 (carto impact path normalization) and the
+ * Windows-only "0 dependents" failures in the Store adapter test suite.
+ */
+function normalizePath(p) {
+  if (typeof p !== 'string' || p.length === 0) return p;
+  let out = p;
+  // Backslash → forward slash (Windows → POSIX). path.sep is '\\' on Windows.
+  if (path.sep !== '/') out = out.split(path.sep).join('/');
+  // Some inputs may already use mixed separators (e.g., `src\utils/foo.js`).
+  // Normalize aggressively.
+  out = out.replace(/\\/g, '/');
+  // Strip leading './'
+  if (out.startsWith('./')) out = out.slice(2);
+  return out;
+}
+
 class SQLiteStore {
   constructor(projectRoot) {
     this._projectRoot = projectRoot;
@@ -213,7 +241,7 @@ class SQLiteStore {
   // ─── File operations ───────────────────────────────────────────────────
 
   getFileByPath(relPath) {
-    return this._db.prepare('SELECT * FROM files WHERE path = ?').get(relPath);
+    return this._db.prepare('SELECT * FROM files WHERE path = ?').get(normalizePath(relPath));
   }
 
   getFileById(id) {
@@ -230,7 +258,8 @@ class SQLiteStore {
   }
 
   upsertFile(relPath, { language, hash, mtime, size }) {
-    const existing = this.getFileByPath(relPath);
+    const norm = normalizePath(relPath);
+    const existing = this.getFileByPath(norm);
     if (existing) {
       this._db.prepare(
         'UPDATE files SET language=?, hash=?, mtime=?, size=?, last_indexed_at=? WHERE id=?'
@@ -239,18 +268,18 @@ class SQLiteStore {
     }
     const info = this._db.prepare(
       'INSERT INTO files (path, language, hash, mtime, size, last_indexed_at) VALUES (?,?,?,?,?,?)'
-    ).run(relPath, language, hash, mtime, size, Date.now());
+    ).run(norm, language, hash, mtime, size, Date.now());
     return info.lastInsertRowid;
   }
 
   updateFileMtime(relPath, mtime, size) {
     this._db.prepare(
       'UPDATE files SET mtime=?, size=? WHERE path=?'
-    ).run(mtime, size, relPath);
+    ).run(mtime, size, normalizePath(relPath));
   }
 
   removeFile(relPath) {
-    this._db.prepare('DELETE FROM files WHERE path = ?').run(relPath);
+    this._db.prepare('DELETE FROM files WHERE path = ?').run(normalizePath(relPath));
   }
 
   removeStaleFiles(currentPaths) {
@@ -744,4 +773,4 @@ class SQLiteStore {
   }
 }
 
-module.exports = { SQLiteStore };
+module.exports = { SQLiteStore, normalizePath };

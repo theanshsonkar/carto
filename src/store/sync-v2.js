@@ -24,7 +24,10 @@ const IGNORE_DIRS = new Set([
   'dist', '.next', '.turbo', 'build', 'coverage', '.carto',
   'out', '.cache', 'generated', '__generated__',
   'storybook-static', 'public', 'static',
-  'tmp-bench', 'vendor', 'third_party', '.yarn'
+  'tmp-bench', 'vendor', 'third_party', '.yarn',
+  // Test directories — ported from V1 detector/files.js
+  'test', 'tests', '__tests__', 'e2e', 'playwright',
+  'cypress', 'fixtures', 'mocks', '__mocks__'
 ]);
 
 const CODE_EXTS = new Set([
@@ -33,6 +36,36 @@ const CODE_EXTS = new Set([
   '.rs', '.java', '.cs', '.cpp', '.cc', '.cxx', '.h', '.hpp',
   '.swift', '.kt'
 ]);
+
+const JS_LIKE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
+
+/**
+ * isTestFile(relPath) → true if the file is a test/spec/stories file
+ * Ported from V1 detector/files.js exclusion patterns.
+ *   R:      test_*, test-*, *_test.r (case-insensitive)
+ *   Python: test_*.py, *_test.py
+ *   JS/TS:  *.test.*, *.spec.*, *.stories.*
+ * Path-based directory exclusions (test/, tests/, __tests__/, etc.)
+ * are handled by IGNORE_DIRS during the walk — see above.
+ */
+function isTestFile(relPath) {
+  const base = path.basename(relPath);
+  const lbase = base.toLowerCase();
+  const ext = path.extname(base).toLowerCase();
+
+  if (ext === '.r') {
+    return lbase.startsWith('test_') || lbase.startsWith('test-') || lbase.endsWith('_test.r');
+  }
+  if (ext === '.py') {
+    return lbase.startsWith('test_') || lbase.endsWith('_test.py');
+  }
+  if (JS_LIKE_EXTS.has(ext)) {
+    if (lbase.includes('.test.') || lbase.includes('.spec.') || lbase.includes('.stories.')) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * discoverFiles(projectRoot)
@@ -55,7 +88,7 @@ function discoverFiles(projectRoot) {
         walk(full);
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        if (CODE_EXTS.has(ext) && !isIgnored(rel)) {
+        if (CODE_EXTS.has(ext) && !isIgnored(rel) && !isTestFile(rel)) {
           results.push(rel);
         }
       }
@@ -419,8 +452,8 @@ async function runSyncV2(config) {
     }
   }
 
-  // 8. Generate outputs (only if files changed)
-  if (toProcess.length > 0) {
+  // 8. Generate outputs (only if files changed AND output not suppressed)
+  if (toProcess.length > 0 && config.output !== null && config.output !== false) {
     await generateOutputs(store, config, projectRoot, store.getImportGraph());
   }
 

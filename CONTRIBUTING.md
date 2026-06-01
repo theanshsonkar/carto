@@ -44,9 +44,9 @@ Framework-specific route and model extraction lives inside the language plugins.
 
 ---
 
-## How to add a language (V2 pattern — tree-sitter based)
+## How to add a language (tree-sitter based)
 
-V2 uses tree-sitter for import and symbol extraction. Babel is only used for deep JS/TS route/model extraction on API handler files.
+Carto uses tree-sitter for import and symbol extraction. Babel is only used for deep JS/TS route/model extraction on API handler files.
 
 ### Step 1: Install the grammar
 
@@ -177,7 +177,7 @@ Test on at least 2 real open-source projects using the framework.
 
 ---
 
-## How domain clustering works (V2)
+## How domain clustering works
 
 Domain detection uses **Leiden+CPM graph clustering** (`src/agents/leiden.js`). Files that import each other heavily cluster together. Domain names are inferred from path tokens, with keyword hints for well-known patterns.
 
@@ -215,7 +215,7 @@ cd carto
 npm install
 node src/cli/index.js init   # test in any project
 node src/cli/index.js serve  # test MCP server
-npm test                     # run test suite (35 tests)
+npm test                     # run test suite (62 tests)
 node test/correctness.js     # run correctness tests (31 tests)
 node test/benchmark.js       # run benchmarks against real repos
 ```
@@ -258,7 +258,7 @@ npm run test:bench-ci        # self-bench (matches what bench.yml runs)
 - [ ] Extension added to `CODE_EXTS` and `detectLanguage()` in `sync-v2.js`
 - [ ] No changes to merger logic (unless explicitly fixing a merger bug)
 - [ ] No network calls added
-- [ ] `npm test` passes (35/35)
+- [ ] `npm test` passes (62/62)
 - [ ] `node test/correctness.js` passes (31/31)
 
 ---

@@ -4,22 +4,21 @@ const { checkForUpdate } = require('./update-check');
 
 function run(projectRoot) {
   checkForUpdate(); // fire and forget
-  // Prefer V2 SQLite-backed server
   const dbPath = path.join(projectRoot, '.carto', 'carto.db');
-  if (fs.existsSync(dbPath)) {
-    console.error('[CARTO] MCP server starting (V2 SQLite)...');
-    require('../mcp/server-v2');
-    return;
-  }
 
-  // Fallback to V1 if no SQLite DB exists
-  const mapPath = path.join(projectRoot, '.carto', 'map.json');
-  if (!fs.existsSync(mapPath)) {
-    console.error('[CARTO] No index found. Run `carto sync` first.');
+  if (!fs.existsSync(dbPath)) {
+    // Could be pre-2.0.4 install with only map.json, or never initialized.
+    const mapPath = path.join(projectRoot, '.carto', 'map.json');
+    if (fs.existsSync(mapPath)) {
+      console.error('[CARTO] Legacy index found (map.json) but no SQLite DB. Run `carto init` to upgrade your index.');
+    } else {
+      console.error('[CARTO] No index found. Run `carto init` first.');
+    }
     process.exit(1);
   }
-  console.error('[CARTO] MCP server starting (V1 compat)...');
-  require('../mcp/server');
+
+  console.error('[CARTO] MCP server starting...');
+  require('../mcp/server-v2');
 }
 
 module.exports = { run };

@@ -1,7 +1,6 @@
 'use strict';
 
-const path = require('path');
-const { Carto } = require('../../index.js');
+const { StoreAdapter } = require('../store/store-adapter');
 const { checkForUpdate } = require('./update-check');
 
 async function run(projectRoot, fileArg) {
@@ -11,9 +10,9 @@ async function run(projectRoot, fileArg) {
     process.exit(1);
   }
 
-  const carto = new Carto();
+  const carto = new StoreAdapter();
   try {
-    await carto.index(projectRoot, { useWorkers: false });
+    await carto.index(projectRoot);
   } catch (err) {
     console.error(`[CARTO] Error loading index: ${err.message}`);
     process.exit(1);
@@ -22,6 +21,7 @@ async function run(projectRoot, fileArg) {
   const br = carto.getBlastRadius(fileArg);
   if (!br) {
     console.error(`[CARTO] File not found in project graph: ${fileArg}`);
+    carto.close();
     process.exit(1);
   }
 
@@ -55,7 +55,7 @@ async function run(projectRoot, fileArg) {
   }
 
   console.log('');
-  carto.terminate();
+  carto.close();
 }
 
 module.exports = { run };

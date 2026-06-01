@@ -3,7 +3,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { Carto } = require('../engine/carto');
+const { StoreAdapter } = require('../store/store-adapter');
 
 class Session {
   constructor(id, workingDir) {
@@ -23,20 +23,16 @@ class Session {
     if (this._indexed) return null;
 
     const dbPath = path.join(this.workingDir, '.carto', 'carto.db');
-    this.carto = new Carto();
+    const wasIndexed = fs.existsSync(dbPath);
 
-    if (fs.existsSync(dbPath)) {
-      // DB exists — just load the index (fast path, <10ms)
-      await this.carto.index(this.workingDir);
-      this._indexed = true;
-      return null;
-    }
-
-    // No DB — run full indexing
+    this.carto = new StoreAdapter();
     const start = Date.now();
-    await this.carto.index(this.workingDir, { useWorkers: true });
+    await this.carto.index(this.workingDir, { writeOutputs: false });
     this._indexed = true;
 
+    if (wasIndexed) return null;
+
+    // Fresh index — surface status message
     const meta = this.carto.getMeta();
     const duration = ((Date.now() - start) / 1000).toFixed(1);
     const domains = this.carto.getDomainsList();
@@ -64,6 +60,8 @@ class SessionManager {
   }
 
   delete(id) {
+    const s = this._sessions.get(id);
+    if (s && s.carto) s.carto.close();
     this._sessions.delete(id);
   }
 }

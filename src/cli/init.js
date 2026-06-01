@@ -54,8 +54,6 @@ async function run(projectRoot) {
   installGitHook(projectRoot);
 
   // Run first sync — V2 SQLite-backed indexer.
-  // (Previously: V1 runFullSync with empty file lists from resolveConfig — produced
-  // a 23ms no-op that left .carto/carto.db missing and AGENTS.md unpopulated.)
   await runSyncV2({
     projectRoot,
     output: path.resolve(projectRoot, config.output || 'AGENTS.md')
@@ -65,22 +63,6 @@ async function run(projectRoot) {
   wireIDEs(projectRoot);
 
   console.log('[CARTO] AGENTS.md generated. Carto will sync on every git commit.');
-}
-
-/**
- * Resolves config paths to absolute paths.
- * V2: no watch file lists — sync-v2 discovers files itself.
- */
-function resolveConfig(projectRoot, config) {
-  return {
-    watch: {
-      routeFiles: (config.watch && config.watch.routeFiles || []).map(f => path.resolve(projectRoot, f)),
-      modelFiles: (config.watch && config.watch.modelFiles || []).map(f => path.resolve(projectRoot, f)),
-      frontendFiles: (config.watch && config.watch.frontendFiles || []).map(f => path.resolve(projectRoot, f))
-    },
-    output: path.resolve(projectRoot, config.output || 'AGENTS.md'),
-    projectRoot
-  };
 }
 
 function installGitHook(projectRoot) {
@@ -163,4 +145,4 @@ function wireIDEs(projectRoot) {
   }
 }
 
-module.exports = { run, resolveConfig };
+module.exports = { run };

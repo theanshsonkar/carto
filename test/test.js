@@ -9,7 +9,7 @@ const prismaPlugin = require('../src/extractors/languages/prisma');
 const { mergeIntoAgentsMd, START_MARKER, END_MARKER } = require('../src/agents/merger');
 const { extractImports } = require('../src/extractors/imports');
 const rPlugin = require('../src/extractors/languages/r');
-const { discoverFiles } = require('../src/detector/files');
+const { discoverFiles } = require('../src/store/sync-v2');
 
 // ── Helpers ─────────────────────────────────────────────────────────
 const results = { passed: 0, failed: 0, failures: [] };
@@ -442,7 +442,7 @@ fs.writeFileSync(path.join(filterTmpDir, 'controller_test.R'), '# uppercase suff
 fs.writeFileSync(path.join(filterTmpDir, 'model_test.r'),   '# lowercase suffix — THE BUG\n');
 fs.writeFileSync(path.join(filterTmpDir, 'test_utils.r'),   '# test_ prefix — should be excluded\n');
 
-const rDiscovered = discoverFiles(filterTmpDir, 'r-generic').routeFiles.map(f => path.basename(f));
+const rDiscovered = discoverFiles(filterTmpDir).map(f => path.basename(f));
 
 test('File discovery','normal .r file is included in discovered files', () => {
   assert.ok(rDiscovered.includes('server.r'), `server.r missing from ${JSON.stringify(rDiscovered)}`);
@@ -717,6 +717,246 @@ async function runAsyncSuite() {
       restoreHome();
       fs.rmSync(projectRoot, { recursive: true, force: true });
       fs.rmSync(homeSandbox, { recursive: true, force: true });
+    }
+  });
+
+  // ── Store adapter (ACP V2) — Spec 5 ─────────────────────────────────
+  const { StoreAdapter } = require('../src/store/store-adapter');
+  const { runSyncV2: runSyncV2ForAdapter } = require('../src/store/sync-v2');
+
+  // Helper: build a minimal Express fixture for adapter tests
+  function buildAdapterFixture() {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-adapter-'));
+    fs.mkdirSync(path.join(root, 'src'));
+    fs.writeFileSync(path.join(root, 'package.json'), '{"name":"adapter-fixture"}');
+    fs.writeFileSync(
+      path.join(root, 'src', 'server.js'),
+      "const express = require('express');\nconst { helper } = require('./utils');\nconst app = express();\napp.get('/health', (req, res) => res.send('ok'));\napp.post('/users', (req, res) => res.json({}));\nmodule.exports = app;\n"
+    );
+    fs.writeFileSync(
+      path.join(root, 'src', 'utils.js'),
+      "function helper() { return 1; }\nmodule.exports = { helper };\n"
+    );
+    return root;
+  }
+
+  // Test 1: Adapter constructs and indexes against a real fixture
+  await asyncTest('Store adapter (ACP V2)', 'Adapter indexes fixture, creates carto.db, skips AGENTS.md when writeOutputs:false', async () => {
+    const fixture = buildAdapterFixture();
+    let a;
+    try {
+      a = new StoreAdapter();
+      await a.index(fixture, { writeOutputs: false });
+
+      assert.ok(fs.existsSync(path.join(fixture, '.carto', 'carto.db')),
+        'carto.db must exist after adapter.index()');
+      assert.ok(!fs.existsSync(path.join(fixture, 'AGENTS.md')),
+        'AGENTS.md must NOT exist when writeOutputs:false');
+    } finally {
+      try { a && a.close(); } catch {}
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  // Test 2: Adapter idempotent open on existing DB
+  await asyncTest('Store adapter (ACP V2)', 'Second index() call opens existing DB in <500ms without re-extraction', async () => {
+    const fixture = buildAdapterFixture();
+    let a1, a2;
+    try {
+      a1 = new StoreAdapter();
+      await a1.index(fixture, { writeOutputs: false });
+      const meta1 = a1.getMeta();
+      a1.close(); a1 = null;
+
+      a2 = new StoreAdapter();
+      const start = Date.now();
+      await a2.index(fixture, { writeOutputs: false });
+      const elapsed = Date.now() - start;
+      const meta2 = a2.getMeta();
+
+      assert.ok(elapsed < 500, `Second index() took ${elapsed}ms, expected <500ms`);
+      assert.strictEqual(meta1.totalFiles, meta2.totalFiles,
+        'File count must be unchanged between calls');
+    } finally {
+      try { a1 && a1.close(); } catch {}
+      try { a2 && a2.close(); } catch {}
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  // Test 3: Shape parity — adapter methods return expected top-level keys
+  await asyncTest('Store adapter (ACP V2)', 'getBlastRadius returns V1 shape with risk, directlyAffected, dependentFiles', async () => {
+    const fixture = buildAdapterFixture();
+    let a;
+    try {
+      a = new StoreAdapter();
+      await a.index(fixture, { writeOutputs: false });
+
+      const br = a.getBlastRadius('src/utils.js');
+      // utils.js is imported by server.js, so it should have dependents
+      assert.ok(br !== null, 'getBlastRadius must return non-null for indexed file');
+      assert.ok('risk' in br, 'must have risk field');
+      assert.ok('directlyAffected' in br, 'must have directlyAffected field');
+      assert.ok('potentiallyAffected' in br, 'must have potentiallyAffected field');
+      assert.ok('routesImpacted' in br, 'must have routesImpacted field');
+      assert.ok('domainsImpacted' in br, 'must have domainsImpacted field');
+      assert.ok('dependentFiles' in br, 'must have dependentFiles field');
+      assert.ok(Array.isArray(br.dependentFiles), 'dependentFiles must be array');
+    } finally {
+      try { a && a.close(); } catch {}
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  // Test 4: runSyncV2 honors output:null
+  await asyncTest('Store adapter (ACP V2)', 'runSyncV2 with output:null creates DB but no AGENTS.md or context files', async () => {
+    const fixture = buildAdapterFixture();
+    try {
+      await runSyncV2ForAdapter({ projectRoot: fixture, output: null });
+
+      assert.ok(fs.existsSync(path.join(fixture, '.carto', 'carto.db')),
+        'carto.db must exist');
+      assert.ok(!fs.existsSync(path.join(fixture, 'AGENTS.md')),
+        'AGENTS.md must NOT exist with output:null');
+
+      const contextDir = path.join(fixture, '.carto', 'context');
+      const hasContext = fs.existsSync(contextDir) &&
+        fs.readdirSync(contextDir).filter(f => f.endsWith('.md')).length > 0;
+      assert.ok(!hasContext, 'Context files must NOT be written with output:null');
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+
+    // Separate fixture: verify output with a real path DOES write AGENTS.md
+    const fixture2 = buildAdapterFixture();
+    try {
+      await runSyncV2ForAdapter({ projectRoot: fixture2, output: path.join(fixture2, 'AGENTS.md') });
+      assert.ok(fs.existsSync(path.join(fixture2, 'AGENTS.md')),
+        'AGENTS.md must exist when output is a real path');
+    } finally {
+      fs.rmSync(fixture2, { recursive: true, force: true });
+    }
+  });
+
+  // Test 5: Session manager closes adapter on delete
+  await asyncTest('Store adapter (ACP V2)', 'SessionManager.delete() closes SQLite handle cleanly', async () => {
+    const { SessionManager } = require('../src/acp/session');
+    const fixture = buildAdapterFixture();
+    try {
+      const mgr = new SessionManager();
+      const session = mgr.create(fixture);
+      await session.ensureIndexed();
+
+      // Verify it works before delete
+      assert.ok(session.carto.getMeta().totalFiles >= 1, 'session must be indexed');
+
+      mgr.delete(session.id);
+
+      // After delete, the adapter's store is closed
+      assert.strictEqual(session.carto._store, null, 'store must be null after close');
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  // Test 6: getContextForFile returns composed context
+  await asyncTest('Store adapter (ACP V2)', 'getContextForFile returns domain, routes, blastRadius, neighbors', async () => {
+    const fixture = buildAdapterFixture();
+    let a;
+    try {
+      a = new StoreAdapter();
+      await a.index(fixture, { writeOutputs: false });
+
+      const ctx = a.getContextForFile('src/server.js');
+      assert.ok(ctx !== null, 'must return context for indexed file');
+      assert.ok('domain' in ctx, 'must have domain');
+      assert.ok('routes' in ctx, 'must have routes');
+      assert.ok('blastRadius' in ctx, 'must have blastRadius');
+      assert.ok('neighbors' in ctx, 'must have neighbors');
+      assert.ok('crossDomainDeps' in ctx, 'must have crossDomainDeps');
+      assert.ok(Array.isArray(ctx.routes), 'routes must be array');
+
+      // server.js has 2 routes
+      assert.ok(ctx.routes.length >= 1, `expected routes, got ${ctx.routes.length}`);
+    } finally {
+      try { a && a.close(); } catch {}
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  // Test 7: No V1 cache files touched during adapter session
+  await asyncTest('Store adapter (ACP V2)', 'V1 graph-cache.json is not touched during adapter session', async () => {
+    const fixture = buildAdapterFixture();
+    let a;
+    try {
+      // Pre-seed V1 cache file
+      fs.mkdirSync(path.join(fixture, '.carto'), { recursive: true });
+      const cachePath = path.join(fixture, '.carto', 'graph-cache.json');
+      fs.writeFileSync(cachePath, JSON.stringify({ sentinel: 'V1' }));
+      const mtimeBefore = fs.statSync(cachePath).mtimeMs;
+
+      // Wait 50ms to ensure mtime would differ if file is touched
+      await new Promise(r => setTimeout(r, 50));
+
+      a = new StoreAdapter();
+      await a.index(fixture, { writeOutputs: false });
+
+      // Exercise all query methods
+      a.getRoutes();
+      a.getStructure();
+      a.getDomainsList();
+      a.getBlastRadius('src/server.js');
+      a.getContextForFile('src/server.js');
+      a.getNeighbors('src/server.js', 1);
+
+      // Verify V1 file untouched
+      const content = fs.readFileSync(cachePath, 'utf-8');
+      const mtimeAfter = fs.statSync(cachePath).mtimeMs;
+      assert.strictEqual(JSON.parse(content).sentinel, 'V1',
+        'graph-cache.json content must be unchanged');
+      assert.strictEqual(mtimeBefore, mtimeAfter,
+        'graph-cache.json mtime must be unchanged');
+    } finally {
+      try { a && a.close(); } catch {}
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  // Test 8: Public API back-compat — Spec 6
+  // The `Carto` named export from index.js is a deprecated alias for
+  // StoreAdapter (removed in 3.0.0). Existing programs must keep working:
+  //   const { Carto } = require('carto-md');
+  //   const c = new Carto(); await c.index(root); ...; c.terminate();
+  await asyncTest('Store adapter (ACP V2)', 'Public API: Carto alias + terminate() shim work end-to-end', async () => {
+    const publicApi = require('../index.js');
+    assert.ok(typeof publicApi.StoreAdapter === 'function',
+      'index.js must export StoreAdapter');
+    assert.ok(typeof publicApi.Carto === 'function',
+      'index.js must export Carto (deprecated alias)');
+    assert.strictEqual(publicApi.Carto, publicApi.StoreAdapter,
+      'Carto must be the same class as StoreAdapter');
+
+    const fixture = buildAdapterFixture();
+    let c;
+    try {
+      c = new publicApi.Carto();
+      assert.strictEqual(typeof c.terminate, 'function',
+        'Carto instances must have terminate() (V1 back-compat)');
+      assert.strictEqual(typeof c.close, 'function',
+        'Carto instances must have close() (canonical name)');
+
+      await c.index(fixture, { writeOutputs: false });
+      assert.ok(c.getMeta().totalFiles >= 1,
+        'index() via Carto alias must populate the store');
+
+      // terminate() must actually close the underlying store
+      c.terminate();
+      assert.strictEqual(c._store, null,
+        'terminate() must null out _store (delegates to close())');
+      c = null;
+    } finally {
+      try { c && c.close(); } catch {}
+      fs.rmSync(fixture, { recursive: true, force: true });
     }
   });
 }
@@ -1102,7 +1342,7 @@ test('Change plan', 'formatPlanMarkdown: fallback message for no-anchor case', (
   await runAsyncSuite();
 
   console.log('');
-  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Change plan', 'Init flow'];
+  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Change plan', 'Init flow', 'Store adapter (ACP V2)'];
   for (const suite of suiteNames) {
     const s = suiteTotals[suite] || { pass: 0, total: 0 };
     const icon = s.pass === s.total ? '✓' : '✗';

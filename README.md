@@ -138,7 +138,7 @@ Reads `tsconfig.json` / `jsconfig.json` for `paths` config. `@/components/Button
 
 ## Domain detection
 
-V2 uses **Leiden+CPM graph clustering** — files that import each other heavily cluster together. Domain names are inferred from path tokens, with keyword hints for well-known patterns (AUTH, PAYMENTS, DATABASE, etc.).
+Carto uses **Leiden+CPM graph clustering** — files that import each other heavily cluster together. Domain names are inferred from path tokens, with keyword hints for well-known patterns (AUTH, PAYMENTS, DATABASE, etc.).
 
 Works on any repo — not just SaaS apps. vscode gets AUTH/EVENTS/DATABASE. zed (Rust) gets DATABASE/AUTH/EVENTS. A game engine would get RENDERER/PHYSICS/AUDIO.
 
@@ -224,25 +224,6 @@ Other agents are smart but blind. Carto sees the architecture:
 - Injects structural context into every LLM call (blast radius, domains, routes)
 - 12 internal tools the LLM can call during reasoning
 - Zero cost to you beyond your own API key
-
----
-
-## V1 → V2 migration
-
-Run `carto sync` — it auto-migrates your existing `graph-cache.json` and `map.json` into SQLite and renames them to `.bak`. No manual steps.
-
-What changed under the hood:
-
-| | V1 | V2 |
-|---|---|---|
-| Storage | JSON blobs | SQLite (WAL mode, indexed queries) |
-| Parsing | Babel-only | tree-sitter for all languages, Babel only for deep route/model extraction |
-| File limit | 300 cap | Unlimited |
-| Languages | JS/TS/Python/Go/R | + Rust/Java/C++/C#/Ruby |
-| Domain detection | Hardcoded keywords | Leiden+CPM graph clustering |
-| Watcher | Per-file chokidar | Single recursive directory watch (<20 file descriptors) |
-| MCP startup | Re-indexes on start | Opens SQLite instantly (<10ms) |
-| Path aliases | Not resolved | `@/`, `~/` resolved via tsconfig |
 
 ---
 
