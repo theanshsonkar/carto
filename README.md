@@ -248,6 +248,8 @@ What changed under the hood:
 
 ## MCP config (if auto-wire missed your IDE)
 
+`carto init` auto-wires into Kiro, Cursor, and Claude Desktop. If it missed yours, add manually:
+
 **Kiro** — `~/.kiro/settings/mcp.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
@@ -259,6 +261,16 @@ What changed under the hood:
 ```
 
 **Claude Desktop** — `~/Library/Application Support/Claude/claude_desktop_config.json`
+```json
+{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+**VS Code Copilot** — `.vscode/mcp.json` in your project root, or Command Palette → `MCP: Add Server`
+```json
+{ "servers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+**Windsurf** — `~/.windsurf/mcp.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
