@@ -254,14 +254,16 @@ Custom domains via `carto.config.json`:
 
 ## Benchmarks
 
-Measured on real open-source repos. Apple M-series, 8 CPUs, 8GB RAM.
+Measured on real open-source repos. Apple M-series, 8 CPUs, 8GB RAM. SHAs pinned in `~/carto-test-repos`.
 
-| Repo | Language | Source Files | Indexed | First Run | Second Run | DB Size | Import Edges |
-|------|----------|-------------|---------|-----------|------------|---------|--------------|
-| [prisma/prisma](https://github.com/prisma/prisma) | TypeScript | 3,303 | 3,303 | **1.6s** | **178ms** | 2.2 MB | 3,590 |
-| [supabase/supabase](https://github.com/supabase/supabase) | TypeScript | 6,818 | 6,746 | **4.9s** | **725ms** | 4.3 MB | 5,754 |
-| [microsoft/vscode](https://github.com/microsoft/vscode) | TypeScript | 10,565 | 10,565 | **9.7s** | **1.2s** | 10.6 MB | 19,769 |
-| [zed-industries/zed](https://github.com/zed-industries/zed) | Rust | 1,837 | 1,837 | **2.7s** | **83ms** | 4.7 MB | 2,176 |
+| Repo | Language | Indexed Files | First Run | Second Run | DB Size | Import Edges |
+|------|----------|---------------|-----------|------------|---------|--------------|
+| [prisma/prisma](https://github.com/prisma/prisma) | TypeScript | 961 | **649ms** | **110ms** | 0.7 MB | 1,387 |
+| [supabase/supabase](https://github.com/supabase/supabase) | TypeScript | 6,259 | **4.8s** | **751ms** | 4.0 MB | 5,321 |
+| [microsoft/vscode](https://github.com/microsoft/vscode) | TypeScript | 7,567 | **7.8s** | **387ms** | 6.7 MB | 13,420 |
+| [zed-industries/zed](https://github.com/zed-industries/zed) | Rust | 1,752 | **3.0s** | **182ms** | 4.4 MB | 2,113 |
+
+**Indexed Files** counts what Carto actually parses — `.ts/.js/.py/.go/.rs/...` after excluding `node_modules`, build output, and per-file `*.test.*` / `*.spec.*` / `*.stories.*` / `test_*.py` patterns. The on-disk file count of the repo is larger.
 
 **Second run** = only changed files re-parsed. mtime+size checked before reading content — if nothing changed, nothing is re-parsed.
 
@@ -269,12 +271,12 @@ Measured on real open-source repos. Apple M-series, 8 CPUs, 8GB RAM.
 
 | Repo | Domains |
 |------|---------|
-| prisma | DATABASE · CORE · EVENTS · AUTH |
+| prisma | CORE · DATABASE · EVENTS · AUTH |
 | supabase | CORE · AUTH · DATABASE · PAYMENTS · EVENTS · NOTIFICATIONS · TRPC |
-| vscode | CORE · AUTH · EVENTS · DATABASE · NOTIFICATIONS |
-| zed (Rust) | CORE · DATABASE · AUTH · EVENTS · PAYMENTS · NOTIFICATIONS |
+| vscode | CORE · DATABASE · AUTH · EVENTS · NOTIFICATIONS |
+| zed (Rust) | CORE · DATABASE · AUTH · EVENTS · PAYMENTS · NOTIFICATIONS · TRPC |
 
-vscode at 10,565 files in under 10 seconds. Rust import graph working on zed (2,176 edges from `mod` declarations and `use crate::` paths).
+vscode at 7,567 indexed files in under 8 seconds. Rust import graph working on zed (2,113 edges from `mod` declarations and `use crate::` paths).
 
 ---
 

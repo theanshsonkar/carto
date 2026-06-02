@@ -1,6 +1,7 @@
 'use strict';
 
 const { StoreAdapter } = require('../store/store-adapter');
+const { normalizeFileArg } = require('../store/path-utils');
 const { checkForUpdate } = require('./update-check');
 
 async function run(projectRoot, fileArg) {
@@ -10,6 +11,10 @@ async function run(projectRoot, fileArg) {
     process.exit(1);
   }
 
+  // Normalize so `./lib/x.js`, absolute paths, and Windows separators
+  // all resolve to the same `files.path` value stored in SQLite.
+  const file = normalizeFileArg(projectRoot, fileArg);
+
   const carto = new StoreAdapter();
   try {
     await carto.index(projectRoot);
@@ -18,7 +23,7 @@ async function run(projectRoot, fileArg) {
     process.exit(1);
   }
 
-  const br = carto.getBlastRadius(fileArg);
+  const br = carto.getBlastRadius(file);
   if (!br) {
     console.error(`[CARTO] File not found in project graph: ${fileArg}`);
     carto.close();

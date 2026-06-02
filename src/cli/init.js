@@ -95,6 +95,21 @@ function wireIDEs(projectRoot) {
   const home = os.homedir();
   const wired = [];
 
+  // Claude Code (project-scoped). Spec 7: write .mcp.json at the project root.
+  // Claude Code reads this file automatically when opened in the project — no
+  // host-level config needed, and no detection required (it's a project-local
+  // file that only takes effect when the user actually uses Claude Code here).
+  try {
+    const mcpJsonPath = path.join(projectRoot, '.mcp.json');
+    const config = fs.existsSync(mcpJsonPath)
+      ? JSON.parse(fs.readFileSync(mcpJsonPath, 'utf-8'))
+      : { mcpServers: {} };
+    config.mcpServers = config.mcpServers || {};
+    config.mcpServers.carto = { command: 'carto', args: ['serve'] };
+    fs.writeFileSync(mcpJsonPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+    wired.push('Claude Code');
+  } catch {}
+
   // Kiro
   const kiroDir = path.join(home, '.kiro', 'settings');
   if (fs.existsSync(path.join(home, '.kiro'))) {

@@ -41,13 +41,34 @@ class SQLiteStore {
   }
 
   /**
-   * open() — Opens or creates the database. Applies pragmas and schema.
+   * open(opts) — Opens or creates the database. Applies pragmas and schema.
+   *
+   * Options:
+   *   readonly  — Open the DB in read-only mode. Used by the MCP server
+   *               (`carto serve`) so a malformed/buggy tool can never write
+   *               through the SQLite layer. Skips mkdir, schema bootstrap, and
+   *               WAL pragma (WAL needs write capability and would otherwise
+   *               create `carto.db-wal`/`carto.db-shm` in repos that only run
+   *               the MCP server). Sets `fileMustExist: true` so a missing DB
+   *               returns a clear SQLite error instead of silently creating an
+   *               empty file in the wrong location.
    */
-  open() {
+  open(opts = {}) {
     const cartoDir = path.join(this._projectRoot, '.carto');
-    fs.mkdirSync(cartoDir, { recursive: true });
-
     const dbPath = path.join(cartoDir, 'carto.db');
+
+    if (opts.readonly) {
+      // Read-only path: dir must already exist (a writer process — `carto sync`
+      // or `carto init` — created the DB). Don't mkdir, don't ensure schema,
+      // don't apply write-only pragmas.
+      this._db = new Database(dbPath, { readonly: true, fileMustExist: true });
+      // Read-only safe pragmas only:
+      this._db.pragma('busy_timeout = 5000');
+      this._db.pragma('cache_size = -64000'); // 64MB cache
+      return this;
+    }
+
+    fs.mkdirSync(cartoDir, { recursive: true });
 
     try {
       this._db = new Database(dbPath);
@@ -618,7 +639,12 @@ class SQLiteStore {
       },
       entryPoints,
       highImpact,
-      stack: stack ? JSON.parse(stack) : [],
+      // Defensive parse — a corrupt stack_json row must never crash callers.
+      // Spec 7 Bug 5f.
+      stack: (() => {
+        if (!stack) return [];
+        try { return JSON.parse(stack); } catch { return []; }
+      })(),
       domains
     };
   }

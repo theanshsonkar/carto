@@ -7,8 +7,21 @@ const { Server } = require('@modelcontextprotocol/sdk/server/index.js');
 const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio.js');
 const { CallToolRequestSchema, ListToolsRequestSchema } = require('@modelcontextprotocol/sdk/types.js');
 const { SQLiteStore } = require('../store/sqlite-store');
+const { normalizeFileArg } = require('../store/path-utils');
 
 const projectRoot = process.cwd();
+
+// Process-level safety nets — Spec 7 Bug 5c. Without these, any error that
+// escapes the request handler (very rare, but possible from native bindings
+// or async stack frames) takes the whole MCP server down, and Claude Code /
+// Kiro surface `-32000 Failed to reconnect`. We log to stderr (which the
+// host logs but never terminates the JSON-RPC channel) and stay alive.
+process.on('uncaughtException', (err) => {
+  process.stderr.write(`[CARTO MCP] Uncaught exception: ${err && err.stack ? err.stack : err}\n`);
+});
+process.on('unhandledRejection', (reason) => {
+  process.stderr.write(`[CARTO MCP] Unhandled rejection: ${reason && reason.stack ? reason.stack : reason}\n`);
+});
 
 // Open SQLite directly — no re-indexing, instant startup
 let store = null;
@@ -17,8 +30,13 @@ function getStore() {
   if (store) return store;
   const dbPath = path.join(projectRoot, '.carto', 'carto.db');
   if (!fs.existsSync(dbPath)) return null;
-  store = new SQLiteStore(projectRoot);
-  store.open();
+  // Open BEFORE assigning to the module-scoped `store` so that if open()
+  // throws (corrupt DB, locked file, schema mismatch) we don't poison the
+  // cache with a broken instance — every subsequent call would otherwise
+  // return the broken object and never recover.
+  const s = new SQLiteStore(projectRoot);
+  s.open({ readonly: true }); // Spec 8 — defense in depth: MCP tools never write
+  store = s;
   return store;
 }
 
@@ -62,8 +80,20 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }))
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  const s = getStore();
-  if (!s) return notIndexed();
+  // Normalize file-arg tools to the canonical SQLite-stored form so
+  // `./lib/x.js`, absolute paths, and Windows separators all resolve.
+  // Tools that don't take a `file` arg are unaffected.
+  if (args && typeof args.file === 'string') {
+    args.file = normalizeFileArg(projectRoot, args.file);
+  }
+  // Wrap entire handler body so any tool error (SQLite, null deref, bad
+  // input) returns a structured error response instead of crashing the
+  // MCP transport — Spec 7 Bug 5 fix. Pre-2.0.7, an unhandled throw here
+  // killed the stdio connection and Claude Code/Kiro would surface
+  // `-32000 Failed to reconnect`.
+  try {
+    const s = getStore();
+    if (!s) return notIndexed();
 
   if (name === 'get_routes') {
     const routes = s.getRoutes();
@@ -105,6 +135,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   if (name === 'get_domain') {
+    // Guard: AI clients sometimes call this with no/empty `domain` arg.
+    // Pre-2.0.7 we'd then call args.domain.toUpperCase() on undefined and crash.
+    if (!args.domain || typeof args.domain !== 'string') {
+      return text('Missing required argument: domain. Use get_domains_list to see available domains.');
+    }
     const domain = s.getDomain(args.domain);
     if (!domain) return text(`Domain not found: ${args.domain}. Use get_domains_list to see available domains.`);
 
@@ -133,7 +168,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       models: domain.models.map(m => ({
         ...m,
         className: m.name,
-        fields: m.fields_json ? JSON.parse(m.fields_json) : []
+        // Wrap parse so one corrupt row doesn't take down the whole tool call.
+        fields: (() => {
+          if (!m.fields_json) return [];
+          try { return JSON.parse(m.fields_json); } catch { return []; }
+        })()
       })),
       functions: {},
       envVars: [],
@@ -446,6 +485,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   return text(`Unknown tool: ${name}`);
+  } catch (err) {
+    process.stderr.write(`[CARTO MCP] Tool "${name}" error: ${err.stack || err.message || err}\n`);
+    return {
+      content: [{ type: 'text', text: `Error in ${name}: ${err.message || String(err)}` }],
+      isError: true,
+    };
+  }
 });
 
 async function main() {

@@ -30,20 +30,12 @@ class ProviderRegistry {
     this._config = null;
   }
 
-  /**
-   * list() — Returns supported providers for ACP providers/list.
-   */
-  list() {
-    return SUPPORTED_PROVIDERS.map(p => ({
-      id: p.id,
-      name: p.name,
-      defaultModel: p.defaultModel,
-      models: p.models,
-    }));
-  }
+  // list() was removed in 2.0.7 (Spec 7 Bug 3). It was only called by the
+  // dropped custom provider-list ACP method, which the SDK never dispatched.
+  // SUPPORTED_PROVIDERS is still exported for external callers / tests.
 
   /**
-   * set(params) — Configures the active provider from ACP providers/set.
+   * set(params) — Configures the active provider.
    * params: { providerId, apiKey, baseUrl?, model? }
    */
   set(params) {

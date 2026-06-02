@@ -228,7 +228,7 @@ test('Merger', 'Empty string input → produces valid AGENTS.md with markers', (
 fs.rmSync(mergerTmpDir, { recursive: true, force: true });
 
 // ═══════════════════════════════════════════════════════════════════
-// 4. Import graph (6 tests)
+// 4. Import graph (7 tests)
 // ═══════════════════════════════════════════════════════════════════
 
 const importTmpDir = '/tmp/carto-test';
@@ -316,6 +316,30 @@ test('Import graph', "import X from 'express' (package, not relative) → not in
     importTmpDir
   );
   assert.strictEqual(imports.length, 0, `Expected no imports but got ${JSON.stringify(imports)}`);
+});
+
+test('Import graph', 'Python: from .b import X resolves to b.py (regression — Bug 1)', () => {
+  const pyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-py-imp-'));
+  try {
+    // 3-file Python project: a.py imports b.py via relative import; c.py imports both.
+    const aPath = path.join(pyDir, 'a.py');
+    const bPath = path.join(pyDir, 'b.py');
+    const cPath = path.join(pyDir, 'c.py');
+    fs.writeFileSync(bPath, 'def hello(): return 1\n');
+    fs.writeFileSync(aPath, 'from .b import hello\n');
+    fs.writeFileSync(cPath, 'from .a import hello as a_hello\nfrom .b import hello as b_hello\n');
+
+    // Bug 1 was: extractPythonImports returned absolute paths but the JS-style
+    // dedup loop in extractImports only handled `./` and `@/~/#` prefixes,
+    // so every Python edge was silently dropped (returned []).
+    const aImports = extractImports(fs.readFileSync(aPath, 'utf-8'), aPath, pyDir);
+    const cImports = extractImports(fs.readFileSync(cPath, 'utf-8'), cPath, pyDir);
+
+    assert.deepStrictEqual(aImports, ['b.py'], `a.py should import b.py; got ${JSON.stringify(aImports)}`);
+    assert.deepStrictEqual(cImports.sort(), ['a.py', 'b.py'], `c.py should import a.py and b.py; got ${JSON.stringify(cImports)}`);
+  } finally {
+    fs.rmSync(pyDir, { recursive: true, force: true });
+  }
 });
 
 // Clean up import temp files
@@ -666,6 +690,18 @@ async function runAsyncSuite() {
         fs.readFileSync(path.join(projectRoot, '.carto', 'config.json'), 'utf-8')
       );
       assert.strictEqual(cfg.version, '2', 'config.json must have version "2"');
+
+      // (4) .mcp.json written at project root for Claude Code (Spec 7).
+      const mcpJsonPath = path.join(projectRoot, '.mcp.json');
+      assert.ok(fs.existsSync(mcpJsonPath),
+        'carto init must write .mcp.json at project root for Claude Code');
+      const mcpJson = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf-8'));
+      assert.ok(mcpJson.mcpServers && mcpJson.mcpServers.carto,
+        '.mcp.json must contain mcpServers.carto entry');
+      assert.strictEqual(mcpJson.mcpServers.carto.command, 'carto',
+        '.mcp.json carto.command must be "carto"');
+      assert.deepStrictEqual(mcpJson.mcpServers.carto.args, ['serve'],
+        '.mcp.json carto.args must be ["serve"]');
     } finally {
       restoreHome();
       fs.rmSync(projectRoot, { recursive: true, force: true });
@@ -959,7 +995,307 @@ async function runAsyncSuite() {
       fs.rmSync(fixture, { recursive: true, force: true });
     }
   });
+
+  // ═════════════════════════════════════════════════════════════════
+  // Secret leakage — Spec 8
+  // Asserts the trust-posture invariant: file content values never reach
+  // AGENTS.md or .carto/context/*.md, and the expanded .cartoignore default
+  // patterns from Spec 8a catch real secret-bearing filenames without false-
+  // positiving harmless code (tokenizer.js etc.). Plus the MCP server's
+  // readonly DB mode (Spec 8b) actually rejects writes.
+  // ═════════════════════════════════════════════════════════════════
+
+  await asyncTest('Secret leakage', 'fake secrets in fixture files do not appear in AGENTS.md or context files', async () => {
+    const { runSyncV2: runSync } = require('../src/store/sync-v2');
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-secrets-'));
+
+    // Marker tokens that MUST NOT leak. Using clearly-fake but realistic
+    // shapes so this test would also catch an accidental "include string
+    // literals from route definitions" regression.
+    const FAKE_STRIPE = 'sk_test_FAKE_VALUE_DO_NOT_LEAK_INTO_AGENTS_MD';
+    const FAKE_HARDCODED = 'FAKE_HARDCODED_TOKEN_DO_NOT_LEAK_4242';
+
+    try {
+      fs.mkdirSync(path.join(projectRoot, 'src'));
+
+      // (a) Caught by *secret* — should be excluded entirely from indexing.
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'secrets.ts'),
+        `export const STRIPE_KEY = "${FAKE_STRIPE}";\n`
+      );
+
+      // (b) Caught by *credential* — the kind of filename real secret-storage
+      // files actually use (in contrast to api_key.py / api-keys.ts which is
+      // typically feature code, not credentials).
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'aws_credentials.ts'),
+        `export const KEY = "${FAKE_STRIPE}";\n`
+      );
+
+      // (c) Normal file with a hardcoded fake API key in a string literal.
+      // This file IS indexed; the test asserts the literal value never
+      // surfaces in AGENTS.md or context files.
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'normal.ts'),
+        `import express from 'express';\n` +
+        `const app = express();\n` +
+        `const HARDCODED = "${FAKE_HARDCODED}";\n` +
+        `app.get('/api/users', (req, res) => res.json({ key: HARDCODED }));\n` +
+        `export default app;\n`
+      );
+
+      // (d) .env with a fake Stripe key. Env var NAMES may surface (by
+      // design — see envvars.js docstring); VALUES must not.
+      fs.writeFileSync(
+        path.join(projectRoot, '.env'),
+        `STRIPE_SECRET_KEY=${FAKE_STRIPE}\n`
+      );
+
+      // (e) Models file with a `password` field. Field NAME may surface;
+      // no value to leak here, but proves we still extract the model.
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'models.ts'),
+        `export interface User { id: string; email: string; password: string; }\n`
+      );
+
+      fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"secrets-fixture"}');
+
+      const agentsPath = path.join(projectRoot, 'AGENTS.md');
+      await runSync({ projectRoot, output: agentsPath });
+
+      const agents = fs.readFileSync(agentsPath, 'utf-8');
+
+      // Hard invariants — neither value may appear anywhere.
+      assert.ok(!agents.includes(FAKE_STRIPE),
+        `AGENTS.md leaked STRIPE value:\n${agents}`);
+      assert.ok(!agents.includes(FAKE_HARDCODED),
+        `AGENTS.md leaked hardcoded token:\n${agents}`);
+
+      // Same invariant for every domain context file.
+      const contextDir = path.join(projectRoot, '.carto', 'context');
+      if (fs.existsSync(contextDir)) {
+        for (const f of fs.readdirSync(contextDir)) {
+          if (!f.endsWith('.md')) continue;
+          const content = fs.readFileSync(path.join(contextDir, f), 'utf-8');
+          assert.ok(!content.includes(FAKE_STRIPE),
+            `context/${f} leaked STRIPE value:\n${content}`);
+          assert.ok(!content.includes(FAKE_HARDCODED),
+            `context/${f} leaked hardcoded token:\n${content}`);
+        }
+      }
+
+      // Confirm secrets.ts and api_keys.ts were excluded from the DB
+      // (cartoignore must block them — they're code-extension files that
+      // would otherwise be indexed).
+      const { SQLiteStore: Store } = require('../src/store/sqlite-store');
+      const s = new Store(projectRoot);
+      s.open({ readonly: true });
+      try {
+        const allFiles = s._db.prepare('SELECT path FROM files').all().map(r => r.path);
+        assert.ok(!allFiles.some(p => p.endsWith('secrets.ts')),
+          `secrets.ts must be excluded by .cartoignore default *secret*; got files: ${allFiles.join(', ')}`);
+        assert.ok(!allFiles.some(p => p.endsWith('aws_credentials.ts')),
+          `aws_credentials.ts must be excluded by .cartoignore default *credential*; got files: ${allFiles.join(', ')}`);
+        // normal.ts SHOULD be indexed (negative control).
+        assert.ok(allFiles.some(p => p.endsWith('normal.ts')),
+          `normal.ts must be indexed (it is not a secret file); got: ${allFiles.join(', ')}`);
+      } finally {
+        s.close();
+      }
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('Secret leakage', 'expanded ignore patterns block secret files without false-positiving tokenizer.js', () => {
+    const { parseCartoIgnore } = require('../src/security/ignore');
+    const isIgnored = parseCartoIgnore(fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ignore-')));
+
+    // New patterns from Spec 8a — must be blocked.
+    const mustBeBlocked = [
+      'id_rsa', 'id_rsa.pub', 'id_ed25519', 'id_ecdsa', 'id_dsa',
+      'authorized_keys', 'known_hosts',
+      '.npmrc', '.pypirc', '.netrc',
+      'kubeconfig', 'cluster.kubeconfig',
+      '.dockercfg',
+      'my-service-account.json', 'gcp_service_account.json',
+      'aws-credentials.json',
+      'cert.crt', 'cert.cer', 'cert.p12', 'cert.pfx',
+      'cert.jks', 'cert.keystore', 'cert.pkcs12'
+    ];
+    for (const f of mustBeBlocked) {
+      assert.ok(isIgnored(f), `expected ${f} to be ignored by Spec 8a defaults`);
+    }
+
+    // Negative — must NOT be blocked. The whole point of NOT shipping
+    // `*api_key*` / `*token*` / `*key*` globs is to leave these alone:
+    // they are real feature-code filenames in the wild (cal.com, supabase,
+    // fastapi, zed all ship code with these names).
+    const mustNotBeBlocked = [
+      'tokenizer.js',
+      'crypto-token.ts',
+      'keyboard.tsx',
+      'monkey-patch.js',
+      'normal.ts',
+      'user.ts',
+      'utils.py',
+      // Real feature-code patterns we deliberately do NOT block:
+      'api_key.py',           // fastapi/security/api_key.py
+      'api-keys.ts',          // cal.com api-keys feature
+      'api_key.rs',           // zed crates/language_model/src/api_key.rs
+      'api-key-service.ts'    // generic SaaS api-key feature module
+    ];
+    for (const f of mustNotBeBlocked) {
+      assert.ok(!isIgnored(f), `expected ${f} to NOT be ignored (false positive)`);
+    }
+  });
+
+  await asyncTest('Secret leakage', 'MCP server opens DB in read-only mode (rejects writes, reads succeed)', async () => {
+    const { SQLiteStore: Store } = require('../src/store/sqlite-store');
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-readonly-'));
+
+    try {
+      // Build a writable DB first (simulates a prior `carto sync`).
+      const writer = new Store(projectRoot);
+      writer.open();
+      writer.setMeta('test_meta_key', 'test_meta_value');
+      writer.close();
+
+      // Open the way `carto serve` does — readonly.
+      const reader = new Store(projectRoot);
+      reader.open({ readonly: true });
+
+      try {
+        // Reads must work.
+        assert.strictEqual(reader.getMeta('test_meta_key'), 'test_meta_value',
+          'readonly mode must allow reads');
+        // getStructure() exercises a real query path (joins, aggregates).
+        const structure = reader.getStructure();
+        assert.ok(structure && typeof structure === 'object',
+          'getStructure() must return an object in readonly mode');
+
+        // Writes must throw with SQLITE_READONLY.
+        let writeErr = null;
+        try {
+          reader.setMeta('test_meta_key', 'should_fail');
+        } catch (e) {
+          writeErr = e;
+        }
+        assert.ok(writeErr, 'readonly mode must reject writes');
+        assert.ok(
+          writeErr.code === 'SQLITE_READONLY' || /readonly/i.test(writeErr.message),
+          `expected SQLITE_READONLY-style error; got: code=${writeErr.code} msg=${writeErr.message}`
+        );
+      } finally {
+        reader.close();
+      }
+
+      // Missing-DB readonly open must throw a clear error (fileMustExist).
+      const emptyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-readonly-empty-'));
+      let openErr = null;
+      try {
+        new Store(emptyRoot).open({ readonly: true });
+      } catch (e) {
+        openErr = e;
+      }
+      assert.ok(openErr,
+        'readonly open against missing DB must throw (fileMustExist:true)');
+      fs.rmSync(emptyRoot, { recursive: true, force: true });
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
 }
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Path normalization (Spec 7 Bug 2): normalizeFileArg helper used by
+// `carto impact` and the file-arg MCP tools so `./foo`, absolute paths,
+// and Windows backslashes all resolve to the canonical SQLite-stored form.
+// ═══════════════════════════════════════════════════════════════════
+
+const { normalizeFileArg } = require('../src/store/path-utils');
+
+test('Path normalization', 'bare relative path is returned unchanged', () => {
+  assert.strictEqual(
+    normalizeFileArg('/Users/x/proj', 'lib/application.js'),
+    'lib/application.js'
+  );
+});
+
+test('Path normalization', "leading './' is stripped", () => {
+  assert.strictEqual(
+    normalizeFileArg('/Users/x/proj', './lib/application.js'),
+    'lib/application.js'
+  );
+});
+
+test('Path normalization', 'absolute path under projectRoot is relativized', () => {
+  assert.strictEqual(
+    normalizeFileArg('/Users/x/proj', '/Users/x/proj/lib/application.js'),
+    'lib/application.js'
+  );
+});
+
+test('Path normalization', 'Windows backslashes become forward slashes', () => {
+  assert.strictEqual(
+    normalizeFileArg('/Users/x/proj', 'lib\\application.js'),
+    'lib/application.js'
+  );
+});
+
+test('Path normalization', "embedded '../' segments are resolved", () => {
+  assert.strictEqual(
+    normalizeFileArg('/Users/x/proj', 'src/foo/../bar.js'),
+    'src/bar.js'
+  );
+});
+
+test('Path normalization', 'empty / non-string input is returned unchanged', () => {
+  assert.strictEqual(normalizeFileArg('/Users/x/proj', ''), '');
+  assert.strictEqual(normalizeFileArg('/Users/x/proj', undefined), undefined);
+  assert.strictEqual(normalizeFileArg('/Users/x/proj', null), null);
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
+// MCP resilience (Spec 7 Bug 5): server-side defensive parsing.
+// We can't drive the full stdio MCP transport from this synchronous
+// test runner, but we *can* exercise the parts that pre-2.0.7 crashed:
+// JSON.parse on a corrupt stack_json row, and the getStore() poison bug.
+// ═══════════════════════════════════════════════════════════════════
+
+test('MCP resilience', 'getStructure tolerates corrupt stack_json (Bug 5f)', () => {
+  const { SQLiteStore } = require('../src/store/sqlite-store');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-mcp-resil-'));
+  let s;
+  try {
+    fs.mkdirSync(path.join(tmp, '.carto'));
+    // Create a fresh empty store — schema is auto-applied by open().
+    s = new SQLiteStore(tmp);
+    s.open();
+    // Inject malformed stack_json — pre-fix this would throw from JSON.parse
+    // and crash the whole tool call (no try/catch up the stack at the time).
+    s._db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('stack_json', ?)").run('{not valid json');
+    const result = s.getStructure();
+    assert.deepStrictEqual(result.stack, [], 'corrupt stack_json must degrade to []');
+  } finally {
+    if (s) try { s.close(); } catch {}
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('MCP resilience', 'normalizeFileArg + path guard prevents crashes on weird inputs (Bug 5d / Bug 2)', () => {
+  // These would have crashed pre-2.0.7 inside the get_blast_radius / get_domain
+  // handlers — args.file.toUpperCase() / args.domain.toUpperCase() on undefined.
+  // After the fix, normalizeFileArg returns the input unchanged and the get_domain
+  // guard returns a friendly error string instead of throwing.
+  assert.strictEqual(normalizeFileArg('/proj', undefined), undefined);
+  assert.strictEqual(normalizeFileArg('/proj', null), null);
+  assert.strictEqual(normalizeFileArg('/proj', 0), 0);
+  // Forward-slash conversion still works for the valid case.
+  assert.strictEqual(normalizeFileArg('/proj', 'a\\b\\c.js'), 'a/b/c.js');
+});
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1342,7 +1678,7 @@ test('Change plan', 'formatPlanMarkdown: fallback message for no-anchor case', (
   await runAsyncSuite();
 
   console.log('');
-  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Change plan', 'Init flow', 'Store adapter (ACP V2)'];
+  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Path normalization', 'MCP resilience', 'Change plan', 'Init flow', 'Store adapter (ACP V2)', 'Secret leakage'];
   for (const suite of suiteNames) {
     const s = suiteTotals[suite] || { pass: 0, total: 0 };
     const icon = s.pass === s.total ? '✓' : '✗';

@@ -36,7 +36,11 @@ function extractImports(content, filePath, projectRoot) {
   if (['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs'].includes(ext)) {
     rawImports = extractJSImports(content);
   } else if (ext === '.py') {
-    rawImports = extractPythonImports(content, filePath, projectRoot);
+    // Python returns absolute paths from resolvePythonRelativeImport / tryResolvePythonModule.
+    // Relativize to project root and return early — the JS-style dedup loop below only handles
+    // `./` and `@/~/#` prefixed strings, so falling through silently drops every Python edge.
+    const abs = extractPythonImports(content, filePath, projectRoot);
+    return [...new Set(abs.map(p => path.relative(projectRoot, p)))].sort();
   } else if (ext === '.r') {
     return extractRImports(content, filePath, projectRoot);
   } else if (ext === '.go') {
