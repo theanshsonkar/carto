@@ -17,7 +17,7 @@ carto init
 
 That's it. Carto auto-wires itself into every AI tool you have installed. Restart your AI tool and it now knows your codebase architecturally.
 
-**Works with:** Cursor · Claude Code · Kiro · Claude Desktop · Windsurf · VS Code Copilot · JetBrains · Zed
+**Works with:** Cursor · Claude Code · Codex · Kiro · Claude Desktop · Windsurf · VS Code Copilot · JetBrains · Zed
 
 ---
 
@@ -41,6 +41,20 @@ claude mcp add carto -- carto serve
 Or create `.mcp.json` at the project root:
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"] } } }
+```
+
+### Codex (CLI)
+
+One command from your project root:
+```bash
+codex mcp add carto -- carto serve
+```
+Or edit `~/.codex/config.toml`:
+```toml
+[mcp_servers.carto]
+command = "carto"
+args = ["serve"]
+cwd = "/your/project"
 ```
 
 ### Kiro
@@ -307,6 +321,16 @@ File saved → debounce 50ms → re-parse 1 file → SQLite write → <50ms
 - **Writes secrets into AGENTS.md.** `.cartoignore` blocks `.env` and credential files by default.
 - **Touches your manual notes.** Writes only between `<!-- CARTO:AUTO:START -->` and `<!-- CARTO:AUTO:END -->`.
 - **Costs money.** MIT license. Free forever.
+
+---
+
+## Origin
+
+I was building [Emfirge](https://www.emfirge.cloud) — a cloud security agent that maps AWS infrastructure into a graph and simulates the blast radius of every change.
+
+To make the AI inside Emfirge understand infrastructure, I wrote a module called `cartography.py`. It mapped AWS resources, built a graph of how they connected, and wrote it into a structured map. The AI stopped hallucinating. It worked with facts, not guesses.
+
+Carto is the same idea, applied to source code. Same insight: AI agents stop guessing once they can query the architecture.
 
 ---
 
