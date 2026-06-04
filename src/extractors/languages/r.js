@@ -249,7 +249,10 @@ module.exports = {
       };
     } catch (err) {
       console.warn(`[CARTO] r plugin error on ${filename}: ${err.message}`);
-      return { routes: [], models: [], functions: [], envVars: [], dbTables: [], fetches: [], storageKeys: [] };
+      return {
+        routes: [], models: [], functions: [], envVars: [], dbTables: [], fetches: [], storageKeys: [],
+        _errors: [{ phase: 'extract', message: err.message || String(err) }],
+      };
     }
   }
 };

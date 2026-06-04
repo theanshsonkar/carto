@@ -4,7 +4,11 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-const SCHEMA_VERSION = '1';
+// Schema version 3 — adds the Episodic Memory tables
+// (ai_sessions, decisions, interventions). The full _ensureSchema() body
+// is idempotent (CREATE TABLE IF NOT EXISTS), so existing v1/v2 DBs
+// cleanly pick up the new tables on next open.
+const SCHEMA_VERSION = '3';
 
 /**
  * normalizePath(p) — Canonicalize a relative path for storage and query.
@@ -18,8 +22,7 @@ const SCHEMA_VERSION = '1';
  * downstream join (imports.from_file_id → files.path) stays consistent.
  *
  * Cross-platform invariant: same code, same DB, same query results on macOS,
- * Linux, and Windows. Closes Bug 2 (carto impact path normalization) and the
- * Windows-only "0 dependents" failures in the Store adapter test suite.
+ * Linux, and Windows.
  */
 function normalizePath(p) {
   if (typeof p !== 'string' || p.length === 0) return p;
@@ -238,6 +241,84 @@ class SQLiteStore {
       );
     `);
 
+    // ─── extraction_errors ──────────────────────────────────────────
+    // One row per (file, phase) extractor failure. Lets `carto check`,
+    // the init summary, and MCP get_architecture surface broken parses
+    // instead of silently dropping their data. file_id is FK with
+    // ON DELETE CASCADE so removeFile() automatically cleans up.
+    this._db.exec(`
+      CREATE TABLE IF NOT EXISTS extraction_errors (
+        id INTEGER PRIMARY KEY,
+        file_id INTEGER NOT NULL,
+        phase TEXT NOT NULL,
+        error_message TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_extraction_errors_file ON extraction_errors(file_id);
+      CREATE INDEX IF NOT EXISTS idx_extraction_errors_phase ON extraction_errors(phase);
+    `);
+
+    // ─── Episodic Memory ────────────────────────────────────────────
+    // Three append-mostly tables that turn Carto from an amnesiac
+    // lookup layer into a durable record of what the AI is doing.
+    //
+    //   ai_sessions   — one row per MCP connection or ACP session.
+    //                   Created lazily by getOrCreateActiveSession().
+    //   decisions     — append-only log of validation requests and
+    //                   architectural choices. payload_json holds the
+    //                   structured body (diff hash, violation summary,
+    //                   etc.); kept TEXT so the schema doesn't need to
+    //                   evolve when callers add fields.
+    //   interventions — Carto's outputs back to the AI: violations and
+    //                   suggestions. `accepted` is a tri-state (NULL =
+    //                   unknown, 0 = rejected, 1 = accepted) so clients
+    //                   that track follow-through can update later.
+    //
+    // No FK on session_id — sessions are convenience anchors; we don't
+    // want a session row that gets purged in a future cleanup to
+    // cascade-delete the historical record.
+    this._db.exec(`
+      CREATE TABLE IF NOT EXISTS ai_sessions (
+        id INTEGER PRIMARY KEY,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        client_name TEXT,
+        metadata_json TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_ai_sessions_started ON ai_sessions(started_at);
+    `);
+
+    this._db.exec(`
+      CREATE TABLE IF NOT EXISTS decisions (
+        id INTEGER PRIMARY KEY,
+        session_id INTEGER,
+        ts INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        file TEXT,
+        payload_json TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(ts);
+      CREATE INDEX IF NOT EXISTS idx_decisions_session ON decisions(session_id);
+      CREATE INDEX IF NOT EXISTS idx_decisions_kind ON decisions(kind);
+    `);
+
+    this._db.exec(`
+      CREATE TABLE IF NOT EXISTS interventions (
+        id INTEGER PRIMARY KEY,
+        session_id INTEGER,
+        ts INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        file TEXT,
+        severity TEXT,
+        message TEXT,
+        accepted INTEGER DEFAULT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_interventions_file ON interventions(file);
+      CREATE INDEX IF NOT EXISTS idx_interventions_ts ON interventions(ts);
+      CREATE INDEX IF NOT EXISTS idx_interventions_session ON interventions(session_id);
+    `);
+
     this.setMeta('schema_version', SCHEMA_VERSION);
   }
 
@@ -328,6 +409,11 @@ class SQLiteStore {
       this._db.prepare('DELETE FROM models WHERE file_id = ?').run(fileId);
       this._db.prepare('DELETE FROM env_vars WHERE file_id = ?').run(fileId);
       this._db.prepare('DELETE FROM db_tables WHERE file_id = ?').run(fileId);
+      // Clear stale extraction errors for this file. We're
+      // about to record fresh ones (or none, if the re-extraction
+      // succeeded). Without this, a previously-broken file that's now
+      // fixed would still show up in `carto check`.
+      this._db.prepare('DELETE FROM extraction_errors WHERE file_id = ?').run(fileId);
 
       // Insert imports
       if (data.imports && data.imports.length > 0) {
@@ -398,6 +484,22 @@ class SQLiteStore {
           const tableName = t.table || t.table_name || t.name;
           if (!tableName) continue; // skip entries without a table name
           ins.run(fileId, tableName, t.operation || null);
+        }
+      }
+
+      // Insert extraction errors
+      if (data.errors && data.errors.length > 0) {
+        const ins = this._db.prepare(
+          'INSERT INTO extraction_errors (file_id, phase, error_message, timestamp) VALUES (?,?,?,?)'
+        );
+        const now = Date.now();
+        for (const err of data.errors) {
+          if (!err || !err.phase || !err.message) continue;
+          // Truncate enormous error messages so a single corrupt file
+          // can never bloat the DB. 2KB is plenty for any stack frame
+          // we'd surface in `carto check`.
+          const msg = String(err.message).slice(0, 2000);
+          ins.run(fileId, String(err.phase), msg, now);
         }
       }
     });
@@ -571,6 +673,57 @@ class SQLiteStore {
     `).all();
   }
 
+  // ─── Extraction errors ─────────────────────────────────────────────────
+
+  /**
+   * getExtractionErrorCount() → integer count of all error rows.
+   * Used by `carto init` summary, `carto check`, and MCP get_architecture
+   * for a fast "did anything fail?" signal without listing rows.
+   */
+  getExtractionErrorCount() {
+    const row = this._db.prepare('SELECT COUNT(*) as cnt FROM extraction_errors').get();
+    return row ? row.cnt : 0;
+  }
+
+  /**
+   * getExtractionErrorsTopFiles(limit) → [{ file, errorCount, phases, sample }]
+   * Aggregates by file. `phases` is a comma-joined list of distinct phase
+   * tokens for the file; `sample` is one error_message (the most recent).
+   */
+  getExtractionErrorsTopFiles(limit = 5) {
+    return this._db.prepare(`
+      SELECT
+        f.path as file,
+        COUNT(e.id) as errorCount,
+        GROUP_CONCAT(DISTINCT e.phase) as phases,
+        (
+          SELECT error_message FROM extraction_errors e2
+          WHERE e2.file_id = e.file_id
+          ORDER BY e2.timestamp DESC, e2.id DESC LIMIT 1
+        ) as sample
+      FROM extraction_errors e
+      JOIN files f ON e.file_id = f.id
+      GROUP BY e.file_id
+      ORDER BY errorCount DESC, f.path
+      LIMIT ?
+    `).all(limit);
+  }
+
+  /**
+   * getExtractionErrorsForFile(relPath) → [{ phase, error_message, timestamp }]
+   * Returns all error rows for a single file, newest first.
+   */
+  getExtractionErrorsForFile(relPath) {
+    const file = this.getFileByPath(relPath);
+    if (!file) return [];
+    return this._db.prepare(`
+      SELECT phase, error_message, timestamp
+      FROM extraction_errors
+      WHERE file_id = ?
+      ORDER BY timestamp DESC, id DESC
+    `).all(file.id);
+  }
+
   getDomainsList() {
     return this._db.prepare(`
       SELECT d.name, d.file_count as fileCount,
@@ -640,7 +793,6 @@ class SQLiteStore {
       entryPoints,
       highImpact,
       // Defensive parse — a corrupt stack_json row must never crash callers.
-      // Spec 7 Bug 5f.
       stack: (() => {
         if (!stack) return [];
         try { return JSON.parse(stack); } catch { return []; }
@@ -707,6 +859,39 @@ class SQLiteStore {
 
   // ─── Reverse deps (blast radius) ──────────────────────────────────────
 
+  /**
+   * resolveUnresolvedImports() → number
+   *
+   * Post-pass repair for the chicken-and-egg ordering problem during
+   * extraction: when file A is processed before file B but imports it,
+   * `to_file_id` is null because B isn't yet in the files table. After
+   * the full extraction pass completes, every target path that's an
+   * indexed file should be resolvable. This single UPDATE catches them.
+   *
+   * Returns the number of rows newly resolved. Cheap: one UPDATE with a
+   * correlated subquery, indexed on imports.to_path implicitly via the
+   * files.path uniqueness constraint.
+   */
+  resolveUnresolvedImports() {
+    const before = this._db.prepare(
+      'SELECT COUNT(*) AS n FROM imports WHERE to_file_id IS NULL'
+    ).get().n;
+    if (before === 0) return 0;
+
+    this._db.prepare(`
+      UPDATE imports
+      SET to_file_id = (SELECT id FROM files WHERE path = imports.to_path),
+          resolved = 1
+      WHERE to_file_id IS NULL
+        AND EXISTS (SELECT 1 FROM files WHERE path = imports.to_path)
+    `).run();
+
+    const after = this._db.prepare(
+      'SELECT COUNT(*) AS n FROM imports WHERE to_file_id IS NULL'
+    ).get().n;
+    return before - after;
+  }
+
   computeReverseDeps(maxHops = 5) {
     this._db.prepare('DELETE FROM reverse_deps').run();
 
@@ -758,6 +943,206 @@ class SQLiteStore {
         SELECT COUNT(DISTINCT dependent_file_id) FROM reverse_deps WHERE file_id = files.id
       )
     `);
+  }
+
+  // ─── Episodic Memory ──────────────────────────────────────────────────
+
+  /**
+   * getOrCreateActiveSession(clientName, metadata) → { id, started_at, ... }
+   *
+   * Returns the most recent open session (no `ended_at`) if any exists,
+   * otherwise creates a new one. "Active" is loosely defined — sessions
+   * stay open until something explicitly calls `endSession`. The MCP
+   * server lazily creates a session per process, so a long-lived MCP
+   * connection naturally accretes decisions/interventions under one
+   * session row.
+   *
+   * Requires a writable DB connection. Read-only callers should use
+   * `getCurrentSession()` (read-only) or pass an explicit session_id.
+   */
+  getOrCreateActiveSession(clientName = null, metadata = null) {
+    const existing = this._db.prepare(
+      'SELECT id, started_at, ended_at, client_name, metadata_json FROM ai_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1'
+    ).get();
+    if (existing) return existing;
+
+    const now = Date.now();
+    const metaJson = metadata ? JSON.stringify(metadata) : null;
+    const info = this._db.prepare(
+      'INSERT INTO ai_sessions (started_at, ended_at, client_name, metadata_json) VALUES (?,?,?,?)'
+    ).run(now, null, clientName || null, metaJson);
+    return {
+      id: info.lastInsertRowid,
+      started_at: now,
+      ended_at: null,
+      client_name: clientName || null,
+      metadata_json: metaJson,
+    };
+  }
+
+  /**
+   * getCurrentSession() → row | null
+   *
+   * Read-only lookup of the most recent active session. Used by the MCP
+   * episodic tools to default `session_id` when the caller omits it.
+   */
+  getCurrentSession() {
+    return this._db.prepare(
+      'SELECT id, started_at, ended_at, client_name, metadata_json FROM ai_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1'
+    ).get() || null;
+  }
+
+  /**
+   * endSession(sessionId) — stamp `ended_at` so the session stops being
+   * "active". Idempotent: re-ending a session is a no-op.
+   */
+  endSession(sessionId) {
+    if (!sessionId) return;
+    this._db.prepare(
+      'UPDATE ai_sessions SET ended_at = ? WHERE id = ? AND ended_at IS NULL'
+    ).run(Date.now(), sessionId);
+  }
+
+  /**
+   * recordDecision({sessionId, kind, file, payload}) → id
+   *
+   * Append-only insert into `decisions`. payload is JSON-serialized
+   * (defensively — callers may pass strings, objects, or null). Returns
+   * the inserted row id so callers can correlate downstream interventions.
+   * Requires a writable connection.
+   */
+  recordDecision({ sessionId, kind, file, payload }) {
+    const ts = Date.now();
+    let payloadJson = null;
+    if (payload !== undefined && payload !== null) {
+      if (typeof payload === 'string') {
+        payloadJson = payload;
+      } else {
+        try { payloadJson = JSON.stringify(payload); } catch { payloadJson = null; }
+      }
+    }
+    const info = this._db.prepare(
+      'INSERT INTO decisions (session_id, ts, kind, file, payload_json) VALUES (?,?,?,?,?)'
+    ).run(sessionId || null, ts, String(kind), file ? normalizePath(file) : null, payloadJson);
+    return info.lastInsertRowid;
+  }
+
+  /**
+   * recordIntervention({sessionId, kind, file, severity, message}) → id
+   *
+   * Append-only insert into `interventions`. `accepted` is left NULL —
+   * clients that track follow-through update it later. Requires a
+   * writable connection.
+   */
+  recordIntervention({ sessionId, kind, file, severity, message }) {
+    const ts = Date.now();
+    const info = this._db.prepare(
+      'INSERT INTO interventions (session_id, ts, kind, file, severity, message, accepted) VALUES (?,?,?,?,?,?,NULL)'
+    ).run(
+      sessionId || null,
+      ts,
+      String(kind),
+      file ? normalizePath(file) : null,
+      severity ? String(severity) : null,
+      message ? String(message).slice(0, 4000) : null
+    );
+    return info.lastInsertRowid;
+  }
+
+  /**
+   * getRecentDecisions(timeRangeMs, kind?) → [row, ...]
+   *
+   * Decisions in the last `timeRangeMs` ms, newest first. Optional
+   * `kind` filter (e.g. 'validation'). Read-only.
+   */
+  getRecentDecisions(timeRangeMs, kind) {
+    const since = Date.now() - (timeRangeMs > 0 ? timeRangeMs : 0);
+    if (kind) {
+      return this._db.prepare(
+        'SELECT id, session_id, ts, kind, file, payload_json FROM decisions WHERE ts >= ? AND kind = ? ORDER BY ts DESC, id DESC'
+      ).all(since, String(kind));
+    }
+    return this._db.prepare(
+      'SELECT id, session_id, ts, kind, file, payload_json FROM decisions WHERE ts >= ? ORDER BY ts DESC, id DESC'
+    ).all(since);
+  }
+
+  /**
+   * getSessionContext(sessionId) → { session, decisions, interventions } | null
+   *
+   * Returns full context for a session: the session row plus all its
+   * decisions and interventions ordered by timestamp ascending (so a
+   * caller can replay the session chronologically). Returns null for
+   * unknown ids. Read-only.
+   */
+  getSessionContext(sessionId) {
+    if (!sessionId) return null;
+    const session = this._db.prepare(
+      'SELECT id, started_at, ended_at, client_name, metadata_json FROM ai_sessions WHERE id = ?'
+    ).get(sessionId);
+    if (!session) return null;
+    const decisions = this._db.prepare(
+      'SELECT id, session_id, ts, kind, file, payload_json FROM decisions WHERE session_id = ? ORDER BY ts ASC, id ASC'
+    ).all(sessionId);
+    const interventions = this._db.prepare(
+      'SELECT id, session_id, ts, kind, file, severity, message, accepted FROM interventions WHERE session_id = ? ORDER BY ts ASC, id ASC'
+    ).all(sessionId);
+    return { session, decisions, interventions };
+  }
+
+  /**
+   * searchDecisions(topic) → [row, ...]
+   *
+   * Substring search over decisions: matches `kind`, `file`, or
+   * `payload_json`. Case-insensitive (LIKE with lowercase). Newest
+   * first. Read-only.
+   */
+  searchDecisions(topic) {
+    if (!topic || typeof topic !== 'string') return [];
+    const pattern = `%${topic.toLowerCase()}%`;
+    return this._db.prepare(`
+      SELECT id, session_id, ts, kind, file, payload_json
+      FROM decisions
+      WHERE LOWER(kind) LIKE ? OR LOWER(IFNULL(file, '')) LIKE ? OR LOWER(IFNULL(payload_json, '')) LIKE ?
+      ORDER BY ts DESC, id DESC
+      LIMIT 100
+    `).all(pattern, pattern, pattern);
+  }
+
+  /**
+   * searchInterventions(topic) → [row, ...]
+   *
+   * Substring search over interventions for `did_we_discuss_this`. Newest
+   * first. Read-only.
+   */
+  searchInterventions(topic) {
+    if (!topic || typeof topic !== 'string') return [];
+    const pattern = `%${topic.toLowerCase()}%`;
+    return this._db.prepare(`
+      SELECT id, session_id, ts, kind, file, severity, message, accepted
+      FROM interventions
+      WHERE LOWER(kind) LIKE ? OR LOWER(IFNULL(file, '')) LIKE ? OR LOWER(IFNULL(message, '')) LIKE ?
+      ORDER BY ts DESC, id DESC
+      LIMIT 100
+    `).all(pattern, pattern, pattern);
+  }
+
+  /**
+   * getInterventionsForFile(file?) → [row, ...]
+   *
+   * If `file` provided, returns interventions for that path (normalized).
+   * If null/undefined, returns all interventions. Newest first.
+   * Read-only.
+   */
+  getInterventionsForFile(file) {
+    if (file) {
+      return this._db.prepare(
+        'SELECT id, session_id, ts, kind, file, severity, message, accepted FROM interventions WHERE file = ? ORDER BY ts DESC, id DESC LIMIT 200'
+      ).all(normalizePath(file));
+    }
+    return this._db.prepare(
+      'SELECT id, session_id, ts, kind, file, severity, message, accepted FROM interventions ORDER BY ts DESC, id DESC LIMIT 200'
+    ).all();
   }
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────

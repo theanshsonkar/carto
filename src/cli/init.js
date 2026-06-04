@@ -50,8 +50,8 @@ async function run(projectRoot) {
     'utf-8'
   );
 
-  // Install pre-commit hook
-  installGitHook(projectRoot);
+  // Install git hooks (silent freshness on git events)
+  installGitHooks(projectRoot);
 
   // Run first sync — V2 SQLite-backed indexer.
   await runSyncV2({
@@ -62,102 +62,334 @@ async function run(projectRoot) {
   // Auto-wire MCP config into installed AI tools
   wireIDEs(projectRoot);
 
-  console.log('[CARTO] AGENTS.md generated. Carto will sync on every git commit.');
+  console.log('[CARTO] AGENTS.md generated. Index stays fresh via git hooks + lazy MCP re-parse.');
 }
 
-function installGitHook(projectRoot) {
+/**
+ * installGitHooks(projectRoot)
+ *
+ * Installs four git hooks that call `carto sync` quietly:
+ *   - pre-commit    fires on `git commit` before the commit lands
+ *   - post-checkout fires after `git checkout` (branch switch, file checkout)
+ *   - post-merge    fires after `git merge` and `git pull`
+ *   - post-rewrite  fires after `git rebase` / `git commit --amend`
+ *
+ * Together these cover the 90% case of "user did a normal git operation,
+ * index should re-sync." The remaining 10% (uncommitted edits) is handled
+ * by the lazy mtime check in the MCP server.
+ *
+ * Hooks are idempotent: re-running `carto init` does not duplicate the
+ * `carto sync` line. If a user already has a hook for other reasons, we
+ * append non-destructively.
+ */
+function installGitHooks(projectRoot) {
   const gitDir = path.join(projectRoot, '.git');
   if (!fs.existsSync(gitDir)) return;
 
   const hooksDir = path.join(gitDir, 'hooks');
   if (!fs.existsSync(hooksDir)) fs.mkdirSync(hooksDir, { recursive: true });
 
-  const hookPath = path.join(hooksDir, 'pre-commit');
-  const hookLine = 'carto sync\n';
+  // Hook bodies. `>/dev/null 2>&1 || true` keeps git fast and never blocks
+  // the user's git command if carto exits non-zero (e.g. transient lock).
+  const HOOK_NAMES = ['pre-commit', 'post-checkout', 'post-merge', 'post-rewrite'];
+  const HOOK_LINE = 'carto sync >/dev/null 2>&1 || true\n';
+  const MARKER = '# carto-md: keep index fresh on git events';
 
-  if (fs.existsSync(hookPath)) {
-    const existing = fs.readFileSync(hookPath, 'utf-8');
-    if (existing.includes('carto sync')) {
-      console.log('[CARTO] Git hook already installed.');
-      return;
+  const installed = [];
+  const skipped = [];
+
+  for (const name of HOOK_NAMES) {
+    const hookPath = path.join(hooksDir, name);
+
+    if (fs.existsSync(hookPath)) {
+      const existing = fs.readFileSync(hookPath, 'utf-8');
+      if (existing.includes('carto sync')) {
+        skipped.push(name);
+        continue;
+      }
+      // Append to user's existing hook without clobbering it
+      fs.appendFileSync(hookPath, `\n${MARKER}\n${HOOK_LINE}`);
+    } else {
+      fs.writeFileSync(hookPath, `#!/bin/sh\n${MARKER}\n${HOOK_LINE}`);
     }
-    fs.appendFileSync(hookPath, '\n' + hookLine);
-  } else {
-    fs.writeFileSync(hookPath, '#!/bin/sh\n' + hookLine);
+
+    try { fs.chmodSync(hookPath, 0o755); } catch {}
+    installed.push(name);
   }
 
-  fs.chmodSync(hookPath, '755');
-  console.log('[CARTO] Git pre-commit hook installed.');
+  if (installed.length > 0) {
+    console.log(`[CARTO] Git hooks installed: ${installed.join(', ')}`);
+  }
+  if (skipped.length > 0 && installed.length === 0) {
+    console.log(`[CARTO] Git hooks already installed (${skipped.join(', ')}).`);
+  }
+}
+
+// Back-compat alias — older code/tests import installGitHook.
+const installGitHook = installGitHooks;
+
+/**
+ * binaryExists(name) → boolean
+ *
+ * Best-effort cross-platform check for whether a CLI is on the user's PATH.
+ * Uses `which` on macOS/Linux and `where` on Windows. Returns false on any
+ * error so the caller treats "couldn't tell" as "not present" — we'd rather
+ * fall back to dir-based detection than write a config the user didn't want.
+ *
+ * Test escape hatch: `CARTO_TEST_BINARY_OVERRIDES=claude=1,codex=0` lets the
+ * Init-flow suite drive each tool's detection deterministically without
+ * depending on what's installed on the dev box. Comma-separated list of
+ * `name=0|1` pairs; any binary not listed falls through to the real check.
+ */
+function binaryExists(name) {
+  const override = process.env.CARTO_TEST_BINARY_OVERRIDES;
+  if (override) {
+    for (const pair of override.split(',')) {
+      const [n, v] = pair.split('=');
+      if (n && n.trim() === name) return v && v.trim() === '1';
+    }
+  }
+  try {
+    const { spawnSync } = require('child_process');
+    const cmd = process.platform === 'win32' ? 'where' : 'which';
+    const r = spawnSync(cmd, [name], { stdio: 'ignore' });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * claudeDesktopConfigPath() → string
+ *
+ * Platform-specific Claude Desktop MCP config location.
+ *   macOS:   ~/Library/Application Support/Claude/claude_desktop_config.json
+ *   Windows: %APPDATA%\Claude\claude_desktop_config.json
+ *   Linux:   ~/.config/Claude/claude_desktop_config.json (unofficial — Anthropic
+ *            doesn't ship a Linux build, but community wrappers/Wine installs
+ *            put it here, so we honor the path if the dir exists.)
+ */
+function claudeDesktopConfigPath() {
+  const os = require('os');
+  const home = os.homedir();
+  if (process.platform === 'darwin') {
+    return path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
+  }
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+    return path.join(appData, 'Claude', 'claude_desktop_config.json');
+  }
+  return path.join(home, '.config', 'Claude', 'claude_desktop_config.json');
+}
+
+/**
+ * mergeMcpJson(filePath, key, entry) — JSON-style MCP config helper.
+ *
+ * Reads `filePath` (creates {} if missing), merges `entry` under `[key].carto`
+ * (where `key` is `mcpServers` or `servers` depending on the host), writes it
+ * back. Used by every JSON-based MCP host: Cursor, Kiro, Claude Code, Claude
+ * Desktop, Windsurf, VS Code Copilot.
+ *
+ * Defensive against malformed existing JSON — a single bad config from another
+ * tool can't block the rest of the wiring.
+ */
+function mergeMcpJson(filePath, key, entry) {
+  let config = {};
+  if (fs.existsSync(filePath)) {
+    try {
+      config = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      if (!config || typeof config !== 'object') config = {};
+    } catch {
+      // Existing file is malformed — start fresh rather than clobbering blindly.
+      // Print a warning so the user knows we replaced it.
+      console.warn(`[CARTO] ${filePath} was not valid JSON — rewriting.`);
+      config = {};
+    }
+  }
+  if (!config[key] || typeof config[key] !== 'object') config[key] = {};
+  config[key].carto = entry;
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+}
+
+/**
+ * upsertCodexToml(filePath, projectRoot) — Append/replace a `[mcp_servers.carto]`
+ * block in Codex's `config.toml`. We don't pull in a TOML parser dep — Codex's
+ * MCP block has a stable, simple shape, so a small regex+rewrite is enough.
+ *
+ * Behavior:
+ *   - File missing → write a fresh file with just the carto block.
+ *   - File present, no carto block → append the block at the end (preserves
+ *     all existing content + comments).
+ *   - File present, carto block present → replace it in-place via regex.
+ *
+ * The block we write is exactly:
+ *
+ *   [mcp_servers.carto]
+ *   command = "carto"
+ *   args = ["serve"]
+ *   cwd = "<project>"
+ *   enabled = true
+ */
+function upsertCodexToml(filePath, projectRoot) {
+  const tomlEscape = (s) => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  const block = [
+    '[mcp_servers.carto]',
+    `command = ${tomlEscape('carto')}`,
+    `args = [${tomlEscape('serve')}]`,
+    `cwd = ${tomlEscape(projectRoot)}`,
+    'enabled = true',
+    '',
+  ].join('\n');
+
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, block, 'utf-8');
+    return;
+  }
+
+  const existing = fs.readFileSync(filePath, 'utf-8');
+  // Match the carto section header AND its body up to the next [section]
+  // header or end of file. Note: NO `m` flag — we want `$` to mean
+  // end-of-input, not end-of-line. The header `[mcp_servers.carto]` is
+  // unique per TOML file, so we don't need a line-start anchor.
+  const sectionRe = /\[mcp_servers\.carto\][\s\S]*?(?=\n\[|$)/;
+  let next;
+  if (sectionRe.test(existing)) {
+    next = existing.replace(sectionRe, block.trimEnd());
+    // Ensure trailing newline.
+    if (!next.endsWith('\n')) next += '\n';
+  } else {
+    // Append. Make sure existing content ends with a newline before the new block.
+    next = existing.endsWith('\n') ? existing + '\n' + block : existing + '\n\n' + block;
+  }
+  fs.writeFileSync(filePath, next, 'utf-8');
 }
 
 function wireIDEs(projectRoot) {
   const os = require('os');
   const home = os.homedir();
   const wired = [];
+  const errors = [];
 
-  // Claude Code (project-scoped). Spec 7: write .mcp.json at the project root.
-  // Claude Code reads this file automatically when opened in the project — no
-  // host-level config needed, and no detection required (it's a project-local
-  // file that only takes effect when the user actually uses Claude Code here).
-  try {
-    const mcpJsonPath = path.join(projectRoot, '.mcp.json');
-    const config = fs.existsSync(mcpJsonPath)
-      ? JSON.parse(fs.readFileSync(mcpJsonPath, 'utf-8'))
-      : { mcpServers: {} };
-    config.mcpServers = config.mcpServers || {};
-    config.mcpServers.carto = { command: 'carto', args: ['serve'] };
-    fs.writeFileSync(mcpJsonPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-    wired.push('Claude Code');
-  } catch {}
-
-  // Kiro
-  const kiroDir = path.join(home, '.kiro', 'settings');
-  if (fs.existsSync(path.join(home, '.kiro'))) {
-    try {
-      fs.mkdirSync(kiroDir, { recursive: true });
-      const mcpPath = path.join(kiroDir, 'mcp.json');
-      const config = fs.existsSync(mcpPath)
-        ? JSON.parse(fs.readFileSync(mcpPath, 'utf-8'))
-        : { mcpServers: {} };
-      config.mcpServers = config.mcpServers || {};
-      config.mcpServers.carto = { command: 'carto', args: ['serve'], cwd: projectRoot };
-      fs.writeFileSync(mcpPath, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-      wired.push('Kiro');
-    } catch {}
-  }
-
-  // Claude Desktop
-  const claudeConfig = path.join(home, 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
-  if (fs.existsSync(path.dirname(claudeConfig))) {
-    try {
-      const config = fs.existsSync(claudeConfig)
-        ? JSON.parse(fs.readFileSync(claudeConfig, 'utf-8'))
-        : { mcpServers: {} };
-      config.mcpServers = config.mcpServers || {};
-      config.mcpServers.carto = { command: 'carto', args: ['serve'], cwd: projectRoot };
-      fs.writeFileSync(claudeConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8');
-      wired.push('Claude Desktop');
-    } catch {}
-  }
-
-  // Cursor
-  const cursorConfig = path.join(home, '.cursor', 'mcp.json');
+  // ─── Cursor ────────────────────────────────────────────────────────
+  // Detection: `~/.cursor/` exists. Path stable across macOS/Linux/Windows.
   if (fs.existsSync(path.join(home, '.cursor'))) {
     try {
-      const config = fs.existsSync(cursorConfig)
-        ? JSON.parse(fs.readFileSync(cursorConfig, 'utf-8'))
-        : { mcpServers: {} };
-      config.mcpServers = config.mcpServers || {};
-      config.mcpServers.carto = { command: 'carto', args: ['serve'], cwd: projectRoot };
-      fs.writeFileSync(cursorConfig, JSON.stringify(config, null, 2) + '\n', 'utf-8');
+      mergeMcpJson(
+        path.join(home, '.cursor', 'mcp.json'),
+        'mcpServers',
+        { command: 'carto', args: ['serve'], cwd: projectRoot }
+      );
       wired.push('Cursor');
-    } catch {}
+    } catch (err) { errors.push(`Cursor: ${err.message}`); }
   }
 
+  // ─── Claude Code ───────────────────────────────────────────────────
+  // Detection: `claude` binary OR `~/.claude/` directory exists. Without
+  // this gating we'd write `.mcp.json` into every project regardless of
+  // whether the user has Claude Code installed.
+  if (binaryExists('claude') || fs.existsSync(path.join(home, '.claude'))) {
+    try {
+      mergeMcpJson(
+        path.join(projectRoot, '.mcp.json'),
+        'mcpServers',
+        { command: 'carto', args: ['serve'] }
+      );
+      wired.push('Claude Code');
+    } catch (err) { errors.push(`Claude Code: ${err.message}`); }
+  }
+
+  // ─── Kiro ──────────────────────────────────────────────────────────
+  if (fs.existsSync(path.join(home, '.kiro'))) {
+    try {
+      mergeMcpJson(
+        path.join(home, '.kiro', 'settings', 'mcp.json'),
+        'mcpServers',
+        { command: 'carto', args: ['serve'], cwd: projectRoot }
+      );
+      wired.push('Kiro');
+    } catch (err) { errors.push(`Kiro: ${err.message}`); }
+  }
+
+  // ─── Claude Desktop (cross-platform) ───────────────────────────────
+  // macOS: ~/Library/Application Support/Claude/
+  // Windows: %APPDATA%\Claude\
+  // Linux: ~/.config/Claude/ (unofficial)
+  const claudeCfgPath = claudeDesktopConfigPath();
+  if (fs.existsSync(path.dirname(claudeCfgPath))) {
+    try {
+      mergeMcpJson(
+        claudeCfgPath,
+        'mcpServers',
+        { command: 'carto', args: ['serve'], cwd: projectRoot }
+      );
+      wired.push('Claude Desktop');
+    } catch (err) { errors.push(`Claude Desktop: ${err.message}`); }
+  }
+
+  // ─── Codex ─────────────────────────────────────────────────────────
+  // Detection: `codex` binary OR `~/.codex/` directory exists.
+  // Format: TOML with `[mcp_servers.carto]` block.
+  if (binaryExists('codex') || fs.existsSync(path.join(home, '.codex'))) {
+    try {
+      upsertCodexToml(path.join(home, '.codex', 'config.toml'), projectRoot);
+      wired.push('Codex');
+    } catch (err) { errors.push(`Codex: ${err.message}`); }
+  }
+
+  // ─── Windsurf ──────────────────────────────────────────────────────
+  // Path: ~/.codeium/windsurf/mcp_config.json (NOT ~/.windsurf/, which
+  // older docs sometimes show — the real path lives under .codeium).
+  if (fs.existsSync(path.join(home, '.codeium', 'windsurf'))
+      || fs.existsSync(path.join(home, '.codeium'))) {
+    try {
+      mergeMcpJson(
+        path.join(home, '.codeium', 'windsurf', 'mcp_config.json'),
+        'mcpServers',
+        { command: 'carto', args: ['serve'], cwd: projectRoot }
+      );
+      wired.push('Windsurf');
+    } catch (err) { errors.push(`Windsurf: ${err.message}`); }
+  }
+
+  // ─── VS Code Copilot ───────────────────────────────────────────────
+  // Detection: `code` binary on PATH (most reliable; user-profile path
+  // varies too much across macOS/Linux/Windows + Insiders/stable to be
+  // a good detection signal). Schema is different from MCP-spec default:
+  // VS Code uses `servers` (not `mcpServers`) and requires `type: stdio`.
+  if (binaryExists('code')) {
+    try {
+      mergeMcpJson(
+        path.join(projectRoot, '.vscode', 'mcp.json'),
+        'servers',
+        { type: 'stdio', command: 'carto', args: ['serve'] }
+      );
+      wired.push('VS Code Copilot');
+    } catch (err) { errors.push(`VS Code Copilot: ${err.message}`); }
+  }
+
+  // ─── Reporting ─────────────────────────────────────────────────────
   if (wired.length > 0) {
-    console.log(`[CARTO] MCP wired into: ${wired.join(', ')}`);
-    console.log('[CARTO] Run `carto serve` to start the MCP server.');
+    console.log(`[CARTO] MCP auto-wired into: ${wired.join(', ')}`);
+  } else {
+    console.log('[CARTO] No supported AI tools detected for auto-wiring.');
+    console.log('[CARTO] See https://github.com/theanshsonkar/carto#use-it-with-your-ai-tool for manual config.');
+  }
+  if (errors.length > 0) {
+    for (const e of errors) console.warn(`[CARTO] Could not wire: ${e}`);
   }
 }
 
 module.exports = { run };
+
+// Test-only exports — surfaced for the Init flow suite to assert detection
+// + format behavior in isolation. Not part of the public API.
+module.exports._internal = {
+  binaryExists,
+  claudeDesktopConfigPath,
+  mergeMcpJson,
+  upsertCodexToml,
+  wireIDEs,
+};

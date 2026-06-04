@@ -7,7 +7,7 @@ function run(projectRoot) {
   const dbPath = path.join(projectRoot, '.carto', 'carto.db');
 
   if (!fs.existsSync(dbPath)) {
-    // Could be pre-2.0.4 install with only map.json, or never initialized.
+    // Could be an old install with only map.json, or never initialized.
     const mapPath = path.join(projectRoot, '.carto', 'map.json');
     if (fs.existsSync(mapPath)) {
       console.error('[CARTO] Legacy index found (map.json) but no SQLite DB. Run `carto init` to upgrade your index.');

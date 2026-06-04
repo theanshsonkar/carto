@@ -8,11 +8,18 @@ function printUsage() {
 Usage: carto <command>
 
 Commands:
-  init          Detect project, write .carto/config.json, run first sync
-  watch         Read .carto/config.json, start file watcher
+  init          Detect project, write .carto/config.json, run first sync.
+                Installs git hooks (pre-commit, post-checkout, post-merge,
+                post-rewrite) so the index stays fresh on every git event.
   sync          Read .carto/config.json, run one sync, exit
+  watch         (Optional) Start file watcher for sub-second freshness.
+                Not required — git hooks + lazy MCP re-parse keep the
+                index fresh by default. Use only for AI-heavy workflows.
   impact <file> Show which files and routes are affected by changing a file
   check         Report cross-domain deps, high-risk uncommitted changes, domain health
+  inspect       Read-only diagnostic: prints index paths, sizes, freshness,
+                bitmap sidecar shape, top-impact files, schema version,
+                sync timestamps, extraction errors. Use --json for piping.
   remove        Remove AGENTS.md and .carto/ from this project
   serve         Start MCP server for AI tool integration
   agent         Start ACP agent mode (for Zed, JetBrains, VS Code)
@@ -55,6 +62,11 @@ if (command === 'init') {
     console.error(`[CARTO] Fatal error: ${err.message}`);
     process.exit(1);
   });
+} else if (command === 'inspect') {
+  // Read-only diagnostic — no async, no rebuild. Pass --json through.
+  const json = process.argv.slice(3).includes('--json');
+  const code = require('./inspect').run(process.cwd(), { json });
+  process.exit(code);
 } else if (command === 'remove') {
   require('./remove').run(process.cwd());
 } else if (command === 'serve') {

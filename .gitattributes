@@ -1,0 +1,7 @@
+# Ensure consistent line endings across platforms.
+# Without this, Git on Windows can convert LF to CRLF on checkout
+# (core.autocrlf=true is the default), which breaks line-anchored
+# regex extraction in the Python/JS/Go plugins when run against
+# the test fixtures.
+test/extractors/* text eol=lf
+test/extractors/**/* text eol=lf

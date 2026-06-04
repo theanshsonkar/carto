@@ -94,6 +94,11 @@ module.exports = {
         storageKeys: [],
         _tsImports:  tsImports,
         _tsSymbols:  tsSymbols,
+        // Surface the parse failure as a breadcrumb so the
+        // caller can record it in extraction_errors. Pre-Spec-11 this
+        // warning only hit stderr and the file lost all of its routes
+        // and models silently.
+        _errors:     [{ phase: 'parse', message: `Babel parse: ${err.message}` }],
       };
     }
 

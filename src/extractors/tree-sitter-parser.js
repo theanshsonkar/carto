@@ -395,11 +395,26 @@ function _inferKind(nameNode, langName) {
   return 'variable';
 }
 
+/**
+ * getUnavailableLanguages() → string[]
+ * Returns language names whose grammars failed to load (or tree-sitter itself unavailable).
+ */
+function getUnavailableLanguages() {
+  if (!treeSitterAvailable) return GRAMMAR_DEFS.map(d => d.name);
+  const unavailable = [];
+  for (const def of GRAMMAR_DEFS) {
+    const ext = def.extensions[0];
+    if (!_getCompiledGrammar(ext)) unavailable.push(def.name);
+  }
+  return unavailable;
+}
+
 module.exports = {
   isAvailable,
   supportsExtension,
   extractImports,
   extractSymbols,
   extractAll,
+  getUnavailableLanguages,
   GRAMMAR_DEFS,
 };

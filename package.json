@@ -1,6 +1,6 @@
 {
   "name": "carto-md",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "Structural intelligence layer for AI coding tools. Indexes your codebase into SQLite — routes, models, import graph, blast radius, domains — and exposes 16 MCP tools for Kiro, Cursor, and Claude.",
   "bin": {
     "carto": "src/cli/index.js"
@@ -10,7 +10,9 @@
     "test": "node test/test.js",
     "test:correctness": "node test/correctness.js",
     "test:benchmark": "node test/benchmark.js",
-    "test:bench-ci": "node test/bench-ci.js"
+    "test:bench-ci": "node test/bench-ci.js",
+    "postinstall": "node scripts/postinstall.js",
+    "bench:bitmap": "node bench/bitmap-validation/index.js"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^0.22.1",
@@ -18,7 +20,9 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "11.7.0",
     "chokidar": "^3.6.0",
-    "tree-sitter": "0.25.0",
+    "tree-sitter": "0.25.0"
+  },
+  "optionalDependencies": {
     "tree-sitter-c-sharp": "0.21.3",
     "tree-sitter-cpp": "0.23.4",
     "tree-sitter-go": "0.25.0",
@@ -29,7 +33,7 @@
     "tree-sitter-typescript": "0.23.2"
   },
   "engines": {
-    "node": ">=18.0.0 <26.0.0"
+    "node": ">=18.0.0"
   },
   "author": {
     "name": "Ansh Sonkar",

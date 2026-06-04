@@ -34,7 +34,11 @@ module.exports = {
       };
     } catch (err) {
       console.warn(`[CARTO] python plugin error on ${filename}: ${err.message}`);
-      return { routes: [], models: [], functions: [], envVars: [], dbTables: [], fetches: [], storageKeys: [] };
+      return {
+        routes: [], models: [], functions: [], envVars: [], dbTables: [], fetches: [], storageKeys: [],
+        // Record the failure so it's visible in `carto check`.
+        _errors: [{ phase: 'extract', message: err.message || String(err) }],
+      };
     }
   }
 };

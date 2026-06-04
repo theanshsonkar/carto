@@ -38,6 +38,16 @@ jobs:
       - name: Compare against baseline
         run: node test/bench-regression-check.js bench-output.txt
 
+      - name: Domain regression check
+        # Validates domain counts are within expected ranges (Spec 10e).
+        # Only runs if corpus repos are available (local dev or full bench env).
+        run: |
+          if [ -d "$HOME/carto-test-repos" ]; then
+            node test/domain-regression-check.js "$HOME/carto-test-repos"
+          else
+            echo "⏭  No ~/carto-test-repos — skipping domain regression"
+          fi
+
       - name: Upload bench output
         # Upload even if the regression check failed — we want the artifact
         # for diagnosis when something regresses.

@@ -39,6 +39,14 @@ async function run(projectRoot) {
     const ageStr = age < 60 ? `${age}s ago` : age < 3600 ? `${Math.round(age / 60)}m ago` : `${Math.round(age / 3600)}h ago`;
     console.log(`  Last indexed  : ${ageStr}`);
   }
+
+  // Language coverage (only shows when grammars are missing)
+  const unavailRaw = store.getMeta('unavailable_languages_json');
+  const unavailLangs = unavailRaw ? (() => { try { return JSON.parse(unavailRaw); } catch { return []; } })() : [];
+  if (unavailLangs.length > 0) {
+    console.log(`  Lang coverage : ⚠️  ${unavailLangs.length} grammar${unavailLangs.length === 1 ? '' : 's'} unavailable (${unavailLangs.join(', ')}) — regex fallback active`);
+  }
+
   console.log('');
 
   // ── Uncommitted changes that touch high-blast-radius files ───────────────
@@ -87,6 +95,55 @@ async function run(projectRoot) {
     console.log('');
   } else if (domains.length > 1) {
     console.log('  ✅ No cross-domain dependency violations\n');
+  }
+
+  // ── Domain stability ──────────────────────────────────────────────────
+  const driftPct = parseFloat(store.getMeta('domain_stability_drift_pct') || '0');
+  const reassignmentsRaw = store.getMeta('last_reassignments_json');
+  const reassignments = reassignmentsRaw ? (() => { try { return JSON.parse(reassignmentsRaw); } catch { return []; } })() : [];
+
+  if (driftPct > 0 || reassignments.length > 0) {
+    if (driftPct > 5) {
+      hasIssues = true;
+      console.log(`  ⚠️  Domain stability: ${driftPct.toFixed(1)}% drift`);
+    } else {
+      console.log(`  ✅ Domain stability: ${driftPct.toFixed(1)}% drift`);
+    }
+    if (reassignments.length > 0) {
+      console.log('     Recent reassignments:');
+      for (const r of reassignments.slice(0, 5)) {
+        console.log(`       ${path.basename(r.file)}: ${r.from} → ${r.to}`);
+      }
+      if (reassignments.length > 5) console.log(`       ...and ${reassignments.length - 5} more`);
+    }
+    console.log('');
+  } else if (domains.length > 1) {
+    console.log('  ✅ Domain stability: 0.0% drift (no reassignments)\n');
+  }
+
+  // ── Extraction errors ─────────────────────────────────────────────────
+  const errorCount = store.getExtractionErrorCount();
+  if (errorCount > 0) {
+    hasIssues = true;
+    const topFiles = store.getExtractionErrorsTopFiles(5);
+    console.log(`  ⚠️  Extraction errors (${errorCount}):`);
+    console.log('     These files failed to parse — their routes/models/imports are missing from the index.\n');
+    for (const f of topFiles) {
+      const phases = f.phases ? ` [${f.phases}]` : '';
+      console.log(`     ${f.file}${phases}`);
+      if (f.sample) {
+        // Truncate sample for terminal readability
+        const sample = String(f.sample).split('\n')[0].slice(0, 120);
+        console.log(`       └─ ${sample}`);
+      }
+    }
+    // Errors NOT covered by the top-5 file slice (i.e., 6th+ file's errors).
+    const shown = topFiles.reduce((a, f) => a + (f.errorCount || 0), 0);
+    const remainingErrors = errorCount - shown;
+    if (remainingErrors > 0) {
+      console.log(`     ...and ${remainingErrors} more error${remainingErrors === 1 ? '' : 's'} in additional files`);
+    }
+    console.log('');
   }
 
   // ── Top high-impact files ────────────────────────────────────────────────

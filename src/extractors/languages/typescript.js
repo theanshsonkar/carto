@@ -63,6 +63,8 @@ module.exports = {
         jobs:        extractQueueAndCron(content),
         _tsImports:  tsImports,
         _tsSymbols:  tsSymbols,
+        // Promote silent Babel failure to a breadcrumb.
+        _errors:     [{ phase: 'parse', message: `Babel parse: ${err.message}` }],
       };
     }
 

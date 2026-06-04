@@ -300,24 +300,18 @@ function clusterByGraph(importGraph, gamma = 0.03, keywordSeeds = {}) {
 
   // Name each community
   const commNames = new Map();
-  const usedNames = new Map(); // name → count (for deduplication)
 
   for (const [commId, members] of communities) {
-    let name = nameCommunity(members, keywordSeeds);
-
-    // Deduplicate: if name already used, append a number
-    if (usedNames.has(name)) {
-      const count = usedNames.get(name) + 1;
-      usedNames.set(name, count);
-      name = `${name}_${count}`;
-    } else {
-      usedNames.set(name, 1);
-    }
-
+    const name = nameCommunity(members, keywordSeeds);
     commNames.set(commId, name);
   }
 
-  // Build final file → domain map
+  // Build final file → domain map.
+  // When multiple communities resolve to the same base name (e.g. with a
+  // dense import graph, several disjoint sub-systems can each rank highest
+  // for AUTH), merge them into a single domain. The keyword that names the
+  // domain is the user-visible truth; preserving "AUTH_2", "AUTH_3", ...
+  // suffixes leaks Leiden's internal community count into the UI.
   const result = new Map();
   for (const [node, commId] of communityMap) {
     result.set(node, commNames.get(commId) || 'CORE');

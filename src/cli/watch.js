@@ -169,6 +169,12 @@ async function run(projectRoot) {
     process.exit(1);
   }
 
+  // `carto watch` is opt-in. Git hooks + lazy MCP re-parse
+  // handle the 90% case automatically with no background process. Surface
+  // that to anyone who runs this command so they know it's not required.
+  console.log('[CARTO] Note: `carto watch` is opt-in. Git hooks + lazy MCP re-parse (installed by `carto init`) keep the index fresh without a background process.');
+  console.log('[CARTO] Use `carto watch` for AI-heavy workflows where many files are edited between commits and you want sub-second freshness.');
+
   // Initial full sync using V2
   console.log('[CARTO] Starting initial sync...');
   await runSyncV2({

@@ -51,6 +51,10 @@ function extractImports(content, filePath, projectRoot) {
     return extractJavaImports(content, filePath, projectRoot);
   } else if (ext === '.rb') {
     return extractRubyImports(content, filePath, projectRoot);
+  } else if (['.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.hh', '.hxx'].includes(ext)) {
+    return extractCppImports(content, filePath, projectRoot);
+  } else if (ext === '.cs') {
+    return extractCsharpImports(content, filePath, projectRoot);
   }
 
   // Resolve and deduplicate
@@ -649,4 +653,176 @@ function _resolveRubyPath(reqPath, baseDir, projectRoot) {
     return path.relative(projectRoot, withExt);
   }
   return null;
+}
+
+
+// ─── C / C++ imports ──────────────────────────────────────────────────────────
+
+/**
+ * extractCppImports(content, filePath, projectRoot) → Array<string>
+ *
+ * Resolves #include directives to actual files in the project.
+ *
+ *   #include "foo.h"      → resolved relative to current file's dir,
+ *                           then common include search dirs.
+ *   #include <foo>        → skipped (system header, external).
+ *
+ * Uses tree-sitter-cpp when available, otherwise falls back to a
+ * simple regex over the source.
+ */
+function extractCppImports(content, filePath, projectRoot) {
+  const results = new Set();
+  const fileDir = path.dirname(filePath);
+  const ext = path.extname(filePath);
+
+  // Pull raw includes via tree-sitter when available; fall back to regex.
+  let rawImports = [];
+  try {
+    const tsParser = require('./tree-sitter-parser');
+    if (tsParser.isAvailable()) {
+      rawImports = tsParser.extractImports(content, ext);
+    }
+  } catch { /* tree-sitter unavailable */ }
+
+  if (rawImports.length === 0) {
+    const re = /^\s*#\s*include\s+(?:"([^"]+)"|<([^>]+)>)/gm;
+    let m;
+    while ((m = re.exec(content)) !== null) {
+      // m[1] is quoted form, m[2] is angle-bracket form. Keep both shapes
+      // so the system-header filter below can drop the angle ones.
+      if (m[1]) rawImports.push(m[1]);
+      else if (m[2]) rawImports.push('<' + m[2] + '>');
+    }
+  }
+
+  for (const raw of rawImports) {
+    // Drop system headers (angle brackets). Tree-sitter returns these as
+    // "<string>" wrappers; the regex form we just constructed does too.
+    if (raw.startsWith('<') && raw.endsWith('>')) continue;
+    // Defensive: a tree-sitter grammar quirk could leak the wrappers in.
+    if (raw.startsWith('"') && raw.endsWith('"')) {
+      const inner = raw.slice(1, -1);
+      _tryResolveCppInclude(inner, fileDir, projectRoot, results);
+      continue;
+    }
+    _tryResolveCppInclude(raw, fileDir, projectRoot, results);
+  }
+
+  return [...results].sort();
+}
+
+function _tryResolveCppInclude(includePath, fileDir, projectRoot, results) {
+  // Search order: relative to current file, then common include roots.
+  const candidates = [
+    path.resolve(fileDir, includePath),
+    path.join(projectRoot, 'include', includePath),
+    path.join(projectRoot, 'src', 'include', includePath),
+    path.join(projectRoot, 'src', includePath),
+    path.join(projectRoot, includePath),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).isFile()) {
+      results.add(path.relative(projectRoot, c));
+      return;
+    }
+  }
+}
+
+// ─── C# imports ───────────────────────────────────────────────────────────────
+
+// Cache: projectRoot → Map<namespace, Array<relativeFilePath>>
+const _csNamespaceCache = new Map();
+
+/**
+ * Build a namespace → files map by scanning every .cs file in the project
+ * once. Cached per projectRoot. This is the only reliable way to resolve
+ * `using A.B.C;` in C# because (unlike Java) namespace and folder structure
+ * are decoupled — a namespace can span many files in many directories.
+ */
+function _getCsharpNamespaceMap(projectRoot) {
+  if (_csNamespaceCache.has(projectRoot)) return _csNamespaceCache.get(projectRoot);
+  const map = new Map();
+
+  const SKIP_DIRS = new Set(['node_modules', 'bin', 'obj', 'packages', '.git', 'dist', 'build']);
+  const walk = (dir) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); }
+    catch { return; }
+    for (const e of entries) {
+      if (e.name.startsWith('.')) continue;
+      if (e.isDirectory()) {
+        if (!SKIP_DIRS.has(e.name)) walk(path.join(dir, e.name));
+        continue;
+      }
+      if (!e.isFile() || !e.name.endsWith('.cs')) continue;
+      const full = path.join(dir, e.name);
+      let c;
+      try { c = fs.readFileSync(full, 'utf-8'); } catch { continue; }
+      // Match both file-scoped (`namespace Foo;`) and block-scoped (`namespace Foo {`).
+      const m = c.match(/^\s*namespace\s+([\w.]+)\s*[;{]/m);
+      if (!m) continue;
+      const ns = m[1];
+      const rel = path.relative(projectRoot, full);
+      if (!map.has(ns)) map.set(ns, []);
+      map.get(ns).push(rel);
+    }
+  };
+
+  walk(projectRoot);
+  _csNamespaceCache.set(projectRoot, map);
+  return map;
+}
+
+/**
+ * extractCsharpImports(content, filePath, projectRoot) → Array<string>
+ *
+ * Resolves `using Foo.Bar.Baz;` to project files that declare the
+ * matching namespace. Skips standard library namespaces (System.*,
+ * Microsoft.*, etc.) — those produce only noise.
+ */
+function extractCsharpImports(content, filePath, projectRoot) {
+  const results = new Set();
+  const nsMap = _getCsharpNamespaceMap(projectRoot);
+
+  // System namespaces and well-known third-party prefixes that almost never
+  // resolve to project files. We still check the map (a project could ship a
+  // Microsoft.* namespace), but skip the FS fallback for these.
+  const EXTERNAL_PREFIXES = ['System', 'Microsoft', 'Windows', 'Newtonsoft', 'Xunit', 'NUnit', 'Mono'];
+
+  const re = /^\s*using\s+(?:static\s+)?([\w.]+)\s*;/gm;
+  let m;
+  while ((m = re.exec(content)) !== null) {
+    const ns = m[1];
+    const isExternal = EXTERNAL_PREFIXES.includes(ns.split('.')[0]);
+
+    // Primary path: namespace map lookup. Works regardless of folder layout.
+    const matched = nsMap.get(ns);
+    if (matched) {
+      for (const f of matched) results.add(f);
+      continue;
+    }
+
+    if (isExternal) continue;
+
+    // Fallback: filename convention (Foo.Bar.Baz → Foo/Bar/Baz.cs).
+    const parts = ns.split('.');
+    const asFile = parts.join(path.sep) + '.cs';
+    const candidates = [
+      path.join(projectRoot, 'src', asFile),
+      path.join(projectRoot, asFile),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) {
+        results.add(path.relative(projectRoot, c));
+        break;
+      }
+    }
+  }
+
+  // Drop self-import — a file's `namespace X;` can match itself when the
+  // file imports its own namespace via `using X;`.
+  const selfRel = path.relative(projectRoot, filePath);
+  results.delete(selfRel);
+
+  return [...results].sort();
 }

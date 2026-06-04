@@ -12,6 +12,9 @@ Progress/
 # Tests
 test/
 
+# Internal benchmarks (validation harness, not user-facing)
+bench/
+
 # Dev tools
 .kiro/
 .claude/
@@ -20,3 +23,6 @@ test/
 .DS_Store
 *.log
 *.tmp
+
+# npm pack output — don't ship a previous tarball inside the new one
+*.tgz

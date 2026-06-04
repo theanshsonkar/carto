@@ -1,0 +1,15 @@
+{
+  "_comment": "Domain count ranges per test-repo. Updated by corpus validation. Spec 10e.",
+  "tier-a/express": { "min": 1, "max": 5 },
+  "tier-a/fastapi": { "min": 1, "max": 6 },
+  "tier-a/gin": { "min": 1, "max": 5 },
+  "tier-a/flask": { "min": 1, "max": 5 },
+  "tier-b/prisma": { "min": 2, "max": 8 },
+  "tier-b/cal.com": { "min": 3, "max": 10 },
+  "tier-b/supabase": { "min": 3, "max": 10 },
+  "tier-b/vscode": { "min": 3, "max": 10 },
+  "tier-b/zed": { "min": 2, "max": 10 },
+  "tier-c/django": { "min": 1, "max": 6 },
+  "tier-c/rails": { "min": 1, "max": 6 },
+  "tier-c/spring-boot": { "min": 1, "max": 6 }
+}

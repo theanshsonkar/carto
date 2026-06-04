@@ -15,6 +15,9 @@ parentPort.on('message', (task) => {
   try {
     content = fs.readFileSync(filePath, 'utf-8');
   } catch (err) {
+    // Real I/O failure (file deleted between discovery and extraction,
+    // permission denied, etc.) — no point trying to extract. Caller
+    // turns this into a skip; nothing reaches the index.
     parentPort.postMessage({ id, error: err.message, result: null });
     return;
   }
@@ -27,17 +30,33 @@ parentPort.on('message', (task) => {
     return;
   }
 
-  let extracted;
+  // Capture extractor failures as breadcrumbs instead of
+  // dropping the file. The file still gets indexed (with empty
+  // extraction arrays) so its existence and imports are visible — and
+  // the failure shows up in `carto check` instead of vanishing.
+  const errors = [];
+
+  let extracted = { routes: [], models: [], functions: [], envVars: [], dbTables: [], fetches: [], storageKeys: [] };
   try {
     extracted = plugin.extract(content, relPath);
+    // Plugin-internal failure breadcrumbs — see extractFile().
+    if (Array.isArray(extracted._errors) && extracted._errors.length > 0) {
+      for (const e of extracted._errors) {
+        if (e && e.phase && e.message) errors.push({ phase: e.phase, message: e.message });
+      }
+    }
   } catch (err) {
-    parentPort.postMessage({ id, error: err.message, result: null });
-    return;
+    errors.push({ phase: 'extract', message: err.message || String(err) });
   }
 
   // Use tree-sitter imports if the plugin produced them (faster, no file I/O)
   // Fall back to the regex-based extractImports for resolution
-  const imports = extractImports(content, filePath, projectRoot);
+  let imports = [];
+  try {
+    imports = extractImports(content, filePath, projectRoot);
+  } catch (err) {
+    errors.push({ phase: 'imports', message: err.message || String(err) });
+  }
 
   // Attach tree-sitter symbols if available (richer than legacy functions array)
   const tsSymbols = extracted._tsSymbols || null;
@@ -56,6 +75,7 @@ parentPort.on('message', (task) => {
       storageKeys: extracted.storageKeys || [],
       imports,
       tsSymbols,
+      errors,
     }
   });
 });

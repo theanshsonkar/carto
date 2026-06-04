@@ -30,8 +30,8 @@ class ProviderRegistry {
     this._config = null;
   }
 
-  // list() was removed in 2.0.7 (Spec 7 Bug 3). It was only called by the
-  // dropped custom provider-list ACP method, which the SDK never dispatched.
+  // list() was removed — it was only called by a dropped custom
+  // provider-list ACP method that the SDK never actually dispatched.
   // SUPPORTED_PROVIDERS is still exported for external callers / tests.
 
   /**

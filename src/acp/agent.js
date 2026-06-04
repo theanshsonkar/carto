@@ -71,11 +71,11 @@ class CartoAgent {
 
   // Provider methods
   // The custom `unstable_*` provider-management methods (list / set / disable)
-  // were removed in 2.0.7 (Spec 7 Bug 3). The ACP SDK only dispatches the
-  // methods declared in its AGENT_METHODS constant, so those custom routes
-  // returned -32601 "Method not found" anyway. Provider config flows
-  // through env vars / editor settings; ProviderRegistry remains as the
-  // internal configuration carrier.
+  // were removed. The ACP SDK only dispatches the methods declared in
+  // its AGENT_METHODS constant, so those custom routes returned -32601
+  // "Method not found" anyway. Provider config flows through env vars /
+  // editor settings; ProviderRegistry remains as the internal
+  // configuration carrier.
 
   // Session list/load stubs
   async listSessions(_params) { return { sessions: [] }; }
