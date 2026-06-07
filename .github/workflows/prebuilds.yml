@@ -1,0 +1,138 @@
+name: Prebuilds
+
+# Builds platform-specific tarballs of the 8 tree-sitter grammars + tree-sitter
+# core and uploads them as GitHub Release assets. Carto's postinstall script
+# (scripts/postinstall.js) fetches the matching asset on first install when a
+# user's machine lacks a C++ toolchain.
+#
+# Triggers:
+#   * push of a `v*` tag — every release publishes its prebuilds
+#   * workflow_dispatch — manual rerun against an existing tag
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build prebuilds for (e.g. v2.0.9). Must already exist as a release.'
+        required: true
+
+permissions:
+  contents: write  # required to upload release assets
+
+jobs:
+  build:
+    name: ${{ matrix.key }}
+    runs-on: ${{ matrix.os }}
+    # `container` is only set for the musl cell. For everything else the
+    # field is undefined and GHA runs steps on the host.
+    container: ${{ matrix.container }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+            key: darwin-arm64
+          - os: macos-13
+            arch: x64
+            key: darwin-x64
+          - os: ubuntu-22.04
+            arch: x64
+            key: linux-x64-glibc
+          - os: ubuntu-22.04
+            arch: x64
+            key: linux-x64-musl
+            container: node:20-alpine
+          - os: windows-2022
+            arch: x64
+            key: win32-x64
+
+    steps:
+      # Alpine base image lacks git + build tools. Install before checkout
+      # because checkout uses git when available, and bsdtar is needed by
+      # the tarball step. Other cells get these from the host runner.
+      - name: Install Alpine build deps
+        if: matrix.key == 'linux-x64-musl'
+        shell: sh
+        run: apk add --no-cache git python3 make g++ tar gzip libstdc++
+
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        if: matrix.key != 'linux-x64-musl'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install (compiles all native deps)
+        shell: bash
+        # `npm ci --legacy-peer-deps` enforces lockfile + handles the known
+        # tree-sitter / tree-sitter-c-sharp peer-dep range mismatch. The
+        # grammars compile via node-gyp during this step.
+        run: npm ci --legacy-peer-deps
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          set -eu
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building prebuilds for $TAG"
+
+      - name: Build prebuild tarballs
+        shell: bash
+        run: |
+          set -eu
+          PLATFORM_KEY="${{ matrix.key }}"
+          OUT_DIR="$RUNNER_TEMP/prebuilds"
+          mkdir -p "$OUT_DIR"
+
+          # The 9 packages whose native bindings carto consumes. Order
+          # matches scripts/postinstall.js GRAMMARS array (plus tree-sitter
+          # core). If a package isn't present in node_modules — which
+          # happens when an optionalDependency failed to compile — we
+          # warn and skip; that's an honest signal the matrix cell can't
+          # produce a working binary for the user either.
+          PACKAGES=(
+            tree-sitter
+            tree-sitter-javascript
+            tree-sitter-typescript
+            tree-sitter-python
+            tree-sitter-go
+            tree-sitter-rust
+            tree-sitter-java
+            tree-sitter-cpp
+            tree-sitter-c-sharp
+          )
+
+          for PKG in "${PACKAGES[@]}"; do
+            PKG_DIR="node_modules/$PKG"
+            if [ ! -d "$PKG_DIR" ]; then
+              echo "::warning::skipping $PKG — not installed on $PLATFORM_KEY"
+              continue
+            fi
+            VERSION=$(node -e "console.log(require('./node_modules/$PKG/package.json').version)")
+            NAME="$PKG-v$VERSION-$PLATFORM_KEY.tar.gz"
+            echo "Tarballing $NAME"
+            # Tarball path-relative to node_modules so extraction puts the
+            # package back in node_modules/<pkg>/ on the user's machine.
+            tar -czf "$OUT_DIR/$NAME" -C node_modules "$PKG"
+          done
+
+          echo "--- Built artifacts ---"
+          ls -la "$OUT_DIR"
+
+      - name: Upload prebuilds to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: ${{ runner.temp }}/prebuilds/*.tar.gz
+          fail_on_unmatched_files: true
