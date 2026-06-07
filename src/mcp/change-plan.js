@@ -8,7 +8,7 @@
  *
  *   tokenize(intent) ──► tokens { content, verbs, paths }
  *                  └──► IDF over indexed corpus (basenames + symbol names)
- *                  └──► 4-tier anchor selection
+ *                  └──► 4-stage anchor selection
  *                          A. route path/method        (searchRoutes)
  *                          B. file path tokens         (pathTokens × IDF)
  *                          C. exported symbol names    (camelTokens × IDF)
@@ -169,9 +169,9 @@ function computeIdf(store) {
  *       symbols: [{ name, path, tokenSet }] }
  *
  * Memoized on the store object. On a 5K-file repo this saves ~30ms per
- * `planChange` call (without it, p95 on cal.com sat at 60ms — over the
- * spec's 50ms target). Re-indexing creates a new store instance, so
- * the cache lives only as long as the index it was built from.
+ * `planChange` call (without it, p95 on cal.com sat at 60ms, over the
+ * 50ms target). Re-indexing creates a new store instance, so the cache
+ * lives only as long as the index it was built from.
  */
 const CACHE_KEY = '__cartoChangePlanCache';
 
@@ -257,7 +257,7 @@ function selectAnchors(store, tokens, idf, maxAnchors = 8) {
   // Reuse the cached corpus index — saves ~30ms p95 on cal.com.
   const corpus = buildCorpusIndex(store);
 
-  // ── Tier A — route path/method ────────────────────────────────────
+  // ── Stage A — route path/method ───────────────────────────────────
   // Use searchRoutes for each detected URL-path-like token. Filter by
   // verb when one was extracted.
   const routesSeen = new Set();
@@ -304,7 +304,7 @@ function selectAnchors(store, tokens, idf, maxAnchors = 8) {
     }
   }
 
-  // ── Tier B — file path tokens (IDF-weighted) ──────────────────────
+  // ── Stage B — file path tokens (IDF-weighted) ─────────────────────
   for (const f of corpus.files) {
     let score = 0;
     const hits = [];
@@ -339,7 +339,7 @@ function selectAnchors(store, tokens, idf, maxAnchors = 8) {
     }
   }
 
-  // ── Tier C — exported symbol names (camelCase split + IDF) ────────
+  // ── Stage C — exported symbol names (camelCase split + IDF) ───────
   for (const s of corpus.symbols) {
     let score = 0;
     const hits = [];
@@ -360,7 +360,7 @@ function selectAnchors(store, tokens, idf, maxAnchors = 8) {
     }
   }
 
-  // ── Tier D — domain name match ────────────────────────────────────
+  // ── Stage D — domain name match ───────────────────────────────────
   let domains = [];
   try { domains = store.getDomainsList() || []; } catch { domains = []; }
   for (const d of domains) {
