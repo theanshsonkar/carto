@@ -3,6 +3,16 @@
 AGENTS.md
 mcp.md
 CARTO_BRAIN.md
+BENCHMARK_RESULTS.md
+CARTO_SCALE_REPORT.md
+CARTO_V2_ARCHITECTURE.md
+
+# Git config — not needed at npm install time
+.gitattributes
+.gitignore
+
+# GitHub Action — repo-root artifact, not part of the npm package
+action.yml
 
 # Internal specs and notes
 KIRO_SPEC*.md

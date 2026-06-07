@@ -36,9 +36,6 @@ jobs:
           - os: macos-14
             arch: arm64
             key: darwin-arm64
-          - os: macos-13
-            arch: x64
-            key: darwin-x64
           - os: ubuntu-22.04
             arch: x64
             key: linux-x64-glibc
@@ -54,10 +51,12 @@ jobs:
       # Alpine base image lacks git + build tools. Install before checkout
       # because checkout uses git when available, and bsdtar is needed by
       # the tarball step. Other cells get these from the host runner.
+      # `bash` is required by every subsequent step that uses `shell: bash`
+      # — without it the runner can't even spawn the shell (exit 127).
       - name: Install Alpine build deps
         if: matrix.key == 'linux-x64-musl'
         shell: sh
-        run: apk add --no-cache git python3 make g++ tar gzip libstdc++
+        run: apk add --no-cache bash git python3 make g++ tar gzip libstdc++ linux-headers
 
       - uses: actions/checkout@v4
 
@@ -90,7 +89,11 @@ jobs:
       - name: Build prebuild tarballs
         shell: bash
         run: |
-          set -eu
+          # `set -x` makes every command echo to the log — without it,
+          # diagnosing a failing tar invocation across 5 platforms is
+          # painful (especially on Windows bsdtar which exits 2 on fatal
+          # error without printing what failed).
+          set -eux
           PLATFORM_KEY="${{ matrix.key }}"
           OUT_DIR="$RUNNER_TEMP/prebuilds"
           mkdir -p "$OUT_DIR"
@@ -113,6 +116,20 @@ jobs:
             tree-sitter-c-sharp
           )
 
+          # `--force-local` tells GNU tar to never interpret a `<letter>:`
+          # path prefix as an rsync-style remote URL. Required on Windows
+          # runners where $RUNNER_TEMP is a Windows path like 'D:\a\_temp'
+          # — without the flag, GNU tar (shipped by MSYS Git Bash on the
+          # Windows runner) tries to resolve `D:` as a network host and
+          # exits with "Cannot connect to D: resolve failed" → status 128.
+          # bsdtar (macOS, native Windows tar.exe) doesn't recognize
+          # --force-local, so we scope the flag to the cell where the
+          # GNU-tar-via-Git-Bash code path is in play.
+          TAR_EXTRA=""
+          if [[ "$PLATFORM_KEY" == "win32-x64" ]]; then
+            TAR_EXTRA="--force-local"
+          fi
+
           for PKG in "${PACKAGES[@]}"; do
             PKG_DIR="node_modules/$PKG"
             if [ ! -d "$PKG_DIR" ]; then
@@ -122,9 +139,11 @@ jobs:
             VERSION=$(node -e "console.log(require('./node_modules/$PKG/package.json').version)")
             NAME="$PKG-v$VERSION-$PLATFORM_KEY.tar.gz"
             echo "Tarballing $NAME"
-            # Tarball path-relative to node_modules so extraction puts the
-            # package back in node_modules/<pkg>/ on the user's machine.
-            tar -czf "$OUT_DIR/$NAME" -C node_modules "$PKG"
+            # Use a subshell + cd instead of `tar -C` because Windows
+            # bsdtar handles -C flag inconsistently with combined -czf
+            # (exits 2 on the first non-trivial path). The (cd && tar)
+            # form is portable across GNU tar, bsdtar, and macOS tar.
+            ( cd node_modules && tar $TAR_EXTRA -czf "$OUT_DIR/$NAME" "$PKG" )
           done
 
           echo "--- Built artifacts ---"

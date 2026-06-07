@@ -159,6 +159,9 @@ Every `validate_diff` call is also written to a local SQLite log, so a session t
 | C / C++ | `.cpp` `.cc` `.cxx` `.h` `.hpp` |
 | C# | `.cs` |
 | Ruby | `.rb` |
+| R | `.r` `.R` |
+| Prisma schema | `.prisma` |
+| HTML | `.html` (for `fetch()` discovery) |
 
 ### Route extraction (framework-aware)
 
@@ -235,7 +238,131 @@ Carto supports any LLM provider — configure in your editor:
 
 ---
 
-## The 22 MCP tools
+## GitHub Action — PR impact reports
+
+Drop carto onto every PR your repo gets. Posts a sticky comment on each pull request with the diff's blast radius, cross-domain violations, affected routes, and a risk badge.
+
+`.github/workflows/carto.yml`:
+```yaml
+name: Carto Impact Report
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  carto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: theanshsonkar/carto@v2.0.9
+```
+
+That's the whole config. The action handles `npm install`, builds (or restores from cache) the `.carto/` index, runs `carto pr-impact`, and posts the comment via `GITHUB_TOKEN`.
+
+### Inputs
+
+| Input | Default | What it does |
+|-------|---------|--------------|
+| `carto-version` | `latest` | The `carto-md` npm version to install. Pin in production for reproducibility. |
+| `base` | auto (`origin/$GITHUB_BASE_REF`) | Git ref the PR branched from. |
+| `head` | auto (`$GITHUB_SHA`) | Git ref of the PR head. |
+| `fail-on` | _(empty)_ | Fail the workflow when risk meets/exceeds this severity. One of `HIGH`, `MEDIUM`, `LOW`. Empty = comment-only. |
+| `comment-mode` | `sticky` | `sticky` updates the existing carto comment in place. `new` posts a new comment every push. `none` skips posting (renders to stdout). |
+| `node-version` | `20` | Node.js version on the runner. |
+
+### Outputs
+
+| Output | Description |
+|--------|-------------|
+| `risk` | Rolled-up risk: `SAFE` \| `LOW` \| `MEDIUM` \| `HIGH`. Lets downstream steps gate behavior on Carto's verdict. |
+| `comment-url` | URL of the posted/updated PR comment. |
+
+### What the comment looks like
+
+```markdown
+## 🗺️ Carto Impact Report
+
+This PR touches AUTH and DATABASE domains.
+
+| Metric | Value |
+|--------|-------|
+| Risk | 🔴 HIGH |
+| Blast radius (union) | 23 files |
+| Files changed | 6 |
+| Cross-domain violations introduced | 2 |
+| High-impact file changed | src/auth/session.ts (8 direct dependents) |
+
+<details>
+<summary>Affected routes (4)</summary>
+
+- POST /auth/login — risk: HIGH
+- GET /auth/me — risk: HIGH
+- POST /auth/register — risk: MEDIUM
+- POST /api/users — risk: LOW
+
+</details>
+
+<details>
+<summary>Cross-domain violations (2)</summary>
+
+- auth/login.ts now imports from payments/billing.ts (AUTH→PAYMENTS)
+- database/user-repo.ts now imports from auth/jwt.ts (DATABASE→AUTH)
+
+</details>
+```
+
+### Standalone CLI use
+
+The action is a thin wrapper around `carto pr-impact`. Use it locally, in custom CI, or in pre-commit hooks:
+
+```bash
+carto pr-impact --base origin/main --head HEAD              # markdown to stdout
+carto pr-impact --base origin/main --head HEAD --format json
+carto pr-impact --base origin/main --head HEAD --fail-on HIGH  # exit 2 on HIGH risk
+```
+
+---
+
+## ANCI — the open spec for codebases describing themselves to AI
+
+Every AI coding tool today re-discovers a codebase's architecture from scratch on every session. Cursor builds its own embedding index. Cline builds its own. Continue builds its own. Same parsing, every tool, every session.
+
+**ANCI** (Architecturally Normalized Code Index) is the file format that fixes this. Two files at `.carto/anci.{yaml,bin}` that describe the codebase's architecture in a form any AI tool can read without indexing it itself. OpenAPI did this for REST APIs. ANCI does it for codebases.
+
+`carto sync` writes both files automatically. The header is grep-able YAML; the body is a compact binary import graph. Spec lives in [`docs/anci/v0.1-DRAFT.md`](docs/anci/v0.1-DRAFT.md). Carto is the reference implementation.
+
+```bash
+carto anci publish              # re-emit anci.{yaml,bin} from the index
+carto anci show                 # human-readable summary
+carto anci validate ./.carto    # validate a published pair
+```
+
+Any tool can consume an ANCI pair without depending on Carto:
+
+```js
+const { loadAnci } = require('carto-md/src/anci/consumer');
+
+const reader = loadAnci('./.carto');
+console.log(reader.domains);                          // [{ name: 'AUTH', file_count: 42 }, ...]
+console.log(reader.getHighImpactFiles(5));            // top 5 by transitive dependents
+console.log(reader.blastRadius('src/auth/session.ts'));// { count, hops, files: [...] }
+console.log(reader.simulateChangeImpact([             // multi-file change blast radius
+  'src/auth/session.ts',
+  'src/db/connection.ts',
+]));
+```
+
+> **Status:** v0.1.0-DRAFT — wire format may change up to v1.0. The reference implementation lives in this repo at `src/anci/`.
+
+---
+
+
 
 Once carto is wired in, your AI tool can call any of these mid-task. You don't need to memorize them — your AI will pick the right ones.
 
@@ -264,7 +391,7 @@ Once carto is wired in, your AI tool can call any of these mid-task. You don't n
 | `did_we_discuss_this(topic)` | Substring search over the episodic memory log — avoid re-deciding settled questions |
 | `get_intervention_history(file?)` | Past Carto-issued violations and suggestions, optionally filtered by file |
 
-**All MCP queries:** **<5ms** on every benchmarked repo.
+**Latency:** All bitmap-backed queries return in microseconds on real repos; cross-domain and `simulate_change_impact` settle under 2ms even on a 7.5K-file codebase like vscode. See [Benchmarks](#benchmarks) for the per-tool table.
 
 ## Episodic Memory
 
@@ -316,6 +443,7 @@ Full schema with anchor pinning (forces files into a domain regardless of cluste
 | `carto watch` | **Optional.** Live re-index on every file save. Not required — git hooks + lazy MCP re-parse keep the index fresh by default. Use only for AI-heavy workflows that write 50+ files between commits. |
 | `carto agent` | Start ACP agent mode (for Zed / JetBrains / VS Code) |
 | `carto impact <file>` | Blast radius: risk level, affected files, routes at risk |
+| `carto pr-impact` | Diff-shaped impact report between two git refs. Markdown (default) or JSON. Used by the [GitHub Action](#github-action--pr-impact-reports); works locally too. `--fail-on HIGH\|MEDIUM\|LOW` exits non-zero on threshold trip. |
 | `carto check` | Cross-domain violations, high-risk uncommitted changes, domain health |
 | `carto inspect` | Read-only diagnostic: index paths, sizes, freshness, bitmap sidecar shape, top-impact files, schema version, sync timestamps. `--json` for piping into `jq`. Never triggers a rebuild. |
 | `carto remove` | Remove AGENTS.md and .carto/ from project |
@@ -330,12 +458,12 @@ Measured on real open-source repos. Apple M-series, 8 CPUs, 8GB RAM. SHAs pinned
 
 | Repo | Language | Indexed Files | First Run | Second Run | DB Size | Import Edges |
 |------|----------|---------------|-----------|------------|---------|--------------|
-| [prisma/prisma](https://github.com/prisma/prisma) | TypeScript | 961 | **961ms** | **431ms** | 0.7 MB | 1,387 |
-| [supabase/supabase](https://github.com/supabase/supabase) | TypeScript | 6,330 | **5.4s** | **1.2s** | 4.0 MB | 5,321 |
-| [microsoft/vscode](https://github.com/microsoft/vscode) | TypeScript | 7,567 | **7.7s** | **1.0s** | 6.7 MB | 13,420 |
-| [zed-industries/zed](https://github.com/zed-industries/zed) | Rust | 1,752 | **3.0s** | **491ms** | 4.4 MB | 2,113 |
+| [prisma/prisma](https://github.com/prisma/prisma) | TypeScript | 961 | **1.0s** | **350ms** | 1.1 MB | 1,387 |
+| [supabase/supabase](https://github.com/supabase/supabase) | TypeScript | 6,330 | **5.4s** | **1.2s** | 4.8 MB | 5,189 |
+| [microsoft/vscode](https://github.com/microsoft/vscode) | TypeScript | 7,567 | **8.0s** | **935ms** | 14.3 MB | 13,335 |
+| [zed-industries/zed](https://github.com/zed-industries/zed) | Rust | 1,752 | **2.9s** | **468ms** | 4.8 MB | 2,110 |
 
-**Indexed Files** counts what Carto actually parses — `.ts/.js/.py/.go/.rs/...` after excluding `node_modules`, build output, and per-file `*.test.*` / `*.spec.*` / `*.stories.*` / `test_*.py` patterns. The on-disk file count of the repo is larger.
+**Indexed Files** counts what Carto actually parses — `.ts/.js/.py/.go/.rs/...` after excluding `node_modules`, build output, and per-file test patterns (`*.test.*` / `*.spec.*` / `*.stories.*` for JS/TS, `test_*.py` / `*_test.py` for Python, `test_*` / `*_test.r` for R). The on-disk file count of the repo is larger.
 
 **Second Run** = `carto sync` after no changes. mtime+size checked before reading content — if nothing changed, nothing is re-parsed.
 
@@ -351,7 +479,7 @@ Carto's MCP query path is bitmap-backed on five tools, plus a sixth (`simulate_c
 | `get_similar_patterns` | sub-ms | **73×** |
 | `simulate_change_impact` | sub-ms | **6.5×** (no SQLite equivalent at this latency) |
 
-Median speedup across all five tools on vscode: **10.7×**. Smaller repos hit higher peaks — laravel-framework `get_high_impact_files` clocks at 155× on the smaller graph. Reproducible via `npm run bench:bitmap -- --repo <path>`.
+Median speedup across all five tools on vscode: **10.7×**. Smaller repos with denser graphs hit higher peaks — supabase `get_high_impact_files` clocks well over 100× on its tighter import graph. Reproducible via `npm run bench:bitmap -- --repo <path>`.
 
 ### `validate_diff` latency
 
@@ -364,6 +492,15 @@ The new diff-shaped query that lets the AI ask "is this patch safe?" before show
 
 Budget was p50 ≤ 5ms, p99 ≤ 15ms. Both targets are cleared by 30-60×. The bitmap engine handles every blast-radius and cross-domain query in microseconds; what's left is diff parsing + result aggregation. Reproducible via `node bench/validation-perf/index.js --repo <path>`.
 
+### Scale
+
+Synthetic stress sweep + real-world corpus, dense-fan-out worst case all the way to 50K files. Headline numbers (full table in [`docs/scale.md`](docs/scale.md)):
+
+- Synth 50K files: init 1.1m, `blast_radius` p50 22µs, `simulate_change_impact` p50 50µs, `high_impact_files` p50 750ns. The dense Uint32Array bitset hits 415 MB on disk and 1.35 GB peak RSS at this size — the Tier-2 Roaring upgrade per PEAK §9.6 is the next move.
+- Real-world (vscode, 7,567 files): `blast_radius` p50 2.7µs, `cross_domain` p50 1.23ms, `similar_patterns` p50 834ns, `simulate_change_impact` p50 19µs.
+
+Reproducible via `npm run bench:scale -- --size <N>` (synth) and `node bench/scale-test/real-world.js --repo <path>` (any local clone, including Linux kernel or Chromium).
+
 ### Domains detected
 
 | Repo | Domains |
@@ -373,7 +510,7 @@ Budget was p50 ≤ 5ms, p99 ≤ 15ms. Both targets are cleared by 30-60×. The b
 | vscode | EXTENSIONS · AUTH · EVENTS · DATABASE · EXTENSION · CLI · CORE |
 | zed (Rust) | CORE · DATABASE · AUTH · EVENTS · PAYMENTS · TRPC · NOTIFICATIONS |
 
-vscode at 7,567 indexed files in under 8 seconds. Rust import graph working on zed (2,113 edges from `mod` declarations and `use crate::` paths).
+vscode at 7,567 indexed files in around 8 seconds. Rust import graph working on zed (2,110 edges from `mod` declarations and `use crate::` paths).
 
 ### Accuracy
 
@@ -420,6 +557,7 @@ File saved → debounce 50ms → re-parse 1 file → SQLite write → <50ms
 - **Sends your code anywhere.** Local only. SQLite on disk.
 - **Writes secrets into AGENTS.md.** `.cartoignore` blocks `.env` and credential files by default.
 - **Touches your manual notes.** Writes only between `<!-- CARTO:AUTO:START -->` and `<!-- CARTO:AUTO:END -->`.
+- **Forces you to install a C++ toolchain.** Prebuilt native binaries ship for macOS arm64, Linux x64 (glibc + musl/Alpine), and Windows x64. Intel Macs and other platforms transparently fall back to building from source, then to regex-only extraction if that fails.
 - **Costs money.** MIT license. Free forever.
 
 ---
