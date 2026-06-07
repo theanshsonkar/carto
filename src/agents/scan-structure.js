@@ -16,7 +16,7 @@ const fs = require('fs');
  * the structure block is about to be merged into (`AGENTS.md`).
  *
  * Anchored on the original V1 set in src/sync.js so existing AGENTS.md
- * outputs do not drift after the V1 → V2 cleanup.
+ * outputs stay stable after the V1 → V2 cleanup.
  */
 const IGNORE_DIRS = new Set([
   'node_modules',

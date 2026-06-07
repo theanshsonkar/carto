@@ -1,4 +1,4 @@
-// Spec 11 fixture — Express minimal app, 3 routes + middleware chain.
+// Express fixture — minimal app, 3 routes + middleware chain.
 // Read by `Framework extractors` test suite.
 const express = require('express');
 const app = express();
