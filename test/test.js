@@ -678,7 +678,7 @@ async function runAsyncSuite() {
       `AGENTS.md must list README.md or package.json. Got:\n${content}`);
   });
 
-  // ── Init flow integration tests (Spec 4) ─────────────────────────
+  // ── Init flow integration tests ──────────────────────────────────
   // Regression target: `carto init` must use V2 indexer (runSyncV2),
   // not the legacy V1 runFullSync that produced an empty 23ms no-op.
   const initCli = require('../src/cli/init');
@@ -805,7 +805,7 @@ async function runAsyncSuite() {
       );
 
       // Pre-seed empty V1 state — mirrors what a previously-broken
-      // `carto init` (the bug Spec 4 fixes) left behind on disk.
+      // `carto init` (the bug the V2 fix addresses) left behind on disk.
       fs.mkdirSync(path.join(projectRoot, '.carto'));
       fs.writeFileSync(
         path.join(projectRoot, '.carto', 'graph-cache.json'),
@@ -890,7 +890,7 @@ async function runAsyncSuite() {
     }
   });
 
-  // ── Init flow IDE auto-wiring (Spec 16.5 — fixes pre-2.0.8 gap) ───────
+  // ── Init flow IDE auto-wiring (fixes pre-2.0.8 gap) ──────────────
   //
   // Pre-2.0.8 `wireIDEs()` covered 4 of 9 documented tools (Cursor,
   // Claude Code, Kiro, Claude Desktop) and unconditionally wrote
@@ -1115,7 +1115,7 @@ async function runAsyncSuite() {
     });
   });
 
-  // ── Git hooks (Spec 9 — freshness redesign) ───────────────────────────
+  // ── Git hooks (freshness redesign) ────────────────────────────────
   //
   // `carto init` installs four git hooks (pre-commit, post-checkout,
   // post-merge, post-rewrite) that quietly call `carto sync` on every
@@ -1236,7 +1236,7 @@ async function runAsyncSuite() {
     }
   });
 
-  // ── Lazy MCP re-parse (Spec 9 — freshness redesign) ───────────────────
+  // ── Lazy MCP re-parse (freshness redesign) ────────────────────────
   //
   // Between commits, the user can edit files. Git hooks haven't fired
   // yet, but the MCP server gets a query against one of those files.
@@ -1364,7 +1364,7 @@ async function runAsyncSuite() {
       await initCli.run(projectRoot);
 
       // Touch — same content, new mtime. syncFiles should detect the
-      // mtime drift, hash-compare, see it's the same content, and skip
+      // mtime change, hash-compare, see it's the same content, and skip
       // re-extraction (just refresh the cached mtime).
       const futureTime = new Date(Date.now() + 5000);
       fs.utimesSync(filePath, futureTime, futureTime);
@@ -1379,7 +1379,7 @@ async function runAsyncSuite() {
     }
   });
 
-  // ── Store adapter (ACP V2) — Spec 5 ─────────────────────────────────
+  // ── Store adapter (ACP V2) ──────────────────────────────────────
   const { StoreAdapter } = require('../src/store/store-adapter');
   const { runSyncV2: runSyncV2ForAdapter } = require('../src/store/sync-v2');
 
@@ -1581,7 +1581,7 @@ async function runAsyncSuite() {
     }
   });
 
-  // Test 8: Public API back-compat — Spec 6
+  // Test 8: Public API back-compat
   // The `Carto` named export from index.js is a deprecated alias for
   // StoreAdapter (removed in 3.0.0). Existing programs must keep working:
   //   const { Carto } = require('carto-md');
@@ -1620,12 +1620,12 @@ async function runAsyncSuite() {
   });
 
   // ═════════════════════════════════════════════════════════════════
-  // Secret leakage — Spec 8
+  // Secret leakage
   // Asserts the trust-posture invariant: file content values never reach
   // AGENTS.md or .carto/context/*.md, and the expanded .cartoignore default
-  // patterns from Spec 8a catch real secret-bearing filenames without false-
-  // positiving harmless code (tokenizer.js etc.). Plus the MCP server's
-  // readonly DB mode (Spec 8b) actually rejects writes.
+  // patterns catch real secret-bearing filenames without false-positiving
+  // harmless code (tokenizer.js etc.). Plus the MCP server's readonly DB
+  // mode actually rejects writes.
   // ═════════════════════════════════════════════════════════════════
 
   await asyncTest('Secret leakage', 'fake secrets in fixture files do not appear in AGENTS.md or context files', async () => {
@@ -1734,7 +1734,7 @@ async function runAsyncSuite() {
     const { parseCartoIgnore } = require('../src/security/ignore');
     const isIgnored = parseCartoIgnore(fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ignore-')));
 
-    // New patterns from Spec 8a — must be blocked.
+    // Expanded ignore patterns — must be blocked.
     const mustBeBlocked = [
       'id_rsa', 'id_rsa.pub', 'id_ed25519', 'id_ecdsa', 'id_dsa',
       'authorized_keys', 'known_hosts',
@@ -1747,7 +1747,7 @@ async function runAsyncSuite() {
       'cert.jks', 'cert.keystore', 'cert.pkcs12'
     ];
     for (const f of mustBeBlocked) {
-      assert.ok(isIgnored(f), `expected ${f} to be ignored by Spec 8a defaults`);
+      assert.ok(isIgnored(f), `expected ${f} to be ignored by default patterns`);
     }
 
     // Negative — must NOT be blocked. The whole point of NOT shipping
@@ -1830,7 +1830,7 @@ async function runAsyncSuite() {
   });
 
   // ═════════════════════════════════════════════════════════════════
-  // Extraction errors (Spec 11a)
+  // Extraction errors
   //
   // The error-recording infrastructure runs end-to-end: extractFile
   // captures plugin.extract / extractImports throws into a per-file
@@ -1989,9 +1989,9 @@ async function runAsyncSuite() {
   });
 
   await asyncTest('Extraction errors', 'deliberately corrupt source file: parse failure surfaces end-to-end through runSyncV2', async () => {
-    // Spec 11 acceptance: "Deliberately corrupt a fixture file → error
-    // recorded in extraction_errors table, sync still completes,
-    // carto check shows the error." This test covers the full pipeline:
+    // Acceptance: deliberately corrupt a fixture file, expect the error
+    // recorded in extraction_errors table, sync still completes, and
+    // `carto check` shows the error. This test covers the full pipeline:
     // plugin internal try/catch → _errors → extractFile/worker merge →
     // storeExtraction insert → meta count → getExtractionErrorsTopFiles.
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-extracterr-corrupt-'));
@@ -2048,11 +2048,187 @@ async function runAsyncSuite() {
       fs.rmSync(projectRoot, { recursive: true, force: true });
     }
   });
+
+  // ── Scale-test driver: end-to-end smoke through runSyncV2 ──────────
+  await asyncTest('Scale-test driver', 'runScale at N=200 produces a valid index + bitmap.bin and per-tool stats', async () => {
+    const scaleGen2 = require('../bench/scale-test/generator');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-scale-smoke-'));
+    try {
+      scaleGen2.generateRepo(dir, { size: 200, seed: 42 });
+      const { runScale } = require('../bench/scale-test/runner');
+      const result = await runScale(dir, { querySeed: 42 });
+
+      assert.strictEqual(result.totalFiles, 200,
+        `expected 200 files indexed, got ${result.totalFiles}`);
+      assert.ok(result.edgeCount > 0,
+        `expected >0 edges in bitmap, got ${result.edgeCount}`);
+      assert.ok(result.initMs > 0 && result.initMs < 60_000,
+        `init time should be a sane positive value, got ${result.initMs}ms`);
+      assert.ok(result.dbBytes > 0, `DB size should be > 0, got ${result.dbBytes}`);
+      assert.ok(result.bitmapBytes > 0,
+        `bitmap.bin should exist and be > 0 bytes, got ${result.bitmapBytes}`);
+      assert.ok(fs.existsSync(path.join(dir, '.carto', 'bitmap.bin')),
+        'bitmap.bin file must exist after runSyncV2');
+
+      const expectedTools = [
+        'blastRadius', 'crossDomain', 'highImpactFiles',
+        'similarPatterns', 'simulateChangeImpact',
+      ];
+      for (const tool of expectedTools) {
+        const stats = result.perTool[tool];
+        assert.ok(stats, `missing stats for ${tool}`);
+        assert.ok(typeof stats.p50 === 'number' && stats.p50 > 0,
+          `${tool}.p50 should be a positive number, got ${stats.p50}`);
+        assert.ok(typeof stats.p99 === 'number' && stats.p99 >= stats.p50,
+          `${tool}.p99 should be ≥ p50, got p50=${stats.p50}, p99=${stats.p99}`);
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // ── ANCI sync hook + CLI + consumer integration ──────────────────
+  await asyncTest('ANCI roundtrip', 'runSyncV2 writes anci.{yaml,bin} after a successful sync', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-anci-sync-'));
+    try {
+      fs.mkdirSync(path.join(projectRoot, 'src'));
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'index.ts'),
+        "import { greet } from './utils';\nexport const x = greet();\n"
+      );
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'utils.ts'),
+        "export function greet() { return 'ok'; }\n"
+      );
+      fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"anci-fixture"}');
+
+      const { runSyncV2 } = require('../src/store/sync-v2');
+      await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+
+      const yamlPath = path.join(projectRoot, '.carto', 'anci.yaml');
+      const binPath = path.join(projectRoot, '.carto', 'anci.bin');
+      assert.ok(fs.existsSync(yamlPath), 'sync must produce .carto/anci.yaml');
+      assert.ok(fs.existsSync(binPath), 'sync must produce .carto/anci.bin');
+
+      // Magic check on the body.
+      const buf = fs.readFileSync(binPath);
+      const ANCI_MAGIC_LOCAL = require('../src/anci/serialize').MAGIC;
+      assert.strictEqual(buf.readUInt32LE(0), ANCI_MAGIC_LOCAL,
+        'anci.bin must start with the ANCI magic bytes');
+
+      // Header is well-formed YAML and round-trips through the consumer.
+      const reader = require('../src/anci/consumer').loadAnci(path.join(projectRoot, '.carto'));
+      assert.strictEqual(reader.header.anci.version, '0.1.0-DRAFT');
+      assert.ok(reader.header.project.total_files >= 2,
+        `expected total_files >= 2, got ${reader.header.project.total_files}`);
+      // Header body.bytes equals the actual file size.
+      assert.strictEqual(reader.header.anci.body.bytes, buf.length,
+        'header.anci.body.bytes must match the on-disk anci.bin size');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  await asyncTest('ANCI roundtrip', 'carto anci publish + validate succeed against a synced project', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-anci-cli-'));
+    try {
+      fs.mkdirSync(path.join(projectRoot, 'src'));
+      fs.writeFileSync(
+        path.join(projectRoot, 'src', 'a.ts'),
+        "import { b } from './b';\nexport const x = b();\n"
+      );
+      fs.writeFileSync(path.join(projectRoot, 'src', 'b.ts'), "export const b = () => 1;\n");
+      fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"x"}');
+      const { runSyncV2 } = require('../src/store/sync-v2');
+      await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+
+      // Delete the auto-emitted ANCI files so we can prove `publish` regenerates them.
+      const yamlPath = path.join(projectRoot, '.carto', 'anci.yaml');
+      const binPath = path.join(projectRoot, '.carto', 'anci.bin');
+      fs.unlinkSync(yamlPath);
+      fs.unlinkSync(binPath);
+      assert.ok(!fs.existsSync(yamlPath), 'precondition: anci.yaml must be deleted');
+
+      const cwd = process.cwd();
+      try {
+        process.chdir(projectRoot);
+        // Capture stdout to keep test output clean.
+        const origLog = console.log;
+        const origErr = console.error;
+        console.log = () => {};
+        console.error = () => {};
+        let publishCode, validateCode;
+        try {
+          publishCode = require('../src/cli/anci').run({ argv: ['publish'] });
+          validateCode = require('../src/cli/anci').run({ argv: ['validate', './.carto'] });
+        } finally {
+          console.log = origLog;
+          console.error = origErr;
+        }
+        assert.strictEqual(publishCode, 0, '`carto anci publish` must exit 0');
+        assert.strictEqual(validateCode, 0, '`carto anci validate ./.carto` must exit 0 on a freshly-published pair');
+      } finally {
+        process.chdir(cwd);
+      }
+      assert.ok(fs.existsSync(yamlPath), '`carto anci publish` must regenerate anci.yaml');
+      assert.ok(fs.existsSync(binPath), '`carto anci publish` must regenerate anci.bin');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  await asyncTest('ANCI roundtrip', 'consumer.blastRadius matches SQLite reference output for the same file', async () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-anci-parity-'));
+    try {
+      // Build a fixture with a clear "high impact" file: utils imported by 3 callers,
+      // each caller imported by 1 outer caller. utils' transitive blast = 6 files.
+      fs.mkdirSync(path.join(projectRoot, 'src'));
+      fs.writeFileSync(path.join(projectRoot, 'src', 'utils.ts'),
+        "export const greet = () => 'ok';\n");
+      for (const name of ['a', 'b', 'c']) {
+        fs.writeFileSync(path.join(projectRoot, 'src', `${name}.ts`),
+          `import { greet } from './utils';\nexport const ${name} = () => greet();\n`);
+        fs.writeFileSync(path.join(projectRoot, 'src', `outer-${name}.ts`),
+          `import { ${name} } from './${name}';\nexport const outer = () => ${name}();\n`);
+      }
+      fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"x"}');
+
+      const { runSyncV2 } = require('../src/store/sync-v2');
+      await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+
+      // SQLite reference (via StoreAdapter, same shape Carto uses internally).
+      const { SQLiteStore: Store } = require('../src/store/sqlite-store');
+      const store = new Store(projectRoot); store.open({ readonly: true });
+      const sqlBlast = store.getBlastRadius('src/utils.ts', 5);
+      store.close();
+      const sqlFiles = (sqlBlast || []).map(r => r.file).sort();
+
+      // ANCI consumer.
+      const { loadAnci } = require('../src/anci/consumer');
+      const reader = loadAnci(path.join(projectRoot, '.carto'));
+      const anciBlast = reader.blastRadius('src/utils.ts');
+      assert.ok(anciBlast, 'consumer must return a blast radius for src/utils.ts');
+      const anciFiles = anciBlast.files.map(f => f.file).sort();
+
+      assert.deepStrictEqual(anciFiles, sqlFiles,
+        'ANCI consumer blast radius must match SQLite reference exactly');
+      assert.strictEqual(anciBlast.count, sqlFiles.length,
+        `count must match files.length, got count=${anciBlast.count} vs files=${sqlFiles.length}`);
+
+      // Sanity: simulateChangeImpact on the same single file should produce the same set.
+      const sim = reader.simulateChangeImpact(['src/utils.ts']);
+      const simFiles = sim.files.map(f => f.file).sort();
+      assert.deepStrictEqual(simFiles, sqlFiles,
+        'simulateChangeImpact on a single file must equal blastRadius for that file');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
 }
 
 
 // ═══════════════════════════════════════════════════════════════════
-// Path normalization (Spec 7 Bug 2): normalizeFileArg helper used by
+// Path normalization: normalizeFileArg helper used by
 // `carto impact` and the file-arg MCP tools so `./foo`, absolute paths,
 // and Windows backslashes all resolve to the canonical SQLite-stored form.
 // ═══════════════════════════════════════════════════════════════════
@@ -2102,7 +2278,7 @@ test('Path normalization', 'empty / non-string input is returned unchanged', () 
 
 
 // ═══════════════════════════════════════════════════════════════════
-// MCP resilience (Spec 7 Bug 5): server-side defensive parsing.
+// MCP resilience: server-side defensive parsing.
 // We can't drive the full stdio MCP transport from this synchronous
 // test runner, but we *can* exercise the parts that pre-2.0.7 crashed:
 // JSON.parse on a corrupt stack_json row, and the getStore() poison bug.
@@ -2142,7 +2318,7 @@ test('MCP resilience', 'normalizeFileArg + path guard prevents crashes on weird 
 
 
 // ═══════════════════════════════════════════════════════════════════
-// Change plan (Spec 2): pure-module tokenizer + anchor selection +
+// Change plan: pure-module tokenizer + anchor selection +
 // graph expansion + markdown formatter
 // ═══════════════════════════════════════════════════════════════════
 
@@ -2158,11 +2334,11 @@ const {
 const { SQLiteStore } = require('../src/store/sqlite-store');
 
 /**
- * buildTestStore(spec) — creates a real on-disk SQLiteStore in a temp
- * directory and populates it with the given spec, then computes
+ * buildTestStore(input) — creates a real on-disk SQLiteStore in a temp
+ * directory and populates it with the given input, then computes
  * reverse_deps so blast radius queries return real values.
  *
- * spec = {
+ * input = {
  *   files: [{ path, language? }],
  *   symbols: [{ file, name, exported? }],
  *   routes:  [{ file, method, path, framework? }],
@@ -2514,7 +2690,7 @@ test('Change plan', 'formatPlanMarkdown: fallback message for no-anchor case', (
 
 
 // ═══════════════════════════════════════════════════════════════════
-// Adaptive clustering (Spec 10a — 3 tests)
+// Adaptive clustering — 3 tests
 // ═══════════════════════════════════════════════════════════════════
 
 const { selectClusteringStrategy } = require('../src/store/sync-v2');
@@ -2539,7 +2715,7 @@ test('Adaptive clustering', 'Dense graph uses graph method with continuous gamma
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Domain config (Spec 10b — 4 tests)
+// Domain config — 4 tests
 // ═══════════════════════════════════════════════════════════════════
 
 const { loadCartoConfig, applyAnchors } = require('../src/store/config-loader');
@@ -2587,7 +2763,7 @@ test('Domain config', 'applyAnchors forces anchor files to their configured doma
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Domain stability (Spec 10c — 3 tests)
+// Domain stability — 3 tests
 // ═══════════════════════════════════════════════════════════════════
 
 test('Domain stability', 'First sync stores snapshot and drift = 0.00', () => {
@@ -2631,7 +2807,7 @@ test('Domain stability', 'Second sync with no changes produces drift = 0.00', ()
     store.setMeta('previous_domain_snapshot', JSON.stringify(snapshot));
     // Current assignments same as previous
     const current = new Map(Object.entries(snapshot));
-    // Replicate drift computation:
+    // Replicate the reassignment computation:
     let changed = 0;
     for (const [fp, domain] of current) {
       if (snapshot[fp] && snapshot[fp] !== domain) changed++;
@@ -2678,7 +2854,7 @@ test('Domain stability', 'Domain reassignment is detected and drift > 0', () => 
 
 
 // ═══════════════════════════════════════════════════════════════════
-// Framework extractors (Spec 11b — 8 tests)
+// Framework extractors — 8 tests
 //
 // One fixture per framework lives in test/extractors/. We feed it
 // through the relevant language plugin and assert the extracted
@@ -2787,7 +2963,7 @@ test('Framework extractors', 'rails: explicit get + resources :users yields 6 ro
 
 
 // ═══════════════════════════════════════════════════════════════════
-// Native install resilience (Spec 12) — 6 tests
+// Native install resilience — 11 tests
 // ═══════════════════════════════════════════════════════════════════
 
 test('Native install resilience', 'optionalDependencies: 8 grammars listed, tree-sitter core stays in dependencies', () => {
@@ -2807,9 +2983,11 @@ test('Native install resilience', 'postinstall exits 0 and prints guidance when 
   const scriptPath = path.join(__dirname, '..', 'scripts', 'postinstall.js');
   const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-pi-'));
   try {
-    // Write the simulation as a real .js file rather than using `node -e`.
-    // Windows CMD parses nested double-quotes inside `node -e "..."` very
-    // differently than bash, so a tmp script is more portable.
+    // Simulate "all 8 tree-sitter-* grammars unavailable" by hijacking
+    // Module._resolveFilename inside a child process. We invoke runMain()
+    // directly (the script exposes that entry point) and set
+    // CARTO_NO_PREBUILD=1 to keep the test offline — the prebuild fetch
+    // path has its own dedicated tests below.
     const simPath = path.join(emptyDir, 'sim.js');
     fs.writeFileSync(simPath,
       "const Module = require('module');\n" +
@@ -2818,9 +2996,16 @@ test('Native install resilience', 'postinstall exits 0 and prints guidance when 
       "  if (request.startsWith('tree-sitter-')) throw new Error('simulated');\n" +
       "  return origResolve.call(this, request, ...args);\n" +
       "};\n" +
-      `require(${JSON.stringify(scriptPath)});\n`
+      `const pi = require(${JSON.stringify(scriptPath)});\n` +
+      "pi.runMain({}).then(() => process.exit(0)).catch((e) => {\n" +
+      "  console.log('runMain error: ' + (e && e.message));\n" +
+      "  process.exit(0);\n" +
+      "});\n"
     );
-    const result = execSync(`node "${simPath}"`, { encoding: 'utf-8', timeout: 5000 });
+    const result = execSync(`node "${simPath}"`, {
+      encoding: 'utf-8', timeout: 10000,
+      env: { ...process.env, CARTO_NO_PREBUILD: '1' }
+    });
     assert.ok(result.includes('[CARTO]'), `postinstall must print [CARTO] guidance; got: ${JSON.stringify(result)}`);
     assert.ok(result.includes('regex-only'), `must mention regex-only fallback; got: ${JSON.stringify(result)}`);
   } finally {
@@ -2892,8 +3077,214 @@ test('Native install resilience', 'get_architecture omits language callout when 
 });
 
 
+// ─── Prebuilt native binaries — 5 tests ───────────────────────────
+
+test('Native install resilience', 'assetName + assetUrl produce expected formats including libc variants', () => {
+  const pi = require('../scripts/postinstall');
+  // glibc Linux
+  assert.strictEqual(
+    pi.assetName({ pkg: 'tree-sitter-typescript', pkgVersion: '0.23.2', platformKey: 'linux-x64-glibc' }),
+    'tree-sitter-typescript-v0.23.2-linux-x64-glibc.tar.gz'
+  );
+  // musl Linux
+  assert.strictEqual(
+    pi.assetName({ pkg: 'tree-sitter-rust', pkgVersion: '0.24.0', platformKey: 'linux-x64-musl' }),
+    'tree-sitter-rust-v0.24.0-linux-x64-musl.tar.gz'
+  );
+  // macOS arm64 (no libc segment)
+  assert.strictEqual(
+    pi.assetName({ pkg: 'tree-sitter', pkgVersion: '0.25.0', platformKey: 'darwin-arm64' }),
+    'tree-sitter-v0.25.0-darwin-arm64.tar.gz'
+  );
+  // Windows
+  assert.strictEqual(
+    pi.assetName({ pkg: 'tree-sitter-go', pkgVersion: '0.25.0', platformKey: 'win32-x64' }),
+    'tree-sitter-go-v0.25.0-win32-x64.tar.gz'
+  );
+  // assetUrl composition
+  assert.strictEqual(
+    pi.assetUrl({ cartoVersion: '2.0.9', name: 'tree-sitter-go-v0.25.0-darwin-arm64.tar.gz' }),
+    'https://github.com/theanshsonkar/carto/releases/download/v2.0.9/tree-sitter-go-v0.25.0-darwin-arm64.tar.gz'
+  );
+  // Custom baseUrl override (used in tests)
+  assert.strictEqual(
+    pi.assetUrl({ cartoVersion: '2.0.9', name: 'foo.tar.gz', baseUrl: 'https://example.test/dl' }),
+    'https://example.test/dl/v2.0.9/foo.tar.gz'
+  );
+});
+
+test('Native install resilience', 'getPlatformInfo returns key matching current platform', () => {
+  const pi = require('../scripts/postinstall');
+  const info = pi.getPlatformInfo();
+  assert.strictEqual(info.platform, process.platform);
+  assert.strictEqual(info.arch, process.arch);
+  if (process.platform === 'linux') {
+    assert.ok(info.key.startsWith(`linux-${process.arch}-`),
+      `linux key should include libc segment, got: ${info.key}`);
+    assert.ok(info.libc === 'glibc' || info.libc === 'musl',
+      `linux libc should be glibc or musl, got: ${info.libc}`);
+  } else {
+    assert.strictEqual(info.key, `${process.platform}-${process.arch}`);
+    assert.strictEqual(info.libc, null);
+  }
+});
+
+test('Native install resilience', 'runMain with stubbed fetcher restores grammars and skips Spec 12 message', async () => {
+  const pi = require('../scripts/postinstall');
+  // Fake package root so the test never touches real node_modules.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-pi-restore-'));
+  try {
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+      name: 'carto-md', version: '99.0.0',
+      dependencies: { 'tree-sitter': '0.25.0' },
+      optionalDependencies: {
+        'tree-sitter-javascript': '0.25.0', 'tree-sitter-typescript': '0.23.2',
+        'tree-sitter-python': '0.25.0', 'tree-sitter-go': '0.25.0',
+        'tree-sitter-rust': '0.24.0', 'tree-sitter-java': '0.23.5',
+        'tree-sitter-cpp': '0.23.4', 'tree-sitter-c-sharp': '0.21.3',
+      }
+    }));
+
+    // Track which packages have been "installed" via the fake extractor.
+    const installed = new Set();
+    const requireFn = (req) => {
+      if (installed.has(req)) return {}; // pretend the binding loaded
+      throw new Error('not installed');
+    };
+    const fetcher = async (url, dest) => {
+      // Pretend the bytes arrived. Write a marker file so the extractor
+      // has something to look at if it wants — we don't actually need
+      // valid tar contents because our extractor stub doesn't read them.
+      fs.writeFileSync(dest, 'fake-tarball');
+    };
+    const extractor = (tarPath, destDir) => {
+      // Pull the package name out of the tarball filename and mark it
+      // installed in the shared state.
+      const m = path.basename(tarPath).match(/^(tree-sitter[-a-z]*)-v/);
+      if (!m) throw new Error(`unexpected name: ${tarPath}`);
+      installed.add(m[1]);
+    };
+
+    const lines = [];
+    const result = await pi.runMain({
+      env: {}, // no opt-outs
+      console: { log: (...a) => lines.push(a.join(' ')) },
+      packageRoot: root,
+      cartoVersion: '99.0.0',
+      platformInfo: { platform: 'linux', arch: 'x64', libc: 'glibc', key: 'linux-x64-glibc' },
+      baseUrl: 'https://example.test/dl',
+      requireFn,
+      fetcher,
+      extractor,
+    });
+
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(result.attempted, 8);
+    assert.strictEqual(result.succeeded, 8);
+    assert.strictEqual(result.stillFailed, 0);
+    const out = lines.join('\n');
+    assert.ok(out.includes('Restored 8/8'), `expected success line; got:\n${out}`);
+    assert.ok(!out.includes('regex-only'), `Spec 12 fallback should NOT print on full restore; got:\n${out}`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Native install resilience', 'runMain falls through to Spec 12 guidance when prebuild fetcher always fails', async () => {
+  const pi = require('../scripts/postinstall');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-pi-fallback-'));
+  try {
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+      name: 'carto-md', version: '99.0.0',
+      dependencies: { 'tree-sitter': '0.25.0' },
+      optionalDependencies: {
+        'tree-sitter-javascript': '0.25.0', 'tree-sitter-typescript': '0.23.2',
+        'tree-sitter-python': '0.25.0', 'tree-sitter-go': '0.25.0',
+        'tree-sitter-rust': '0.24.0', 'tree-sitter-java': '0.23.5',
+        'tree-sitter-cpp': '0.23.4', 'tree-sitter-c-sharp': '0.21.3',
+      }
+    }));
+
+    const requireFn = () => { throw new Error('not installed'); };
+    let fetchCount = 0;
+    const fetcher = async () => {
+      fetchCount += 1;
+      const err = new Error('HTTP 404');
+      throw err;
+    };
+    const extractor = () => { throw new Error('extractor must not run'); };
+
+    const lines = [];
+    const result = await pi.runMain({
+      env: {},
+      console: { log: (...a) => lines.push(a.join(' ')) },
+      packageRoot: root,
+      cartoVersion: '99.0.0',
+      platformInfo: { platform: 'linux', arch: 'x64', libc: 'glibc', key: 'linux-x64-glibc' },
+      baseUrl: 'https://example.test/dl',
+      requireFn,
+      fetcher,
+      extractor,
+    });
+
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(result.attempted, 8);
+    assert.strictEqual(result.succeeded, 0);
+    assert.strictEqual(result.stillFailed, 8);
+    assert.strictEqual(fetchCount, 8, 'all 8 grammars must be tried');
+    const out = lines.join('\n');
+    assert.ok(out.includes('regex-only'),
+      `Spec 12 guidance must print after prebuild fail; got:\n${out}`);
+    assert.ok(out.includes('HTTP 404'),
+      `per-grammar reason must surface; got:\n${out}`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Native install resilience', 'runMain with CARTO_NO_PREBUILD=1 skips fetcher and prints Spec 12 directly', async () => {
+  const pi = require('../scripts/postinstall');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-pi-noprebuild-'));
+  try {
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+      name: 'carto-md', version: '99.0.0',
+      dependencies: { 'tree-sitter': '0.25.0' },
+      optionalDependencies: { 'tree-sitter-javascript': '0.25.0' }
+    }));
+
+    const requireFn = () => { throw new Error('not installed'); };
+    let fetchCalled = false;
+    const fetcher = async () => { fetchCalled = true; };
+    const extractor = () => { throw new Error('extractor must not run'); };
+
+    const lines = [];
+    const result = await pi.runMain({
+      env: { CARTO_NO_PREBUILD: '1' },
+      console: { log: (...a) => lines.push(a.join(' ')) },
+      packageRoot: root,
+      cartoVersion: '99.0.0',
+      platformInfo: { platform: 'darwin', arch: 'arm64', libc: null, key: 'darwin-arm64' },
+      baseUrl: 'https://example.test/dl',
+      requireFn,
+      fetcher,
+      extractor,
+    });
+
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(result.attempted, 0, 'no fetches when CARTO_NO_PREBUILD=1');
+    assert.strictEqual(result.succeeded, 0);
+    assert.strictEqual(fetchCalled, false, 'fetcher must not be called');
+    const out = lines.join('\n');
+    assert.ok(out.includes('regex-only'),
+      `Spec 12 message must still print; got:\n${out}`);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
 // ═══════════════════════════════════════════════════════════════════
-// Bitmap validation (Spec 13) — 5 tests
+// Bitmap validation — 5 tests
 // ═══════════════════════════════════════════════════════════════════
 
 test('Bitmap validation', 'Sidecar correctness: forward+reverse round-trip edges', () => {
@@ -3127,7 +3518,7 @@ test('Bitmap validation', 'Report generates REPORT.md with exactly one verdict',
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Bitset serialization (Spec 14a) — 3 tests
+// Bitset serialization — 3 tests
 // ═══════════════════════════════════════════════════════════════════
 
 test('Bitset serialization', 'Round-trip preserves all set bits', () => {
@@ -3251,7 +3642,7 @@ test('Bitset serialization', 'In-place ops do not allocate a new words array', (
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Bitmap engine integration (Spec 14b–f) — 9 tests
+// Bitmap engine integration — 9 tests
 // ═══════════════════════════════════════════════════════════════════
 
 /**
@@ -3345,7 +3736,7 @@ test('Bitmap engine', 'popcountIndex sorted DESC and matches transitive 5-hop co
       assert.ok(idx[i - 1].count >= idx[i].count,
         `popcountIndex must be DESC at i=${i}: ${idx[i - 1].count} >= ${idx[i].count}`);
     }
-    // Spec 15-fix: count is now TRANSITIVE 5-hop. Fixture topology:
+    // Count is TRANSITIVE 5-hop. Fixture topology:
     //   file1 ← {2,3,4,5,6} hop1, ← {7,8} via file2 hop2, ← {9} via
     //   file3 hop2, ← {10} via file7 hop3 → 9 distinct transitive deps.
     assert.strictEqual(idx[0].fileId, 1);
@@ -3585,7 +3976,7 @@ test('Bitmap engine', 'Corrupt bitmap.bin → orchestrator rebuilds from SQLite'
 });
 
 test('Bitmap engine', 'crossDomain rewrite is byte-equivalent to a manual reference', () => {
-  // Spec 15b. The flat-array + crossForward rewrite must produce the same
+  // The flat-array + crossForward rewrite must produce the same
   // rows as walking the raw forward bitmap, filtering same-domain edges
   // by hand, and sorting by the SQLite ORDER BY (d1.name, d2.name) plus
   // (from, to) for total determinism.
@@ -3637,7 +4028,7 @@ test('Bitmap engine', 'crossDomain rewrite is byte-equivalent to a manual refere
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Inspect command (Spec 15c) — 3 tests
+// Inspect command — 3 tests
 // ═══════════════════════════════════════════════════════════════════
 
 test('Inspect command', 'collect() on a populated fixture returns the expected shape', () => {
@@ -3746,7 +4137,7 @@ test('Inspect command', 'returns exit code 1 with clear message when DB is missi
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Validation API (Spec 16b–c) — 10 tests
+// Validation API — 10 tests
 // ═══════════════════════════════════════════════════════════════════
 
 const { parseDiff: spec16ParseDiff, extractAddedImports: spec16ExtractImports } = require('../src/mcp/diff-parser');
@@ -4041,7 +4432,7 @@ test('Validation API', 'p50 latency ≤ 15ms on a 1000-file fixture (100 calls)'
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// Episodic Memory (Spec 16a + 16d) — 6 tests
+// Episodic Memory — 6 tests
 // ═══════════════════════════════════════════════════════════════════
 
 test('Episodic Memory', 'Schema v3 migrates a fresh DB with 3 new tables + indexes', () => {
@@ -4198,6 +4589,431 @@ test('Episodic Memory', 'getInterventionsForFile filters by file; null returns a
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// PR impact — 6 tests
+// ═══════════════════════════════════════════════════════════════════
+
+const prImpact = require('../src/cli/pr-impact');
+
+test('PR impact', 'parseArgs accepts known flags + rejects unknown', () => {
+  const ok = prImpact.parseArgs(['--base', 'main', '--head', 'feat', '--format', 'json', '--fail-on', 'high']);
+  assert.strictEqual(ok.base, 'main');
+  assert.strictEqual(ok.head, 'feat');
+  assert.strictEqual(ok.format, 'json');
+  assert.strictEqual(ok.failOn, 'HIGH');
+  assert.throws(() => prImpact.parseArgs(['--what']), /unknown flag: --what/);
+  assert.throws(() => prImpact.parseArgs(['--format', 'xml']), /--format/);
+  assert.throws(() => prImpact.parseArgs(['--fail-on', 'EXTREME']), /--fail-on/);
+});
+
+test('PR impact', 'collectImpact + renderMarkdown produce a marker, headline, metric table, and per-section detail', () => {
+  // Reuse the bitmap fixture (10 files, CORE+AUTH domains, f0 with 9 transitive deps).
+  const fix = buildValidationFixture();
+  try {
+    // Diff modifies f0 (high blast — 9 transitive deps) AND introduces a new
+    // CORE → AUTH import (cross-domain into a sensitive domain).
+    const diff = `diff --git a/src/f0.ts b/src/f0.ts
+--- a/src/f0.ts
++++ b/src/f0.ts
+@@ -1,1 +1,2 @@
+ line
++const x = 1;
+diff --git a/src/f1.ts b/src/f1.ts
+--- a/src/f1.ts
++++ b/src/f1.ts
+@@ -1,1 +1,2 @@
+ line
++import { x } from './f6';
+`;
+    const impact = prImpact.collectImpact(fix.projectRoot, diff);
+    const md = prImpact.renderMarkdown(impact);
+
+    // Marker is the first line so the GitHub Action can detect-and-update.
+    assert.ok(md.startsWith(prImpact.MARKER), 'must start with marker');
+    // Headline — both CORE and AUTH should be in the touched-domains sentence.
+    assert.ok(/touches\s+\*\*(CORE|AUTH)\*\*/.test(md), 'headline names a domain');
+    assert.ok(md.includes('**CORE**') && md.includes('**AUTH**'), 'both domains called out');
+    // Metric table.
+    assert.ok(md.includes('| **Risk** |'), 'metric table risk row');
+    assert.ok(md.includes('| Blast radius (union) |'), 'metric table blast row');
+    assert.ok(md.includes('| Files changed | 2 |'), 'metric table files-changed = 2');
+    assert.ok(md.includes('| Cross-domain violations introduced | 1 |'), 'one xd violation surfaced');
+    // Cross-domain section present.
+    assert.ok(/<details>\s*\n<summary>Cross-domain violations \(1\)/.test(md));
+    assert.ok(md.includes('CORE→AUTH'), 'cross-domain detail line');
+    // High-blast section present (f0 has 9 deps; default threshold is 20 medium / 50 high — won't trigger
+    // unless we lower thresholds. Adjust by passing thresholds into validateDiff via a custom path,
+    // OR simply assert the metric row above is correct.) — skip for default thresholds.
+    // Footer attribution.
+    assert.ok(md.includes('carto-md'), 'footer attribution present');
+    // Risk should be at least LOW (or HIGH from cross-domain into sensitive AUTH).
+    assert.ok(['MEDIUM', 'HIGH'].includes(impact.result.risk), 'risk reflects cross-domain violation');
+  } finally {
+    try { fix.store.close(); } catch {}
+    fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('PR impact', 'renderJson follows the documented stable contract shape', () => {
+  const fix = buildValidationFixture();
+  try {
+    const diff = `diff --git a/src/f1.ts b/src/f1.ts
+--- a/src/f1.ts
++++ b/src/f1.ts
+@@ -1,1 +1,2 @@
+ line
++import { x } from './f6';
+`;
+    const impact = prImpact.collectImpact(fix.projectRoot, diff);
+    const json = prImpact.renderJson(impact);
+    // Contract keys
+    for (const key of [
+      'marker', 'risk', 'files_changed', 'blast_radius_union',
+      'domains_touched', 'high_impact_file', 'violations',
+      'suggestions', 'per_file',
+    ]) {
+      assert.ok(Object.prototype.hasOwnProperty.call(json, key), `missing key: ${key}`);
+    }
+    assert.strictEqual(json.marker, prImpact.MARKER);
+    assert.ok(['SAFE', 'LOW', 'MEDIUM', 'HIGH'].includes(json.risk));
+    assert.strictEqual(typeof json.files_changed, 'number');
+    assert.strictEqual(typeof json.blast_radius_union, 'number');
+    assert.ok(Array.isArray(json.domains_touched));
+    assert.ok(Array.isArray(json.violations));
+    assert.ok(Array.isArray(json.suggestions));
+    assert.strictEqual(typeof json.per_file, 'object');
+    // per_file entries follow the per-file contract.
+    const f1 = json.per_file['src/f1.ts'];
+    assert.ok(f1, 'per_file must include src/f1.ts');
+    assert.strictEqual(typeof f1.blast_radius, 'number');
+    assert.strictEqual(typeof f1.directly_affected, 'number');
+    assert.ok(Array.isArray(f1.domains));
+    assert.ok(Array.isArray(f1.routes));
+    // Round-trip through JSON.stringify cleanly (no circular refs, no NaN).
+    JSON.parse(JSON.stringify(json));
+  } finally {
+    try { fix.store.close(); } catch {}
+    fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('PR impact', 'decideExitCode honors --fail-on threshold (no flag → 0; HIGH risk + --fail-on HIGH → 2)', () => {
+  // Without a threshold, exit is always 0.
+  assert.strictEqual(prImpact.decideExitCode('HIGH', null), 0);
+  assert.strictEqual(prImpact.decideExitCode('SAFE', null), 0);
+  // With a threshold, exit is 2 if risk >= threshold.
+  assert.strictEqual(prImpact.decideExitCode('HIGH', 'HIGH'), 2);
+  assert.strictEqual(prImpact.decideExitCode('MEDIUM', 'HIGH'), 0);
+  assert.strictEqual(prImpact.decideExitCode('MEDIUM', 'MEDIUM'), 2);
+  assert.strictEqual(prImpact.decideExitCode('LOW', 'MEDIUM'), 0);
+  assert.strictEqual(prImpact.decideExitCode('LOW', 'LOW'), 2);
+  assert.strictEqual(prImpact.decideExitCode('SAFE', 'LOW'), 0);
+});
+
+test('PR impact', 'marker appears exactly once at the top of rendered markdown (sticky-comment invariant)', () => {
+  const fix = buildValidationFixture();
+  try {
+    const diff = `diff --git a/src/f0.ts b/src/f0.ts
+--- a/src/f0.ts
++++ b/src/f0.ts
+@@ -1,1 +1,2 @@
+ line
++const x = 1;
+`;
+    const impact = prImpact.collectImpact(fix.projectRoot, diff);
+    const md = prImpact.renderMarkdown(impact);
+    // Marker is at the start of the body (line 1).
+    assert.strictEqual(md.split('\n')[0], prImpact.MARKER, 'marker on line 1');
+    // Marker appears exactly once — the action keys on this for sticky-comment update.
+    const occurrences = md.split(prImpact.MARKER).length - 1;
+    assert.strictEqual(occurrences, 1, 'marker must appear exactly once');
+  } finally {
+    try { fix.store.close(); } catch {}
+    fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('PR impact', 'collectImpact throws a clear error when no carto index exists', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-pr-no-index-'));
+  try {
+    assert.throws(
+      () => prImpact.collectImpact(tmp, 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'),
+      /No carto index/,
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Scale-test driver — generator + runner smoke
+// ═══════════════════════════════════════════════════════════════════
+//
+// Three tests at small scale. The synth generator is the substrate the
+// 100K/500K/1M validation runs sit on top of, so determinism + import
+// graph constraints + an end-to-end smoke through `runSyncV2` cover the
+// invariants that matter without making CI slow.
+//
+// Big runs live behind `npm run bench:scale -- --size <N>` — they're
+// maintainer-machine work and never run in CI.
+
+const scaleGen = require('../bench/scale-test/generator');
+
+test('Scale-test driver', 'generator: same seed → byte-identical output across two runs', () => {
+  const a = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-scale-gen-a-'));
+  const b = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-scale-gen-b-'));
+  try {
+    const ma = scaleGen.generateRepo(a, { size: 200, seed: 12345 });
+    const mb = scaleGen.generateRepo(b, { size: 200, seed: 12345 });
+    assert.strictEqual(ma.size, 200);
+    assert.strictEqual(ma.edgeCount, mb.edgeCount,
+      `edgeCount must match: ${ma.edgeCount} vs ${mb.edgeCount}`);
+    // Spot-check 3 generated files byte-for-byte.
+    for (const id of [0, 17, 199]) {
+      const rel = scaleGen.relPathOf(id);
+      const ca = fs.readFileSync(path.join(a, rel), 'utf-8');
+      const cb = fs.readFileSync(path.join(b, rel), 'utf-8');
+      assert.strictEqual(ca, cb, `file ${rel} differs across same-seed runs`);
+    }
+    // Different seed → different output (smoke check that seeding actually wires in).
+    const c = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-scale-gen-c-'));
+    try {
+      scaleGen.generateRepo(c, { size: 200, seed: 67890 });
+      const c0 = fs.readFileSync(path.join(c, scaleGen.relPathOf(50)), 'utf-8');
+      const a0 = fs.readFileSync(path.join(a, scaleGen.relPathOf(50)), 'utf-8');
+      assert.notStrictEqual(a0, c0,
+        'different seeds should produce different file_50.ts content');
+    } finally {
+      fs.rmSync(c, { recursive: true, force: true });
+    }
+  } finally {
+    fs.rmSync(a, { recursive: true, force: true });
+    fs.rmSync(b, { recursive: true, force: true });
+  }
+});
+
+test('Scale-test driver', 'generator: import graph respects fan-out cap, acyclicity, and same-domain bias', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-scale-graph-'));
+  try {
+    const N = 500;
+    const meta = scaleGen.generateRepo(dir, { size: N, seed: 42 });
+    assert.strictEqual(meta.size, N);
+    assert.ok(meta.edgeCount > 0, `expected >0 edges, got ${meta.edgeCount}`);
+
+    // Walk every generated file, parse its `import { fnK } from './...'`
+    // lines, and assert: K < self id (acyclic), 0 ≤ K < N, fan-out ≤ 8.
+    let sameDomain = 0;
+    let crossDomain = 0;
+    let totalImports = 0;
+    for (let i = 0; i < N; i++) {
+      const rel = scaleGen.relPathOf(i);
+      const content = fs.readFileSync(path.join(dir, rel), 'utf-8');
+      const imports = [];
+      for (const line of content.split('\n')) {
+        const m = line.match(/^import \{ fn(\d+) \} from /);
+        if (m) imports.push(parseInt(m[1], 10));
+      }
+      assert.ok(imports.length <= 8,
+        `file ${i} has ${imports.length} imports, exceeds fan-out cap of 8`);
+      for (const t of imports) {
+        assert.ok(t < i,
+          `file ${i} imports ${t} — must reference earlier id only (acyclic invariant)`);
+        assert.ok(t >= 0 && t < N, `target id ${t} out of range`);
+      }
+      totalImports += imports.length;
+      const myDomain = scaleGen.domainOf(i);
+      for (const t of imports) {
+        if (scaleGen.domainOf(t) === myDomain) sameDomain++;
+        else crossDomain++;
+      }
+    }
+    assert.strictEqual(totalImports, meta.edgeCount,
+      `parsed ${totalImports} imports; generator reported ${meta.edgeCount}`);
+    // Same-domain bias is 75% per the generator. Allow loose bounds for
+    // PRNG variance — anywhere in [55%, 95%] is fine, we're checking
+    // that the bias is in the right direction, not a tight statistical
+    // guarantee.
+    const sameRatio = sameDomain / Math.max(1, sameDomain + crossDomain);
+    assert.ok(sameRatio >= 0.55 && sameRatio <= 0.95,
+      `expected 55-95% same-domain edges; got ${(sameRatio * 100).toFixed(1)}% (${sameDomain}/${sameDomain + crossDomain})`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ANCI v0.1 roundtrip
+// ═══════════════════════════════════════════════════════════════════
+
+const anciYaml = require('../src/anci/yaml');
+const {
+  serializeBody,
+  deriveBodyFromSidecar,
+  buildHeader,
+  MAGIC: ANCI_MAGIC,
+  VERSION: ANCI_VERSION,
+} = require('../src/anci/serialize');
+const { deserializeBody } = require('../src/anci/deserialize');
+const { Bitset: AnciBitset } = require('../src/bitmap/bitset');
+const { loadAnci } = require('../src/anci/consumer');
+
+test('ANCI roundtrip', 'yaml.emit + yaml.parse round-trip the full ANCI header shape', () => {
+  const obj = {
+    anci: {
+      version: '0.1.0-DRAFT',
+      generator: 'carto-md@2.0.9',
+      generated_at: '2026-06-07T12:00:00.000Z',
+      body: { file: 'anci.bin', bytes: 1234 },
+    },
+    project: { total_files: 7, total_routes: 2, total_models: 1, total_import_edges: 12 },
+    domains: [
+      { name: 'AUTH', file_count: 3, route_count: 2, model_count: 0 },
+      { name: 'CORE', file_count: 4, route_count: 0, model_count: 1 },
+    ],
+    high_impact: [{ file: 'src/auth.ts', transitive_dependents: 5 }],
+    routes: [{ method: 'POST', path: '/login', file: 'src/auth.ts', framework: 'express', handler: 'login' }],
+    models: [{ name: 'User', kind: 'prisma', file: 'schema.prisma' }],
+  };
+  const text = anciYaml.emit(obj);
+  const round = anciYaml.parse(text);
+  assert.deepStrictEqual(round, obj, 'YAML round-trip must be lossless');
+});
+
+test('ANCI roundtrip', 'yaml.emit handles strings with quotes, backslashes, and unicode', () => {
+  const obj = {
+    anci: { version: '0.1.0-DRAFT' },
+    odd: [
+      { path: 'has "quotes" inside', x: 1 },
+      { path: 'back\\slash and tab\there', x: 2 },
+      { path: 'unicode: 日本語 ✓', x: 3 },
+    ],
+  };
+  const round = anciYaml.parse(anciYaml.emit(obj));
+  assert.strictEqual(round.odd[0].path, 'has "quotes" inside');
+  assert.strictEqual(round.odd[1].path, 'back\\slash and tab\there');
+  assert.strictEqual(round.odd[2].path, 'unicode: 日本語 ✓');
+});
+
+test('ANCI roundtrip', 'yaml.parse rejects malformed indentation', () => {
+  // 3 spaces — strict subset is 2-space indent.
+  const bad = 'anci:\n   version: "0.1.0-DRAFT"\n';
+  assert.throws(() => anciYaml.parse(bad), /indent must be a multiple of 2/);
+});
+
+test('ANCI roundtrip', 'yaml.parse rejects bare strings (must be quoted)', () => {
+  // Bare string `0.1.0-DRAFT` is not in the strict subset (must be quoted).
+  const bad = 'anci:\n  version: 0.1.0-DRAFT\n';
+  assert.throws(() => anciYaml.parse(bad), /scalar must be quoted/);
+});
+
+test('ANCI roundtrip', 'serializeBody + deserializeBody round-trips forward, reverse, popcount, paths, domains', () => {
+  // Hand-built fixture — 4 files, 3 imports, 2 domains.
+  // file 0 (CORE) → file 1, file 2
+  // file 1 (AUTH) → file 3
+  // file 2 (AUTH) → file 3
+  const size = 4;
+  const forward = new Map();
+  const reverse = new Map();
+  const f0 = new AnciBitset(size); f0.set(1); f0.set(2); forward.set(0, f0);
+  const f1 = new AnciBitset(size); f1.set(3); forward.set(1, f1);
+  const f2 = new AnciBitset(size); f2.set(3); forward.set(2, f2);
+  const r1 = new AnciBitset(size); r1.set(0); reverse.set(1, r1);
+  const r2 = new AnciBitset(size); r2.set(0); reverse.set(2, r2);
+  const r3 = new AnciBitset(size); r3.set(1); r3.set(2); reverse.set(3, r3);
+
+  const popcountIndex = [
+    { fileId: 3, count: 3 }, // file 3 reachable by all of 0/1/2
+    { fileId: 1, count: 1 },
+    { fileId: 2, count: 1 },
+  ];
+  const fileIdToPath = new Map([
+    [0, 'src/index.ts'],
+    [1, 'src/auth/login.ts'],
+    [2, 'src/auth/session.ts'],
+    [3, 'src/db.ts'],
+  ]);
+  const fileDomain = new Map([[0, 1], [1, 2], [2, 2], [3, 1]]);
+  const domainIdToName = new Map([[1, 'CORE'], [2, 'AUTH']]);
+
+  const buf = serializeBody({
+    size, forward, reverse, popcountIndex, fileIdToPath, fileDomain, domainIdToName,
+  });
+  // Magic check: first 4 bytes should equal MAGIC.
+  assert.strictEqual(buf.readUInt32LE(0), ANCI_MAGIC, 'magic bytes must match');
+  assert.strictEqual(buf.readUInt8(4), ANCI_VERSION, 'version byte must be 1');
+
+  const decoded = deserializeBody(buf);
+  assert.ok(decoded, 'deserializeBody returned null on a valid buffer');
+  assert.strictEqual(decoded.size, size);
+
+  // Forward: each entry's set bits should match the input.
+  assert.deepStrictEqual(decoded.forward.get(0).iterate().sort(), [1, 2]);
+  assert.deepStrictEqual(decoded.forward.get(1).iterate(), [3]);
+  // Reverse:
+  assert.deepStrictEqual(decoded.reverse.get(3).iterate().sort(), [1, 2]);
+  // Popcount:
+  assert.strictEqual(decoded.popcountIndex.length, 3);
+  assert.deepStrictEqual(decoded.popcountIndex[0], { fileId: 3, count: 3 });
+  // Paths:
+  assert.strictEqual(decoded.fileIdToPath.get(0), 'src/index.ts');
+  assert.strictEqual(decoded.pathToFileId.get('src/db.ts'), 3);
+  // Domains:
+  assert.strictEqual(decoded.domainIdToName.get(2), 'AUTH');
+  assert.strictEqual(decoded.fileDomain.get(2), 2);
+});
+
+test('ANCI roundtrip', 'deserializeBody returns null on bad magic bytes', () => {
+  const buf = Buffer.alloc(12);
+  buf.writeUInt32LE(0xDEADBEEF, 0); // wrong magic
+  assert.strictEqual(deserializeBody(buf), null);
+});
+
+test('ANCI roundtrip', 'deserializeBody returns null on unsupported version', () => {
+  const buf = Buffer.alloc(16);
+  buf.writeUInt32LE(ANCI_MAGIC, 0);
+  buf.writeUInt8(99, 4);  // future version this consumer doesn't speak
+  assert.strictEqual(deserializeBody(buf), null);
+});
+
+test('ANCI roundtrip', 'consumer.loadAnci throws a clear error when files are missing', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-anci-missing-'));
+  try {
+    assert.throws(
+      () => loadAnci(tmp),
+      /ANCI not found.*anci\.yaml/,
+      'loadAnci must throw a clear error when the YAML header is missing'
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('ANCI roundtrip', 'consumer.loadAnci throws on unsupported header version', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-anci-badver-'));
+  try {
+    // Write a v0.2.x header — outside our 0.1.x acceptance prefix.
+    const yamlText = anciYaml.emit({
+      anci: {
+        version: '0.2.0-FUTURE',
+        generator: 'something@1',
+        generated_at: '2026-06-07T00:00:00.000Z',
+        body: { file: 'anci.bin', bytes: 12 },
+      },
+    });
+    fs.writeFileSync(path.join(tmp, 'anci.yaml'), yamlText);
+    // Minimal valid binary so the version check is what trips us.
+    const buf = Buffer.alloc(12);
+    buf.writeUInt32LE(ANCI_MAGIC, 0);
+    buf.writeUInt8(ANCI_VERSION, 4);
+    buf.writeUInt32LE(0, 8);
+    fs.writeFileSync(path.join(tmp, 'anci.bin'), buf);
+
+    assert.throws(() => loadAnci(tmp), /ANCI version unsupported/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
@@ -4205,7 +5021,7 @@ test('Episodic Memory', 'getInterventionsForFile filters by file; null returns a
   await runAsyncSuite();
 
   console.log('');
-  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Path normalization', 'MCP resilience', 'Change plan', 'Init flow', 'Git hooks', 'Lazy MCP re-parse', 'Store adapter (ACP V2)', 'Secret leakage', 'Adaptive clustering', 'Domain config', 'Domain stability', 'Extraction errors', 'Framework extractors', 'Native install resilience', 'Bitmap validation', 'Bitset serialization', 'Bitmap engine', 'Inspect command', 'Validation API', 'Episodic Memory'];
+  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Path normalization', 'MCP resilience', 'Change plan', 'Init flow', 'Git hooks', 'Lazy MCP re-parse', 'Store adapter (ACP V2)', 'Secret leakage', 'Adaptive clustering', 'Domain config', 'Domain stability', 'Extraction errors', 'Framework extractors', 'Native install resilience', 'Bitmap validation', 'Bitset serialization', 'Bitmap engine', 'Inspect command', 'Validation API', 'Episodic Memory', 'PR impact', 'Scale-test driver', 'ANCI roundtrip'];
   for (const suite of suiteNames) {
     const s = suiteTotals[suite] || { pass: 0, total: 0 };
     const icon = s.pass === s.total ? '✓' : '✗';

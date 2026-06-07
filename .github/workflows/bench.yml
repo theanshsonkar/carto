@@ -39,13 +39,29 @@ jobs:
         run: node test/bench-regression-check.js bench-output.txt
 
       - name: Domain regression check
-        # Validates domain counts are within expected ranges (Spec 10e).
+        # Validates domain counts are within expected ranges.
         # Only runs if corpus repos are available (local dev or full bench env).
         run: |
           if [ -d "$HOME/carto-test-repos" ]; then
             node test/domain-regression-check.js "$HOME/carto-test-repos"
           else
             echo "⏭  No ~/carto-test-repos — skipping domain regression"
+          fi
+
+      - name: Accuracy parity (bitmap vs SQLite)
+        # Validates the bitmap engine's blastRadius/crossDomain/highImpactFiles/
+        # simulateChangeImpact outputs match the SQLite reference path on every
+        # corpus repo. Bitmap is a speedup, never a behavior change — this
+        # check defends that invariant against future changes.
+        # Same corpus-gated pattern as domain-regression-check above; the
+        # GitHub-hosted runner doesn't have ~/carto-test-repos so this skips
+        # there and only fires on a self-hosted runner / local `act` run that
+        # mounts the corpus.
+        run: |
+          if [ -d "$HOME/carto-test-repos" ]; then
+            node test/accuracy-corpus.js --samples 100
+          else
+            echo "⏭  No ~/carto-test-repos — skipping accuracy parity"
           fi
 
       - name: Upload bench output

@@ -46,8 +46,9 @@ jobs:
             nm-${{ runner.os }}-node${{ matrix.node }}-
 
       - name: Install
-        # `npm ci` enforces lockfile and fails on drift — catches the common
-        # "I edited package.json but forgot to commit the lockfile" mistake.
+        # `npm ci` enforces lockfile and fails on mismatch — catches the
+        # common "I edited package.json but forgot to commit the lockfile"
+        # mistake.
         # `--legacy-peer-deps` is required because of a known peer-dep conflict
         # (tree-sitter@0.25 vs tree-sitter-c-sharp@0.21.3 wants ^0.21).
         # Project .npmrc has the same setting for local dev, but Windows CI

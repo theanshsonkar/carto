@@ -16,19 +16,19 @@
  *                           pair may break differently).
  *   - highImpactFiles       top-20; compare top-N entries (file + dependent count
  *                           must match exactly — popcountIndex is sorted DESC,
- *                           SQLite uses centrality column which Spec 14
- *                           re-derives from the same reverse-dep counts).
+ *                           SQLite uses the centrality column, which is
+ *                           re-derived from the same reverse-dep counts).
  *   - simulateChangeImpact  no SQLite equivalent — verify against the expected
  *                           union: simulate(files) === unionOf(blastRadius(file))
  *                           for each input file (excluding the inputs themselves).
  *
  * Exits 0 only if every comparison passes on every repo.
  *
- * NOTE: similarPatterns is intentionally NOT in this harness — Spec 14
- * documented that bitmap uses Jaccard similarity (different semantics from
- * the SQL 3-strategy fallback). The MCP layer uses bitmap when present;
- * SQLite is the rare-error fallback. Comparing the two for identity would
- * fail by design.
+ * NOTE: similarPatterns is intentionally NOT in this harness. The bitmap
+ * implementation uses Jaccard similarity (different semantics from the
+ * SQL 3-strategy fallback). The MCP layer uses bitmap when present;
+ * SQLite is the rare-error fallback. Comparing the two for identity
+ * would fail by design.
  */
 
 const fs = require('fs');
