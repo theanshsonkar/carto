@@ -19,6 +19,8 @@ That's it. Carto auto-wires itself into every AI tool you have installed. Restar
 
 **Works with:** Cursor · Claude Code · Codex · Kiro · Claude Desktop · Windsurf · VS Code Copilot · JetBrains · Zed
 
+> Carto also publishes [**ANCI**](#anci--the-open-spec-for-codebases-describing-themselves-to-ai) — the open file format for any codebase to describe its architecture to AI tools. Carto is the reference implementation; the spec is open and any tool can consume it. [§ ANCI ↓](#anci--the-open-spec-for-codebases-describing-themselves-to-ai)
+
 ---
 
 ## Use it with your AI tool
