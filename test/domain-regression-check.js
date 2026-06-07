@@ -2,7 +2,7 @@
 'use strict';
 
 /**
- * domain-regression-check.js — Spec 10e
+ * domain-regression-check.js
  *
  * Validates that domain counts for each corpus repo fall within
  * expected ranges defined in domain-baseline.json.

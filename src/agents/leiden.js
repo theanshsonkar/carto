@@ -6,7 +6,7 @@
  * Pure JS implementation (~250 lines). Zero external dependencies.
  * Based on: Traag, Waltman & van Eck (2019) "From Louvain to Leiden"
  *
- * Key difference from Louvain: the refinement phase guarantees that
+ * Key difference from Louvain: the refinement step guarantees that
  * every community is a connected subgraph (Louvain can produce
  * disconnected communities). This matters for import graphs where
  * disconnected clusters produce nonsensical domain names.
@@ -60,7 +60,7 @@ function leiden(nodes, edges, gamma = 0.03) {
     improved = false;
     iterations++;
 
-    // Move phase: try to move each node to a neighboring community
+    // Local-move pass: try to move each node to a neighboring community
     const order = shuffleIndices(n);
     for (const i of order) {
       const currentComm = community[i];
@@ -109,7 +109,7 @@ function leiden(nodes, edges, gamma = 0.03) {
       }
     }
 
-    // Refinement phase: split internally disconnected communities
+    // Refinement pass: split internally disconnected communities
     _refinementPhase(n, adj, community);
   }
 
@@ -127,7 +127,7 @@ function leiden(nodes, edges, gamma = 0.03) {
 }
 
 /**
- * Refinement phase: for each community, check connectivity.
+ * Refinement pass: for each community, check connectivity.
  * If a community is internally disconnected, split it into
  * connected components. This is the key Leiden improvement over Louvain.
  */
