@@ -43,7 +43,7 @@ const CODE_EXTS = new Set([
 const JS_LIKE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
 
 /**
- * isTestFile(relPath) → true if the file is a test/spec/stories file
+ * isTestFile(relPath) → true if the file is a test or stories file.
  * Ported from V1 detector/files.js exclusion patterns.
  *   R:      test_*, test-*, *_test.r (case-insensitive)
  *   Python: test_*.py, *_test.py
@@ -461,10 +461,16 @@ async function runSyncV2(config) {
   //    `.carto/bitmap.bin` aligned with the SQLite source of truth.
   //    Best-effort: a build/persist failure is logged but never fails the
   //    sync (MCP tools fall back to SQLite when bitmap is unavailable).
+  //
+  //    The same `sidecar` object is reused below to emit the public
+  //    ANCI v0.1 export (`.carto/anci.{yaml,bin}`) — building it twice
+  //    would be wasteful, so the build/save sequence shares scope.
+  let sidecarForAnci = null;
   try {
     const cartoDir = path.join(projectRoot, '.carto');
     const sidecar = buildBitmap(store);
     saveBitmap(cartoDir, sidecar);
+    sidecarForAnci = sidecar;
     // Drop any in-memory cache held by the same Node process — e.g. when
     // sync runs from inside `carto serve`'s lazy reparse path. Next MCP
     // query loads the freshly-saved file.
@@ -474,6 +480,22 @@ async function runSyncV2(config) {
       `[CARTO] bitmap sidecar build failed (queries will use SQLite): ` +
       `${err && err.message ? err.message : err}\n`
     );
+  }
+
+  // Emit ANCI v0.1 public export.
+  // Best-effort: failure logs to stderr, never fails the sync.
+  // Skipped when the bitmap build above failed (no sidecar to emit).
+  if (sidecarForAnci) {
+    try {
+      const cartoDir = path.join(projectRoot, '.carto');
+      const { emitToCartoDir } = require('../anci/emit');
+      emitToCartoDir({ cartoDir, sidecar: sidecarForAnci, store });
+    } catch (err) {
+      process.stderr.write(
+        `[CARTO] ANCI publish failed (anci.{yaml,bin} not written): ` +
+        `${err && err.message ? err.message : err}\n`
+      );
+    }
   }
 
   console.log(`[CARTO] Indexed ${toProcess.length} files (${cached} cached) in ${elapsed}ms`);
@@ -487,6 +509,33 @@ async function runSyncV2(config) {
   }
 
   store.close();
+
+  // store.close() runs `PRAGMA wal_checkpoint(TRUNCATE)` which bumps
+  // carto.db's mtime to *after* we wrote bitmap.bin and anci.{yaml,bin}.
+  // bitmapIsFresh() (src/bitmap/index.js) and `carto inspect` both rely
+  // on the invariant `bitmapMtime >= dbMtime` to decide whether the
+  // sidecar can be reused or has to be rebuilt — so re-stamp the
+  // derived files explicitly past the DB's now-final mtime. Without
+  // this, every cold MCP query after a sync sees the bitmap as "stale"
+  // and pays an unnecessary rebuild from SQLite.
+  //
+  // We stat the DB and stamp bitmap/ANCI to (dbMtime + 1ms) rather than
+  // using `new Date()` because the wall clock + filesystem timestamp
+  // pipeline has sub-millisecond jitter on APFS that can leave the
+  // explicit-set mtime *just* under the DB's real mtime. Reading the
+  // DB's actual mtime and adding a fixed offset is race-free.
+  try {
+    const cartoDir = path.join(projectRoot, '.carto');
+    const dbPath = path.join(cartoDir, 'carto.db');
+    const dbStat = fs.statSync(dbPath);
+    const bumpedMs = dbStat.mtimeMs + 1;
+    const bumpedDate = new Date(bumpedMs);
+    for (const name of ['bitmap.bin', 'anci.bin', 'anci.yaml']) {
+      const p = path.join(cartoDir, name);
+      try { fs.utimesSync(p, bumpedDate, bumpedDate); } catch {}
+    }
+  } catch {}
+
   return { filesProcessed: toProcess.length, totalFiles: allFiles.length, elapsed, extractionErrorCount };
 }
 
@@ -544,8 +593,8 @@ function runKeywordClustering(store, importGraph) {
 
 /**
  * computeDomainStability(store, fileAssignments)
- * Compares current assignments to previous snapshot, stores drift %.
- * Warns if total>=10 && drift>5%.
+ * Compares current assignments to previous snapshot, stores reassignment %.
+ * Warns if total>=10 and the reassignment rate exceeds 5%.
  */
 function computeDomainStability(store, fileAssignments) {
   const prevRaw = store.getMeta('previous_domain_snapshot');
