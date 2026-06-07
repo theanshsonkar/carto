@@ -20,6 +20,9 @@ Commands:
   inspect       Read-only diagnostic: prints index paths, sizes, freshness,
                 bitmap sidecar shape, top-impact files, schema version,
                 sync timestamps, extraction errors. Use --json for piping.
+  anci          ANCI v0.1 DRAFT export. Subcommands: publish, show,
+                validate. Writes/reads .carto/anci.{yaml,bin} — the
+                public, tool-neutral architecture description spec.
   remove        Remove AGENTS.md and .carto/ from this project
   serve         Start MCP server for AI tool integration
   agent         Start ACP agent mode (for Zed, JetBrains, VS Code)
@@ -66,6 +69,10 @@ if (command === 'init') {
   // Read-only diagnostic — no async, no rebuild. Pass --json through.
   const json = process.argv.slice(3).includes('--json');
   const code = require('./inspect').run(process.cwd(), { json });
+  process.exit(code);
+} else if (command === 'anci') {
+  // anci has its own subcommand parser; pass argv after `carto anci`.
+  const code = require('./anci').run({ argv: process.argv.slice(3) });
   process.exit(code);
 } else if (command === 'remove') {
   require('./remove').run(process.cwd());
