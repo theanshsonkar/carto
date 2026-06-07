@@ -22,3 +22,5 @@ Progress/
 bench/bitmap-validation/raw-results.json
 bench/bitmap-validation/REPORT.md
 bench/validation-perf/REPORT.md
+bench/scale-test/results/
+bench/scale-test/REPORT.md
