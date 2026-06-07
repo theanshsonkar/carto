@@ -113,7 +113,7 @@ function collect(projectRoot) {
   try {
     const structure = store.getStructure();
     const domainsList = store.getDomainsList();
-    // Defensive: getExtractionErrorCount throws on pre-Spec-11 schemas
+    // Defensive: getExtractionErrorCount throws on older schemas
     // (no `extraction_errors` table). Inspect must work on every DB
     // we've ever shipped — fall back to 0 on schema mismatch.
     let errCount = 0;

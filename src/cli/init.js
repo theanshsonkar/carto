@@ -357,7 +357,7 @@ function wireIDEs(projectRoot) {
   // ─── VS Code Copilot ───────────────────────────────────────────────
   // Detection: `code` binary on PATH (most reliable; user-profile path
   // varies too much across macOS/Linux/Windows + Insiders/stable to be
-  // a good detection signal). Schema is different from MCP-spec default:
+  // a good detection signal). Schema differs from the standard MCP shape:
   // VS Code uses `servers` (not `mcpServers`) and requires `type: stdio`.
   if (binaryExists('code')) {
     try {
