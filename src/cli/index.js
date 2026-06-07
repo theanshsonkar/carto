@@ -16,6 +16,9 @@ Commands:
                 Not required — git hooks + lazy MCP re-parse keep the
                 index fresh by default. Use only for AI-heavy workflows.
   impact <file> Show which files and routes are affected by changing a file
+  pr-impact     Render a PR impact report (markdown or JSON) for the
+                diff between two git refs. Used by the carto GitHub
+                Action; works standalone too.
   check         Report cross-domain deps, high-risk uncommitted changes, domain health
   inspect       Read-only diagnostic: prints index paths, sizes, freshness,
                 bitmap sidecar shape, top-impact files, schema version,
@@ -60,6 +63,10 @@ if (command === 'init') {
 } else if (command === 'impact') {
   const fileArg = process.argv[3];
   require('./impact').run(process.cwd(), fileArg);
+} else if (command === 'pr-impact') {
+  // pr-impact owns its own argv parsing + error handling + exit code.
+  const code = require('./pr-impact').run({ argv: process.argv.slice(3) });
+  process.exit(code);
 } else if (command === 'check') {
   require('./check').run(process.cwd()).catch(err => {
     console.error(`[CARTO] Fatal error: ${err.message}`);

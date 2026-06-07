@@ -1,0 +1,210 @@
+name: 'Carto Impact Report'
+description: >-
+  Posts a structural impact report on every pull request: blast radius,
+  cross-domain violations, affected routes, risk badge. Powered by carto-md.
+author: 'Ansh Sonkar'
+branding:
+  icon: 'map'
+  color: 'blue'
+
+# Composite action — no Docker, no JS bundle. Installs carto-md from npm
+# in a step and shells out, so updates ride the npm release train without
+# requiring a new action tag.
+
+inputs:
+  carto-version:
+    description: >-
+      The carto-md npm version to install. Use a pinned version
+      (e.g. "2.0.9") in production for reproducibility. Default "latest"
+      is fine for personal repos.
+    required: false
+    default: 'latest'
+  base:
+    description: >-
+      Git ref the PR branched from. Defaults to GITHUB_BASE_REF on PR
+      events; fall back to "origin/main" when the env var is missing.
+    required: false
+    default: ''
+  head:
+    description: >-
+      Git ref of the PR head. Defaults to GITHUB_SHA.
+    required: false
+    default: ''
+  fail-on:
+    description: >-
+      Exit non-zero when the rolled-up risk meets or exceeds this severity.
+      One of: HIGH, MEDIUM, LOW. Empty (default) = the action never fails
+      the build; the comment surfaces the risk and review handles it.
+    required: false
+    default: ''
+  comment-mode:
+    description: >-
+      `sticky` (default) — find the previous carto comment by marker and
+      update it in place, so a PR with N pushes still has exactly one
+      Carto comment. `new` — post a new comment every time. `none` —
+      render the report to stdout but don't post a comment (useful for
+      forks where the GITHUB_TOKEN can't post comments).
+    required: false
+    default: 'sticky'
+  node-version:
+    description: 'Node.js version used to install + run carto-md.'
+    required: false
+    default: '20'
+
+outputs:
+  risk:
+    description: >-
+      Rolled-up risk level: SAFE | LOW | MEDIUM | HIGH. Lets downstream
+      steps gate behavior on Carto's verdict (e.g. require approval on HIGH).
+    value: ${{ steps.report.outputs.risk }}
+  comment-url:
+    description: >-
+      URL of the posted PR comment (sticky or new). Empty when comment-mode=none
+      or the post step was skipped (fork PRs without write access).
+    value: ${{ steps.comment.outputs.comment-url }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ── 1. Set up Node ────────────────────────────────────────────────
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # ── 2. Restore .carto/ from cache ─────────────────────────────────
+    # Key on the source-file hash so the cache invalidates exactly when
+    # the index would have to re-extract anything. Restore-keys provide
+    # a stale-but-fast fallback — `carto sync` then incrementally
+    # updates only the changed files.
+    - name: Restore Carto index cache
+      id: carto-cache
+      uses: actions/cache@v4
+      with:
+        path: .carto
+        key: carto-${{ runner.os }}-${{ hashFiles('**/*.{ts,tsx,js,jsx,mjs,cjs,py,go,rs,java,rb,cpp,cc,cxx,h,hpp,cs}') }}
+        restore-keys: |
+          carto-${{ runner.os }}-
+
+    # ── 3. Install carto-md ───────────────────────────────────────────
+    # `npm install -g` is fine here — the runner is ephemeral. Pinning
+    # via inputs.carto-version is recommended for reproducibility.
+    - name: Install carto-md
+      shell: bash
+      run: npm install -g carto-md@${{ inputs.carto-version }} --legacy-peer-deps
+
+    # ── 4. Build / refresh the index ──────────────────────────────────
+    # Cache miss → cold init. Cache hit → incremental sync (re-extract
+    # only files whose mtime+size changed; sub-second on large repos).
+    - name: Build / refresh Carto index
+      shell: bash
+      run: |
+        if [ -f .carto/carto.db ]; then
+          echo "[carto-action] cache hit → incremental sync"
+          carto sync
+        else
+          echo "[carto-action] cache miss → full init"
+          carto init
+        fi
+
+    # ── 5. Resolve refs ───────────────────────────────────────────────
+    # GitHub Actions populates GITHUB_BASE_REF only on PR events. For
+    # other event types (workflow_dispatch, push), require an explicit
+    # `base` input. Fetch enough history so `git diff base...head` has
+    # both anchor points — actions/checkout's default fetch-depth=1
+    # would otherwise yield a "fatal: bad object" error.
+    - name: Resolve base/head refs
+      id: refs
+      shell: bash
+      run: |
+        BASE="${{ inputs.base }}"
+        HEAD="${{ inputs.head }}"
+        if [ -z "$BASE" ]; then
+          if [ -n "$GITHUB_BASE_REF" ]; then
+            BASE="origin/$GITHUB_BASE_REF"
+          else
+            echo "::error::Could not infer base ref. Pass `base:` input explicitly."
+            exit 1
+          fi
+        fi
+        if [ -z "$HEAD" ]; then
+          HEAD="${GITHUB_SHA:-HEAD}"
+        fi
+        echo "base=$BASE" >> "$GITHUB_OUTPUT"
+        echo "head=$HEAD" >> "$GITHUB_OUTPUT"
+        # Make sure both ends of the diff are reachable.
+        git fetch --no-tags --prune --depth=200 origin "$GITHUB_BASE_REF" || true
+        git fetch --no-tags --prune --depth=200 origin "$GITHUB_HEAD_REF" || true
+
+    # ── 6. Run pr-impact ──────────────────────────────────────────────
+    # Markdown body for the comment AND a JSON output for the `risk`
+    # action output. We render twice — cheaper than parsing markdown
+    # back into structure.
+    - name: Generate impact report
+      id: report
+      shell: bash
+      env:
+        BASE: ${{ steps.refs.outputs.base }}
+        HEAD: ${{ steps.refs.outputs.head }}
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        carto pr-impact --base "$BASE" --head "$HEAD" --format markdown > "$RUNNER_TEMP/carto-comment.md"
+        # Capture risk + key metrics from the JSON form for downstream steps.
+        carto pr-impact --base "$BASE" --head "$HEAD" --format json > "$RUNNER_TEMP/carto-report.json"
+        RISK=$(node -e "console.log(JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/carto-report.json','utf8')).risk)")
+        echo "risk=$RISK" >> "$GITHUB_OUTPUT"
+        echo "[carto-action] risk: $RISK"
+        # Apply --fail-on if set. We call pr-impact a third time only to get
+        # the threshold-aware exit code; the report is already on disk.
+        if [ -n "$FAIL_ON" ]; then
+          carto pr-impact --base "$BASE" --head "$HEAD" --fail-on "$FAIL_ON" >/dev/null
+        fi
+
+    # ── 7. Post (or update) the PR comment ────────────────────────────
+    # Sticky mode: GET issues comments, find the one whose body starts
+    # with the carto-impact-report marker, PATCH that comment with the
+    # new body. If none exists, POST a new one.
+    - name: Post PR comment
+      id: comment
+      if: inputs.comment-mode != 'none' && github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const body = fs.readFileSync(process.env.RUNNER_TEMP + '/carto-comment.md', 'utf8');
+          const marker = '<!-- carto-impact-report -->';
+          const mode = '${{ inputs.comment-mode }}';
+          const { owner, repo } = context.repo;
+          const issue_number = context.issue.number;
+          if (!issue_number) {
+            core.warning('No PR number on context — skipping comment.');
+            return;
+          }
+          let url = '';
+          if (mode === 'sticky') {
+            const existing = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number, per_page: 100 }
+            );
+            const ours = existing.find((c) => c.body && c.body.startsWith(marker));
+            if (ours) {
+              const r = await github.rest.issues.updateComment({
+                owner, repo, comment_id: ours.id, body,
+              });
+              url = r.data.html_url;
+              core.info(`[carto-action] updated sticky comment #${ours.id}`);
+            } else {
+              const r = await github.rest.issues.createComment({
+                owner, repo, issue_number, body,
+              });
+              url = r.data.html_url;
+              core.info(`[carto-action] posted sticky comment ${url}`);
+            }
+          } else {
+            const r = await github.rest.issues.createComment({
+              owner, repo, issue_number, body,
+            });
+            url = r.data.html_url;
+            core.info(`[carto-action] posted new comment ${url}`);
+          }
+          core.setOutput('comment-url', url);

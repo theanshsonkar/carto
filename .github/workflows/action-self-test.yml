@@ -1,0 +1,69 @@
+name: Action self-test
+
+# Dogfood the local action on every PR to this repo. This is the
+# regression net for action.yml + src/cli/pr-impact.js — if the action
+# breaks, this workflow goes red on the PR that broke it.
+#
+# Uses `uses: ./` to reference the action checked out in the same repo,
+# so we test the in-tree version, not whatever's published on
+# theanshsonkar/carto.
+#
+# Notes:
+# - Forks: GITHUB_TOKEN can't post comments on forked PRs. The action
+#   handles this via `comment-mode: none` when permissions are missing —
+#   we hard-set `comment-mode: sticky` here for the upstream-PR case
+#   and tolerate the comment-post failure on forks.
+# - Cold-start: first PR after a long pause will hit the cache miss
+#   path (full `carto init`). Should still finish well under the 8-min
+#   budget on this repo (~250 source files).
+
+on:
+  pull_request:
+    branches: [main]
+
+# Comment posting needs `pull-requests: write`. `contents: read` is
+# the default for pull_request runs but we list it explicitly so the
+# permissions block is self-documenting.
+permissions:
+  contents: read
+  pull-requests: write
+
+# Cancel older runs on the same PR — saves CI minutes when a PR is
+# pushed multiple times in quick succession.
+concurrency:
+  group: action-self-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  self-test:
+    name: Run the in-tree action against this PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      # Need full enough history so `git diff base...head` resolves both
+      # ends. fetch-depth: 0 = full clone — overkill for small repos,
+      # but trivially cheap on this one and it makes the action's
+      # `git fetch --depth=200` fallback unnecessary.
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run carto-impact (sticky comment)
+        uses: ./
+        with:
+          # Pin to the working tree's package.json version so the action
+          # tests the npm we're about to publish, not whatever `latest`
+          # points at on the registry. This requires `carto-md@<this
+          # version>` to already be published — for a brand-new release
+          # the PR self-test will only go green once the version ships
+          # to npm.
+          # Use `latest` for now; revisit when 17 ships.
+          carto-version: 'latest'
+          comment-mode: 'sticky'
+
+      - name: Print outputs
+        shell: bash
+        run: |
+          echo "risk:        ${{ steps.self-test.outputs.risk }}"
+          echo "comment-url: ${{ steps.self-test.outputs.comment-url }}"
