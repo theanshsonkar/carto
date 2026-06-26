@@ -20,7 +20,11 @@ jobs:
       # One red cell shouldn't kill the others — we want full visibility.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Pin Windows: `windows-latest` rolled to an image with VS 18 which
+        # node-gyp can't recognise (\"unknown version 'undefined'\") and
+        # tree-sitter's native build falls over. `windows-2022` still ships
+        # VS 17 so node-gyp-build resolves cleanly.
+        os: [ubuntu-latest, macos-latest, windows-2022]
         node: [18, 20, 22]
     timeout-minutes: 15
 

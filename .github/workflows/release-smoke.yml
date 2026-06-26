@@ -22,7 +22,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Pin Windows for the same reason test.yml does: `windows-latest`
+        # ships VS 18 which node-gyp can't recognise, so the install-time
+        # native build path breaks. `windows-2022` keeps VS 17.
+        os: [ubuntu-latest, macos-latest, windows-2022]
         # Bookend versions only — intermediate Node versions are covered
         # by test.yml, and this matrix exists to catch packaging issues
         # not Node-version compatibility.

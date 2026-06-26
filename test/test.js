@@ -5434,10 +5434,14 @@ test('MCP middleware', 'isWriteTool matches common write-tool naming patterns (s
 });
 
 test('MCP middleware', 'extractWriteIntent normalizes write_file + text_editor/edit shapes', () => {
+  // Build the expected absolute path the same way the middleware does
+  // (via path.join) so the mock matches on Windows where separators flip.
+  const projRoot = path.join(path.sep, 'proj');
+  const expectedAbs = path.join(projRoot, 'src/x.ts');
   const proxy = new MiddlewareProxy({
     validate: mockValidate('SAFE'),
-    projectRoot: '/proj',
-    readFile: (p) => (p === '/proj/src/x.ts' ? 'OLD\n' : ''),
+    projectRoot: projRoot,
+    readFile: (p) => (p === expectedAbs ? 'OLD\n' : ''),
   });
   // write_file shape
   const a = proxy.extractWriteIntent('fs/write_file', { path: 'src/x.ts', content: 'NEW' });
@@ -5798,7 +5802,17 @@ test('CLI: doctor', 'diagnose() returns ok=true against the carto-ansh project (
   // Run against the project root we live in — this catches regressions
   // in the checks themselves (e.g. tree-sitter module loads broken, DB
   // path resolution wrong).
-  const out = doctorCli.diagnose(path.resolve(__dirname, '..'));
+  //
+  // Skip on a fresh checkout: .carto/ is gitignored, so CI clones don't
+  // have the index this check expects. The point of the test is local
+  // sanity ("nothing in diagnose() regressed under my dev workflow"),
+  // not a CI gate — the surrounding `CLI: doctor` tests already cover
+  // the diagnose() unit behaviour against synthetic projects.
+  const repoRoot = path.resolve(__dirname, '..');
+  if (!fs.existsSync(path.join(repoRoot, '.carto'))) {
+    return; // no local index — nothing to live-sanity against
+  }
+  const out = doctorCli.diagnose(repoRoot);
   // ok must be true OR every fail must be one we can explain. Currently
   // every check should pass on this repo because we just smoke-ran it.
   if (!out.ok) {
@@ -6685,7 +6699,8 @@ test('ACP safety', 'resolveSafe accepts relative path inside workingDir', () => 
   fs.mkdirSync(path.join(root, 'sub'));
   fs.writeFileSync(path.join(root, 'sub', 'a.txt'), 'x');
   const r = resolveSafe(root, 'sub/a.txt');
-  assert.ok(r.endsWith('sub/a.txt'), `got ${r}`);
+  // Use path.join for the expected suffix so Windows backslashes match.
+  assert.ok(r.endsWith(path.join('sub', 'a.txt')), `got ${r}`);
 });
 
 test('ACP safety', 'safeRunCommand refuses shell metacharacters in cmd (async — see runAsyncSuite)', () => {
