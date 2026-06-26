@@ -4,6 +4,7 @@ const parser = require('@babel/parser');
 const path = require('path');
 const jsPlugin = require('./javascript');
 const tsParser = require('../tree-sitter-parser');
+const { extractJsFrameworkRoutes } = require('../frameworks');
 
 const TS_PARSE_OPTIONS = {
   sourceType: 'module',
@@ -29,9 +30,13 @@ module.exports = {
 
     // Check if this is an API handler file (needs deep Babel extraction)
     if (!jsPlugin._isApiHandlerFile(filename, tsImports, content)) {
-      // Non-API file: tree-sitter only, no Babel
+      // Non-API file: tree-sitter only, no Babel.
+      // We still run the regex-based long-tail framework extractor for
+      // file-based routing (Remix / SvelteKit / Astro) — Babel isn't needed
+      // for those, the path-shape comes from the filename.
+      const fwRoutes = extractJsFrameworkRoutes(content, filename);
       return {
-        routes:      [],
+        routes:      fwRoutes,
         models:      [],
         functions,
         envVars:     _extractEnvVarsRegex(content),
@@ -70,6 +75,14 @@ module.exports = {
 
     const routes = jsPlugin._extractExpressRoutes(ast, filename);
     extractTRPCRoutes(content, routes);
+    // Long-tail framework routes (NestJS decorators, Remix/SvelteKit/Astro
+    // file-based). Deduped against the Babel + tRPC output.
+    const fwRoutes = extractJsFrameworkRoutes(content, filename);
+    const seen = new Set(routes.map(r => `${r.method}::${r.path}`));
+    for (const r of fwRoutes) {
+      const key = `${r.method}::${r.path}`;
+      if (!seen.has(key)) { routes.push(r); seen.add(key); }
+    }
 
     return {
       routes,
