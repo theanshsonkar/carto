@@ -1,6 +1,7 @@
 const parser = require('@babel/parser');
 const path = require('path');
 const tsParser = require('../tree-sitter-parser');
+const { extractJsFrameworkRoutes } = require('../frameworks');
 
 const PARSE_OPTIONS = {
   sourceType: 'module',
@@ -64,9 +65,11 @@ module.exports = {
 
     // Check if this is an API handler file (needs deep Babel extraction)
     if (!isApiHandlerFile(filename, tsImports, content)) {
-      // Non-API file: tree-sitter only, no Babel
+      // Non-API file: tree-sitter only, no Babel. Still attempt regex-based
+      // framework routes (Remix / SvelteKit / Astro file-based) since
+      // those are detected by filename, not by import.
       return {
-        routes:      [],
+        routes:      extractJsFrameworkRoutes(content, filename),
         models:      [],
         functions,
         envVars:     _extractEnvVarsFromImports(content),
@@ -102,8 +105,15 @@ module.exports = {
       };
     }
 
+    const baseRoutes = extractExpressRoutes(ast, filename);
+    const fwRoutes = extractJsFrameworkRoutes(content, filename);
+    const seen = new Set(baseRoutes.map(r => `${r.method}::${r.path}`));
+    for (const r of fwRoutes) {
+      const key = `${r.method}::${r.path}`;
+      if (!seen.has(key)) { baseRoutes.push(r); seen.add(key); }
+    }
     return {
-      routes:      extractExpressRoutes(ast, filename),
+      routes:      baseRoutes,
       models:      [],
       functions:   extractJSFunctions(ast),
       envVars:     extractProcessEnv(ast),
