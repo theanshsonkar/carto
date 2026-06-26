@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "carto": {
+      "type": "stdio",
+      "command": "carto",
+      "args": [
+        "serve"
+      ]
+    }
+  }
+}

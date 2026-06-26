@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "carto": {
+      "command": "carto",
+      "args": [
+        "serve"
+      ]
+    }
+  }
+}
