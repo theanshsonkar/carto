@@ -10,9 +10,9 @@ Carto is free, open source, and community-maintained. The core team owns the SQL
 
 New language support lives in `src/extractors/languages/`. Each language is an isolated module.
 
-**Currently supported:** JavaScript/TypeScript, Python, Go, Rust, Ruby, Java, C/C++, C#, R, Prisma, HTML
+**Currently supported:** JavaScript/TypeScript, Python, Go, Rust, Ruby, Java, Kotlin, C/C++, C#, PHP, Swift, Dart, R, Prisma, HTML
 
-**Wanted:** PHP, Swift, Kotlin, Elixir, Scala, Haskell, Zig
+**Wanted:** Elixir, Scala, Haskell, Zig, Lua, Erlang, OCaml, Nim
 
 ### Tier 2 — Framework extractors (safe to add, easy to review)
 
@@ -24,13 +24,17 @@ Framework-specific route and model extraction lives inside the language plugins.
 - **Go**: Gin, Echo, Chi, net/http — routes, structs, import graph
 - **Rust**: Actix-web, Axum, Rocket — routes, structs
 - **Java**: Spring MVC/Boot, JAX-RS — routes, JPA entities, records
+- **Kotlin**: Spring (`@GetMapping`/`@PostMapping`/…), Ktor `routing { }` DSL, data classes
 - **C#**: ASP.NET Core (attribute routing + minimal API), EF Core classes, records
-- **Ruby**: Rails routes.rb, Sinatra, ActiveRecord models
+- **PHP**: Laravel `Route::get(...)`, Symfony `#[Route(...)]` attributes, Eloquent models
+- **Swift**: Vapor `app.get(...)` / `router.get(..., use: ...)`, structs
+- **Dart**: Flutter widget classes, Shelf Router `router.get(...)`
+- **Ruby**: Rails routes.rb (including `resources :foo` CRUD expansion), Sinatra, ActiveRecord models
 - **Schema**: Prisma
-- **Frontend**: HTML fetch()
+- **Frontend**: HTML `fetch()`
 - **R**: Plumber, Shiny, R6, S7
 
-**Wanted:** NestJS, Hono, Fastify, Laravel, Django REST Framework, Ktor, Vapor
+**Wanted:** NestJS, Hono, Fastify, Django REST Framework, Phoenix (Elixir), Echo (Go fuller), Slim (PHP)
 
 ### Tier 3 — Core (review carefully before merging)
 
@@ -215,8 +219,8 @@ cd carto
 npm install
 node src/cli/index.js init   # test in any project
 node src/cli/index.js serve  # test MCP server
-npm test                     # run test suite (62 tests)
-node test/correctness.js     # run correctness tests (31 tests)
+npm test                     # run test suite (346 tests across ~38 suites)
+node test/correctness.js     # run correctness tests (27 checks)
 node test/benchmark.js       # run benchmarks against real repos
 ```
 
@@ -258,8 +262,8 @@ npm run test:bench-ci        # self-bench (matches what bench.yml runs)
 - [ ] Extension added to `CODE_EXTS` and `detectLanguage()` in `sync.js`
 - [ ] No changes to merger logic (unless explicitly fixing a merger bug)
 - [ ] No network calls added
-- [ ] `npm test` passes (62/62)
-- [ ] `node test/correctness.js` passes (31/31)
+- [ ] `npm test` passes (346/346)
+- [ ] `node test/correctness.js` passes (27/27)
 
 ---
 
