@@ -5,6 +5,7 @@
  * Uses tree-sitter for imports + symbols; regex for routes/models/env vars.
  */
 const tsParser = require('../tree-sitter-parser');
+const { extractGoFrameworkRoutes } = require('../frameworks');
 
 module.exports = {
   name: 'go',
@@ -15,8 +16,17 @@ module.exports = {
       ? tsParser.extractAll(content, '.go')
       : { imports: [], symbols: [] };
 
+    const mainRoutes = extractGoRoutes(content);
+    const fwRoutes = extractGoFrameworkRoutes(content);
+    const seen = new Set(mainRoutes.map(r => `${r.method}::${r.path}`));
+    const extras = fwRoutes.filter(r => {
+      const key = `${r.method}::${r.path}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     return {
-      routes:      extractGoRoutes(content),
+      routes:      [...mainRoutes, ...extras],
       models:      extractGoStructs(content),
       functions:   tsSymbols.length > 0
         ? tsSymbols.filter(s => s.kind === 'function' || s.kind === 'method').map(s => ({ name: s.name, params: '—' }))
