@@ -164,6 +164,1178 @@ function notIndexed() {
 }
 
 /**
+ * runTemporalTool(name, args) — dispatch the 8 temporal MCP tools.
+ *
+ * Lazy-requires the temporal modules so a Carto install with no
+ * temporal DB doesn't pay the require() cost on every MCP call.
+ * Opens the temporal store readonly; returns a friendly markdown
+ * stub if the DB doesn't exist yet.
+ */
+function runTemporalTool(name, args) {
+  const { TemporalStore } = require('../temporal/store');
+  const temporal = TemporalStore.openIfExists(projectRoot, { readonly: true });
+  if (!temporal) {
+    return text(
+      `Temporal database not initialized. Run \`carto temporal init\` to ` +
+      `backfill from git history, then \`carto sync\` to capture the current ` +
+      `snapshot. The temporal layer powers ${name} and 7 other tools.`
+    );
+  }
+  try {
+    const q = require('../temporal/queries');
+    if (name === 'get_architectural_drift') {
+      const r = q.getArchitecturalDrift(temporal, { domain: args.domain || null, timeRange: args.time_range || '30d' });
+      return text(formatDrift(r));
+    }
+    if (name === 'get_domain_evolution') {
+      const r = q.getDomainEvolution(temporal, { domain: args.domain, timeRange: args.time_range || '90d' });
+      return text(formatEvolution(r));
+    }
+    if (name === 'get_hotspot_files') {
+      const r = q.getHotspotFiles(temporal, { timeRange: args.time_range || '90d', limit: args.limit || 20 });
+      return text(formatHotspots(r));
+    }
+    if (name === 'get_complexity_trend') {
+      const r = q.getComplexityTrend(temporal, { file: args.file, timeRange: args.time_range || '90d' });
+      return text(formatComplexity(r));
+    }
+    if (name === 'get_churn_vs_blast_radius') {
+      const r = q.getChurnVsBlastRadius(temporal, { timeRange: args.time_range || '90d' });
+      return text(formatChurnVsBlast(r));
+    }
+    if (name === 'get_arch_events') {
+      const r = q.getArchEvents(temporal, {
+        severity: args.severity || null,
+        kind: args.kind || null,
+        timeRange: args.time_range || '90d',
+        limit: 100,
+      });
+      return text(formatEvents(r));
+    }
+    if (name === 'get_domain_health') {
+      const r = q.getDomainHealth(temporal, { domain: args.domain || null });
+      return text(formatHealth(r));
+    }
+    if (name === 'get_temporal_context') {
+      const r = q.getTemporalContext(temporal, { file: args.file });
+      return text(formatTemporalContext(r));
+    }
+    return text(`Unknown temporal tool: ${name}`);
+  } finally {
+    temporal.close();
+  }
+}
+
+function formatDrift(r) {
+  const lines = [`# Architectural Drift (${r.window || 'all time'})`];
+  lines.push(`\n**Trend:** ${r.trend}`);
+  lines.push(`**Snapshots:** ${r.totals.snapshots}`);
+  lines.push(`**Files:** ${r.totals.fileCountBefore} → ${r.totals.fileCountAfter}\n`);
+  if (r.byDomain && r.byDomain.length > 0) {
+    lines.push('| Domain | Before | After | Δ | Events |');
+    lines.push('|--------|--------|-------|---|--------|');
+    for (const d of r.byDomain) {
+      const arrow = d.delta > 0 ? `+${d.delta}` : `${d.delta}`;
+      lines.push(`| ${d.domain} | ${d.before} | ${d.after} | ${arrow} | ${d.eventCount} |`);
+    }
+  } else if (r.reason === 'insufficient_data') {
+    lines.push('_Not enough snapshots in the window. Run `carto temporal init` and re-sync._');
+  }
+  return lines.join('\n');
+}
+
+function formatEvolution(r) {
+  const lines = [`# Domain Evolution: ${r.domain}`];
+  if (!r.points || r.points.length === 0) {
+    lines.push('\n_No history for this domain._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${r.points.length} snapshot${r.points.length === 1 ? '' : 's'}.\n`);
+  lines.push('| When | Snapshot | File count |');
+  lines.push('|------|----------|-----------:|');
+  for (const p of r.points) {
+    const when = new Date(p.ts).toISOString();
+    lines.push(`| ${when} | ${p.snapshot_id} | ${p.fileCount} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatHotspots(r) {
+  const lines = [`# Hotspot Files (${r.window})`];
+  if (!r.hotspots || r.hotspots.length === 0) {
+    lines.push('\n_No hotspot data yet. Run `carto temporal init`._');
+    return lines.join('\n');
+  }
+  lines.push(`\nTop ${r.hotspots.length} files by churn × blast_radius.\n`);
+  lines.push('| File | Commits | Blast | Score |');
+  lines.push('|------|--------:|------:|------:|');
+  for (const h of r.hotspots) {
+    lines.push(`| ${h.file_path} | ${h.commit_count} | ${h.blast_radius} | ${h.score} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatComplexity(r) {
+  const lines = [`# Complexity Trend: ${r.file}`];
+  if (!r.points || r.points.length === 0) {
+    lines.push('\n_File not present in the temporal index._');
+    return lines.join('\n');
+  }
+  lines.push(`\n- Commits: ${r.commit_count}`);
+  lines.push(`- Snapshots present: ${r.snapshots_present}`);
+  lines.push(`- Last modified: ${r.last_modified_ts ? new Date(r.last_modified_ts).toISOString() : '—'}`);
+  lines.push(`- Trend: ${r.trend}`);
+  return lines.join('\n');
+}
+
+function formatChurnVsBlast(r) {
+  const lines = [`# Churn vs Blast Radius (${r.window})`];
+  if (!r.files || r.files.length === 0) {
+    lines.push('\n_No churn data yet. Run `carto temporal init`._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${r.files.length} files.\n`);
+  lines.push('| File | Commits | Blast |');
+  lines.push('|------|--------:|------:|');
+  for (const f of r.files.slice(0, 50)) {
+    lines.push(`| ${f.file_path} | ${f.commit_count} | ${f.blast_radius || 0} |`);
+  }
+  if (r.files.length > 50) lines.push(`\n_…${r.files.length - 50} more files._`);
+  return lines.join('\n');
+}
+
+function formatEvents(r) {
+  const lines = [`# Architectural Events (${r.window})`];
+  if (!r.events || r.events.length === 0) {
+    lines.push('\n_No events in this window._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${r.events.length} event${r.events.length === 1 ? '' : 's'}.\n`);
+  lines.push('| When | Severity | Kind | Target |');
+  lines.push('|------|----------|------|--------|');
+  for (const e of r.events.slice(0, 50)) {
+    const when = new Date(e.ts).toISOString();
+    const target = e.domain || e.file_path || '';
+    lines.push(`| ${when} | ${e.severity} | ${e.kind} | ${target} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatHealth(r) {
+  const lines = ['# Domain Health'];
+  if (!r.domains || r.domains.length === 0) {
+    lines.push('\n_No health data yet. Need at least 2 snapshots._');
+    return lines.join('\n');
+  }
+  lines.push('\n| Domain | Current | Prior | Growth | Instability | Events | Hot files |');
+  lines.push('|--------|--------:|------:|-------:|------------:|-------:|----------:|');
+  for (const d of r.domains) {
+    lines.push(`| ${d.domain} | ${d.current_size} | ${d.prior_size} | ${d.growth} | ${(d.instability * 100).toFixed(0)}% | ${d.events} | ${d.hotspots.length} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatTemporalContext(r) {
+  const lines = [`# Temporal Context: ${r.file}`];
+  if (!r.present) {
+    lines.push('\n_File not present in temporal index._');
+    return lines.join('\n');
+  }
+  lines.push(`\n- **Commits:** ${r.commit_count}`);
+  lines.push(`- **Blast radius:** ${r.blast_radius}`);
+  lines.push(`- **First seen:** ${r.first_seen_ts ? new Date(r.first_seen_ts).toISOString() : '—'}`);
+  lines.push(`- **Last modified:** ${r.last_modified_ts ? new Date(r.last_modified_ts).toISOString() : '—'}`);
+  lines.push(`- **Age:** ${r.age_days != null ? `${r.age_days} days` : '—'}`);
+  lines.push(`- **Snapshots present in:** ${r.snapshots_present}`);
+  if (r.recent_events && r.recent_events.length > 0) {
+    lines.push(`\n## Recent events`);
+    lines.push('| When | Severity | Kind |');
+    lines.push('|------|----------|------|');
+    for (const e of r.recent_events.slice(0, 10)) {
+      const when = new Date(e.ts).toISOString();
+      lines.push(`| ${when} | ${e.severity} | ${e.kind} |`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * runBrainTool(name, args) — dispatch the 10 brain MCP tools.
+ *
+ * Each brain tool composes data from store + temporal store. Both are
+ * opened readonly; missing temporal DB is degraded gracefully (we return
+ * partial results rather than refuse).
+ */
+function runBrainTool(name, args) {
+  const s = getStore();
+  if (!s) return notIndexed();
+  const { TemporalStore } = require('../temporal/store');
+  const temporalStore = TemporalStore.openIfExists(projectRoot, { readonly: true });
+  try {
+    const brain = require('../brain');
+
+    if (name === 'get_invariants') {
+      const rules = brain.invariants.inferInvariants(s, { domain: args.domain || null, threshold: args.threshold });
+      return text(formatInvariants(rules));
+    }
+    if (name === 'get_canonical_pattern') {
+      const r = brain.invariants.getCanonicalPattern(s, { pattern_type: args.pattern_type, domain: args.domain || null });
+      return text(formatCanonical(r, args.pattern_type));
+    }
+    if (name === 'get_conventions') {
+      let convs;
+      if (args.file) {
+        convs = brain.conventions.conventionsForFile(s, args.file);
+      } else {
+        convs = brain.conventions.mineConventions(s);
+      }
+      return text(formatConventions(convs, args.file));
+    }
+    if (name === 'get_action_patterns') {
+      if (!temporalStore) {
+        return text('Action patterns require the temporal layer. Run `carto temporal init`.');
+      }
+      const patterns = brain.procedural.actionPatternsForIntent(temporalStore, s, args.intent || '');
+      return text(formatActionPatterns(patterns, args.intent));
+    }
+    if (name === 'scaffold_for_intent') {
+      if (!temporalStore) {
+        return text('Scaffolding requires the temporal layer. Run `carto temporal init`.');
+      }
+      const r = brain.procedural.scaffoldForIntent(temporalStore, s, args.intent);
+      return text(formatScaffold(r));
+    }
+    if (name === 'get_working_memory') {
+      const r = brain.working.getWorkingMemory({ store: s, temporalStore, projectRoot });
+      return text(formatWorkingMemory(r));
+    }
+    if (name === 'get_pending_decisions') {
+      const r = brain.working.getPendingDecisions(s, { hours: args.hours || 6 });
+      return text(formatPendingDecisions(r));
+    }
+    if (name === 'get_active_drift') {
+      const r = brain.working.getActiveDrift(temporalStore, { threshold: args.threshold });
+      return text(formatActiveDrift(r));
+    }
+    if (name === 'get_active_suggestions') {
+      const suggestions = brain.suggestions.getActiveSuggestions({ store: s, temporalStore, projectRoot });
+      return text(formatActiveSuggestions(suggestions));
+    }
+    if (name === 'dismiss_suggestion') {
+      if (!args.id) return text('Missing required argument: id');
+      // Acknowledgment-only. Persistence is in the episodic memory:
+      // we write an "interventions" row marking the suggestion accepted.
+      withWriter((writer) => {
+        try {
+          writer.db.prepare(`
+            INSERT INTO interventions (session_id, ts, kind, file, severity, message, accepted)
+            VALUES (NULL, ?, 'suggestion_dismissed', NULL, 'minor', ?, 1)
+          `).run(Date.now(), `Dismissed suggestion ${args.id}`);
+        } catch {}
+      });
+      return text(`Dismissed suggestion: ${args.id}`);
+    }
+    return text(`Unknown brain tool: ${name}`);
+  } finally {
+    if (temporalStore) temporalStore.close();
+  }
+}
+
+function formatInvariants(rules) {
+  const lines = ['# Architectural Invariants'];
+  if (rules.length === 0) {
+    lines.push('\n_No high-confidence invariants found yet._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${rules.length} invariant${rules.length === 1 ? '' : 's'}.\n`);
+  lines.push('| Confidence | Kind | Scope | Rule |');
+  lines.push('|-----------:|------|-------|------|');
+  for (const r of rules.slice(0, 50)) {
+    lines.push(`| ${r.confidence.toFixed(2)} | ${r.kind} | ${r.scope} | ${r.rule} |`);
+  }
+  if (rules.length > 50) lines.push(`\n_…${rules.length - 50} more rules._`);
+  return lines.join('\n');
+}
+
+function formatCanonical(r, patternType) {
+  if (!r) return `No canonical pattern found for: ${patternType}`;
+  const lines = [`# Canonical Pattern: ${patternType}`];
+  lines.push(`\n- **File:** ${r.file}`);
+  if (r.route_count != null) lines.push(`- **Routes:** ${r.route_count}`);
+  if (r.model_count != null) lines.push(`- **Models:** ${r.model_count}`);
+  lines.push(`- **Blast radius:** ${r.blast_radius}`);
+  lines.push(`- **Confidence:** ${r.confidence.toFixed(2)}`);
+  return lines.join('\n');
+}
+
+function formatConventions(convs, file) {
+  const lines = [`# Conventions${file ? `: ${file}` : ''}`];
+  if (!convs || convs.length === 0) {
+    lines.push('\n_No conventions detected._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${convs.length} convention${convs.length === 1 ? '' : 's'}.\n`);
+  lines.push('| Confidence | Kind | Scope | Rule |');
+  lines.push('|-----------:|------|-------|------|');
+  for (const c of convs.slice(0, 50)) {
+    lines.push(`| ${c.confidence.toFixed(2)} | ${c.kind} | ${c.scope} | ${c.rule} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatActionPatterns(patterns, intent) {
+  const lines = [`# Action Patterns${intent ? `: ${intent}` : ''}`];
+  if (!patterns || patterns.length === 0) {
+    lines.push('\n_No co-change patterns matched._');
+    return lines.join('\n');
+  }
+  for (const p of patterns) {
+    lines.push(`\n## ${p.anchor}`);
+    lines.push(`Co-change confidence ${p.confidence.toFixed(2)} · ${p.evidence_count} historical commits`);
+    lines.push('| Partner file | Co-occurrence | Commits |');
+    lines.push('|--------------|--------------:|--------:|');
+    for (const partner of p.partners) {
+      lines.push(`| ${partner.file} | ${partner.co_occurrence.toFixed(2)} | ${partner.commits} |`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatScaffold(r) {
+  const lines = [`# Scaffold for: ${r.intent}`];
+  if (r.suggestions && r.suggestions.length > 0) {
+    lines.push('\n## Files typically changed together');
+    for (const s of r.suggestions) {
+      lines.push(`\n- **Anchor:** ${s.anchor_file} (${s.evidence}, confidence ${s.confidence.toFixed(2)})`);
+      for (const f of s.co_changed_files) lines.push(`  - ${f}`);
+    }
+  } else {
+    lines.push('\n_No relevant action patterns found._');
+  }
+  if (r.canonical && r.canonical.length > 0) {
+    lines.push('\n## Canonical examples');
+    for (const c of r.canonical) {
+      lines.push(`- ${c.type}: ${c.file} (blast ${c.blast_radius})`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatWorkingMemory(r) {
+  const lines = ['# Working Memory'];
+  lines.push(`\n- **Branch:** ${r.branch || '—'}`);
+  lines.push(`- **HEAD:** ${r.head_sha || '—'}`);
+  lines.push(`- **Uncommitted files:** ${r.uncommitted_files.length}`);
+  if (r.uncommitted_files.length > 0) {
+    lines.push('| Path | Kind |');
+    lines.push('|------|------|');
+    for (const f of r.uncommitted_files.slice(0, 20)) {
+      lines.push(`| ${f.path} | ${f.change_kind} |`);
+    }
+  }
+  lines.push(`\n- **Recent decisions (24h):** ${r.recent_decisions_count}`);
+  lines.push(`- **Open HIGH-severity warnings:** ${r.open_warnings.length}`);
+  if (r.recent_drift) {
+    const d = r.recent_drift;
+    lines.push(`\n## Recent drift (7d)`);
+    lines.push(`- **${d.domain}:** ${d.before} → ${d.after} (Δ ${d.delta}, trend ${d.trend})`);
+  }
+  return lines.join('\n');
+}
+
+function formatPendingDecisions(r) {
+  const lines = ['# Pending Decisions'];
+  if (!r || r.length === 0) {
+    lines.push('\n_No pending decisions._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${r.length} pending decision${r.length === 1 ? '' : 's'}.\n`);
+  lines.push('| When | Kind | File | Risk |');
+  lines.push('|------|------|------|------|');
+  for (const d of r.slice(0, 30)) {
+    const when = new Date(d.ts).toISOString();
+    const risk = d.payload && d.payload.risk ? d.payload.risk : '—';
+    lines.push(`| ${when} | ${d.kind} | ${d.file || '—'} | ${risk} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatActiveDrift(r) {
+  const lines = ['# Active Drift (7d)'];
+  if (!r.domains || r.domains.length === 0) {
+    lines.push('\n_No drift data yet._');
+    return lines.join('\n');
+  }
+  if (r.threshold_breaches.length > 0) {
+    lines.push('\n## Threshold breaches');
+    lines.push('| Domain | Before | After | Δ |');
+    lines.push('|--------|-------:|------:|---|');
+    for (const d of r.threshold_breaches) {
+      lines.push(`| ${d.domain} | ${d.before} | ${d.after} | ${d.delta > 0 ? '+' + d.delta : d.delta} |`);
+    }
+  }
+  lines.push('\n## All domains');
+  lines.push('| Domain | Before | After | Δ |');
+  lines.push('|--------|-------:|------:|---|');
+  for (const d of r.domains) {
+    lines.push(`| ${d.domain} | ${d.before} | ${d.after} | ${d.delta > 0 ? '+' + d.delta : d.delta} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatActiveSuggestions(suggestions) {
+  const lines = ['# Active Suggestions'];
+  if (!suggestions || suggestions.length === 0) {
+    lines.push('\n_No active suggestions._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${suggestions.length} suggestion${suggestions.length === 1 ? '' : 's'}.\n`);
+  lines.push('| Severity | Trigger | Summary |');
+  lines.push('|----------|---------|---------|');
+  for (const s of suggestions) {
+    lines.push(`| ${s.severity} | ${s.trigger} | ${s.summary} |`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * runAiTool(name, args) — dispatcher for the 14 AI-native primitives.
+ *
+ * Lazily opens the temporal store readonly; tools degrade gracefully when
+ * it's missing. All formatters are pure-functional (no I/O).
+ */
+function runAiTool(name, args) {
+  const s = getStore();
+  if (!s) return notIndexed();
+  const { TemporalStore } = require('../temporal/store');
+  const temporalStore = TemporalStore.openIfExists(projectRoot, { readonly: true });
+  try {
+    const ai = require('../ai/tools');
+    const ctx = { store: s, projectRoot, temporalStore };
+
+    if (name === 'get_minimal_context_for_intent') {
+      const r = ai.minimalContext(args, ctx);
+      return text(r.markdown || JSON.stringify(r, null, 2));
+    }
+    if (name === 'get_progressive_disclosure_tree') {
+      const r = ai.progressiveDisclosure(args, ctx);
+      return text(formatProgressiveTree(r));
+    }
+    if (name === 'get_token_budget_report') {
+      const r = ai.tokenBudget(args, ctx);
+      return text(formatTokenBudget(r));
+    }
+    if (name === 'get_decision_log') {
+      const r = ai.decisionLog(args, ctx);
+      return text(formatDecisionLog(r));
+    }
+    if (name === 'get_evolution_delta') {
+      const r = ai.evolutionDelta(args, ctx);
+      return text(formatEvolutionDelta(r));
+    }
+    if (name === 'get_change_velocity') {
+      const r = ai.changeVelocity(args, ctx);
+      return text(formatChangeVelocity(r));
+    }
+    if (name === 'get_test_coverage_map') {
+      const r = ai.testCoverageMap(args, ctx);
+      return text(formatTestCoverage(r));
+    }
+    if (name === 'get_safety_checklist') {
+      const r = ai.safetyChecklist(args, ctx);
+      return text(formatSafetyChecklist(r));
+    }
+    if (name === 'get_data_flow') {
+      const r = ai.dataFlow(args, ctx);
+      return text(formatDataFlow(r));
+    }
+    if (name === 'get_interface_contract') {
+      const r = ai.interfaceContract(args, ctx);
+      return text(formatInterfaceContract(r));
+    }
+    if (name === 'explain_change_in_natural_language') {
+      const r = ai.explainChange(args, { ...ctx, sidecar: getSidecar() });
+      return text(formatExplainChange(r));
+    }
+    if (name === 'get_stale_docs') {
+      const r = ai.staleDocs(args, ctx);
+      return text(formatStaleDocs(r));
+    }
+    if (name === 'get_dependency_surface') {
+      const r = ai.dependencySurface(args, ctx);
+      return text(formatDependencySurface(r));
+    }
+    if (name === 'get_upgrade_risk') {
+      const r = ai.upgradeRisk(args, ctx);
+      return text(formatUpgradeRisk(r));
+    }
+    return text(`Unknown AI tool: ${name}`);
+  } finally {
+    if (temporalStore) temporalStore.close();
+  }
+}
+
+function formatProgressiveTree(r) {
+  const lines = ['# Progressive Disclosure Tree'];
+  if (!r.domains || r.domains.length === 0) {
+    lines.push('\n_No domains yet._');
+    return lines.join('\n');
+  }
+  for (const d of r.domains) {
+    lines.push(`\n## ${d.name}  ·  ${d.file_count} files  ·  ${d.route_count} routes`);
+    if (d.top_files && d.top_files.length > 0) {
+      lines.push('| File | Blast | Exports |');
+      lines.push('|------|------:|---------|');
+      for (const f of d.top_files) {
+        lines.push(`| ${f.path} | ${f.blast_radius} | ${(f.exports || []).join(', ') || '—'} |`);
+      }
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatTokenBudget(r) {
+  const lines = ['# Token Budget Report'];
+  lines.push(`\n- **Intent:** ${r.intent || '(none)'}`);
+  lines.push(`- **Budget:** ${r.budget_tokens} tokens`);
+  lines.push(`- **Used:** ${r.used_tokens} tokens (${r.files_included} files)`);
+  lines.push(`- **Dropped:** ${r.files_dropped} files`);
+  lines.push(`- **Repo total (approx):** ${r.repo_tokens_approx} tokens across ${r.total_files_in_repo} files`);
+  lines.push(`- **Efficiency:** ${r.efficiency}% of repo fits the budget`);
+  return lines.join('\n');
+}
+
+function formatDecisionLog(r) {
+  const lines = [`# Decision Log (${r.hours}h)`];
+  if (!r.decisions || r.decisions.length === 0) {
+    lines.push('\n_No decisions in this window._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${r.decisions.length} decision${r.decisions.length === 1 ? '' : 's'}.\n`);
+  lines.push('| When | Kind | File |');
+  lines.push('|------|------|------|');
+  for (const d of r.decisions.slice(0, 50)) {
+    const when = new Date(d.ts).toISOString();
+    lines.push(`| ${when} | ${d.kind} | ${d.file || '—'} |`);
+  }
+  if (r.events && r.events.length > 0) {
+    lines.push(`\n## Architectural events in the same window`);
+    lines.push(`${r.events.length} event(s).`);
+  }
+  return lines.join('\n');
+}
+
+function formatEvolutionDelta(r) {
+  if (!r.delta || r.reason === 'no_temporal') {
+    return '# Evolution Delta\n\n_Requires temporal layer. Run `carto temporal init`._';
+  }
+  return formatDrift(r.delta);  // reuse existing formatter
+}
+
+function formatChangeVelocity(r) {
+  if (r.reason === 'no_temporal') {
+    return '# Change Velocity\n\n_Requires temporal layer. Run `carto temporal init`._';
+  }
+  const lines = ['# Change Velocity'];
+  lines.push(`\n- **Days observed:** ${r.days_observed}`);
+  lines.push(`- **Total commits:** ${r.total_commits}`);
+  lines.push(`- **Avg commits / day:** ${r.avg_commits_per_day}`);
+  if (r.daily && r.daily.length > 0) {
+    lines.push('\n| Day | Commits |');
+    lines.push('|-----|--------:|');
+    for (const d of r.daily.slice(-14)) lines.push(`| ${d.day} | ${d.commits} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatTestCoverage(r) {
+  const lines = ['# Test Coverage Map'];
+  lines.push(`\nConsidered ${r.considered} files; ${r.untested ? r.untested.length : 0} have no detected test.`);
+  if (r.by_blast_radius && r.by_blast_radius.length > 0) {
+    lines.push('\n## Top untested files by blast radius');
+    lines.push('| File | Blast |');
+    lines.push('|------|------:|');
+    for (const f of r.by_blast_radius.slice(0, 30)) {
+      lines.push(`| ${f.path} | ${f.blast_radius} |`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatSafetyChecklist(r) {
+  const lines = [`# Safety Checklist: ${r.file || ''}`];
+  if (!r.items || r.items.length === 0) {
+    lines.push('\n_No checks ran._');
+    return lines.join('\n');
+  }
+  for (const item of r.items) {
+    const icon = item.severity === 'safe' ? '✅' :
+                 item.severity === 'minor' ? '⚠️' :
+                 item.severity === 'major' ? '🟡' : '🔴';
+    lines.push(`- ${icon} **${item.severity}** — ${item.message}`);
+  }
+  return lines.join('\n');
+}
+
+function formatDataFlow(r) {
+  const lines = [`# Data Flow: ${r.source || ''}`];
+  lines.push(`\n- **Domain:** ${r.domain || '—'}`);
+  if (r.imports && r.imports.length > 0) {
+    lines.push('\n## Upstream (imports)');
+    for (const i of r.imports.slice(0, 20)) lines.push(`- ${i.path || i}`);
+  }
+  if (r.imported_by && r.imported_by.length > 0) {
+    lines.push('\n## Downstream (imported by)');
+    for (const i of r.imported_by.slice(0, 20)) lines.push(`- ${i.path || i}`);
+  }
+  if (r.routes_in_file && r.routes_in_file.length > 0) {
+    lines.push('\n## Routes in file');
+    for (const rt of r.routes_in_file) lines.push(`- ${rt.method} ${rt.path}`);
+  }
+  if (r.env_vars && r.env_vars.length > 0) {
+    lines.push('\n## Env vars');
+    lines.push(r.env_vars.slice(0, 20).join(', '));
+  }
+  return lines.join('\n');
+}
+
+function formatInterfaceContract(r) {
+  const lines = [`# Interface Contract: ${r.file || ''}`];
+  lines.push(`\n- **Domain:** ${r.domain || '—'}`);
+  if (r.exports && r.exports.length > 0) {
+    lines.push('\n## Exports');
+    lines.push('| Name | Kind | Default? |');
+    lines.push('|------|------|---------:|');
+    for (const e of r.exports) {
+      lines.push(`| ${e.name} | ${e.kind} | ${e.is_default_export ? 'yes' : 'no'} |`);
+    }
+  }
+  if (r.routes && r.routes.length > 0) {
+    lines.push('\n## Routes');
+    for (const rt of r.routes) lines.push(`- ${rt.method} ${rt.path}`);
+  }
+  if (r.models && r.models.length > 0) {
+    lines.push('\n## Models');
+    for (const m of r.models) lines.push(`- ${m.name} (${m.kind})`);
+  }
+  return lines.join('\n');
+}
+
+function formatExplainChange(r) {
+  return `# Diff Explanation\n\n${r.summary || '(no summary)'}\n`;
+}
+
+function formatStaleDocs(r) {
+  const lines = ['# Stale Docs'];
+  if (!r.stale || r.stale.length === 0) {
+    lines.push('\n_All docs are fresh (none older than 30 days)._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${r.stale.length} doc(s) older than 30 days.\n`);
+  lines.push('| Path | Age (days) |');
+  lines.push('|------|----------:|');
+  for (const d of r.stale.slice(0, 30)) lines.push(`| ${d.path} | ${d.age_days} |`);
+  return lines.join('\n');
+}
+
+function formatDependencySurface(r) {
+  const lines = ['# Dependency Surface'];
+  lines.push(`\n${r.count || (r.deps ? r.deps.length : 0)} dependencies detected.\n`);
+  if (!r.deps || r.deps.length === 0) {
+    lines.push('_No dependency manifest found._');
+    return lines.join('\n');
+  }
+  lines.push('| Ecosystem | Name | Version | Kind |');
+  lines.push('|-----------|------|---------|------|');
+  for (const d of r.deps.slice(0, 50)) {
+    lines.push(`| ${d.ecosystem} | ${d.name} | ${d.version} | ${d.kind} |`);
+  }
+  if (r.deps.length > 50) lines.push(`\n_…${r.deps.length - 50} more._`);
+  return lines.join('\n');
+}
+
+function formatUpgradeRisk(r) {
+  const lines = ['# Upgrade Risk'];
+  if (!r.risks || r.risks.length === 0) {
+    lines.push('\n_No usage data — likely no imports map to declared deps._');
+    return lines.join('\n');
+  }
+  lines.push(`\nUsage counts across the import graph.\n`);
+  lines.push('| Risk | Name | Version | Usages | Domains |');
+  lines.push('|------|------|---------|-------:|--------:|');
+  for (const x of r.risks.slice(0, 40)) {
+    lines.push(`| ${x.risk} | ${x.name} | ${x.version} | ${x.count} | ${x.domains} |`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * runAdjacentTool(name, args) — dispatcher for the adjacent-positioning tools.
+ *
+ * Handles cross-language call graph, IaC scan, runtime fusion, semantic
+ * diff, and LLM enrichment stub. Runtime tools accept an `otlp_path`
+ * argument; when missing, they degrade to the static-only signal.
+ */
+function runAdjacentTool(name, args) {
+  const s = getStore();
+  if (!s) return notIndexed();
+  try {
+    if (name === 'get_cross_language_call_graph') {
+      const { buildCallGraph } = require('../adjacent/call-graph');
+      const r = buildCallGraph({ store: s, projectRoot });
+      return text(formatCallGraph(r));
+    }
+    if (name === 'get_iac_resources') {
+      const { scanIacResources } = require('../adjacent/iac');
+      const resources = scanIacResources(projectRoot);
+      return text(formatIacResources(resources));
+    }
+    if (name === 'ingest_otlp_traces') {
+      if (!args.path) return text('Missing required argument: path');
+      const { parseOtlpFile } = require('../adjacent/runtime');
+      const counts = parseOtlpFile(args.path);
+      const lines = [`# OTLP Trace Ingest: ${args.path}`];
+      lines.push(`\n${counts.length} unique (method, route) tuples observed.\n`);
+      if (counts.length > 0) {
+        lines.push('| Method | Route | Count |');
+        lines.push('|--------|-------|------:|');
+        counts.slice(0, 50).forEach(c => lines.push(`| ${c.method} | ${c.path} | ${c.count} |`));
+      }
+      return text(lines.join('\n'));
+    }
+    if (name === 'get_risk_weighted_blast_radius') {
+      const { parseOtlpFile, riskWeightedBlastRadius } = require('../adjacent/runtime');
+      const runtime = args.otlp_path ? parseOtlpFile(args.otlp_path) : [];
+      const r = riskWeightedBlastRadius({ store: s, runtimeCounts: runtime });
+      return text(formatRiskBlast(r));
+    }
+    if (name === 'get_dead_code_with_confidence') {
+      const { parseOtlpFile, deadCodeWithConfidence } = require('../adjacent/runtime');
+      const runtime = args.otlp_path ? parseOtlpFile(args.otlp_path) : null;
+      const r = deadCodeWithConfidence({ store: s, runtimeCounts: runtime });
+      return text(formatDeadCode(r, runtime != null));
+    }
+    if (name === 'get_hot_in_prod_no_tests') {
+      const { parseOtlpFile, hotInProdNoTests } = require('../adjacent/runtime');
+      const runtime = parseOtlpFile(args.otlp_path);
+      const r = hotInProdNoTests({ store: s, projectRoot, runtimeCounts: runtime });
+      return text(formatHotNoTests(r));
+    }
+    if (name === 'get_semantic_diff') {
+      const { semanticDiff } = require('../adjacent/semantic-diff');
+      const r = semanticDiff({ store: s, diff: args.diff });
+      return text(formatSemanticDiff(r));
+    }
+    if (name === 'get_llm_enrichment') {
+      const llm = require('../adjacent/llm-enrich');
+      if (!llm.isAvailable(projectRoot)) {
+        return text(`# LLM Enrichment\n\n_Disabled. Opt in via \`carto.config.json\` → \`ai.llm\`. Currently a stub._`);
+      }
+      const r = llm.enrichNode(args.file);
+      return text(`# LLM Enrichment: ${args.file}\n\n${r ? JSON.stringify(r, null, 2) : '_no summary_'}`);
+    }
+    return text(`Unknown adjacent tool: ${name}`);
+  } catch (err) {
+    return text(`Error in ${name}: ${err.message || err}`);
+  }
+}
+
+function formatCallGraph(r) {
+  const lines = ['# Cross-Language Call Graph'];
+  lines.push(`\n- **Total fetches seen:** ${r.total_fetches_seen}`);
+  lines.push(`- **Matched callers ↔ routes:** ${r.matches.length}`);
+  lines.push(`- **Unmatched fetches:** ${r.unmatched_fetches.length}\n`);
+  if (r.matches.length > 0) {
+    lines.push('| Caller | Method | Route | Handler file |');
+    lines.push('|--------|--------|-------|--------------|');
+    for (const m of r.matches.slice(0, 50)) {
+      lines.push(`| ${m.caller_file} | ${m.method} | ${m.route_path} | ${m.callee_file} |`);
+    }
+    if (r.matches.length > 50) lines.push(`\n_…${r.matches.length - 50} more matches._`);
+  }
+  return lines.join('\n');
+}
+
+function formatIacResources(resources) {
+  const lines = ['# IaC Resources'];
+  lines.push(`\n${resources.length} resource(s) detected.\n`);
+  if (resources.length === 0) {
+    lines.push('_No Terraform / Helm / Pulumi / CDK files found._');
+    return lines.join('\n');
+  }
+  const byKind = new Map();
+  for (const r of resources) {
+    if (!byKind.has(r.kind)) byKind.set(r.kind, []);
+    byKind.get(r.kind).push(r);
+  }
+  for (const [kind, items] of byKind) {
+    lines.push(`\n## ${kind} (${items.length})`);
+    for (const x of items.slice(0, 30)) {
+      const type = x.tf_type ? ` · ${x.tf_type}` : '';
+      lines.push(`- **${x.name}**${type} (${x.file})${x.dependencies && x.dependencies.length > 0 ? ` — deps: ${x.dependencies.slice(0, 3).join(', ')}` : ''}`);
+    }
+    if (items.length > 30) lines.push(`  _…${items.length - 30} more._`);
+  }
+  return lines.join('\n');
+}
+
+function formatRiskBlast(rows) {
+  const lines = ['# Risk-Weighted Blast Radius'];
+  if (!rows || rows.length === 0) {
+    lines.push('\n_No routes found._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${rows.length} route(s); sorted by risk_score = dependents × runtime_calls + dependents.\n`);
+  lines.push('| Method | Route | File | Dependents | Runtime hits | Score |');
+  lines.push('|--------|-------|------|----------:|-------------:|------:|');
+  for (const r of rows.slice(0, 30)) {
+    lines.push(`| ${r.method} | ${r.path} | ${r.file} | ${r.dependents} | ${r.runtime_calls} | ${r.risk_score} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatDeadCode(rows, hasRuntime) {
+  const lines = ['# Dead Code (with confidence)'];
+  if (!rows || rows.length === 0) {
+    lines.push('\n_No orphaned files detected._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${rows.length} file(s) with no static dependents${hasRuntime ? ' AND no runtime hits' : ''}.\n`);
+  lines.push('| File | Runtime hit |');
+  lines.push('|------|------------:|');
+  for (const r of rows.slice(0, 40)) {
+    lines.push(`| ${r.path} | ${r.runtime_hit === null ? '—' : r.runtime_hit} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatHotNoTests(rows) {
+  const lines = ['# Hot in Prod, No Tests'];
+  if (!rows || rows.length === 0) {
+    lines.push('\n_No untested files with runtime hits found._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${rows.length} file(s).\n`);
+  for (const r of rows.slice(0, 40)) lines.push(`- ${r.path}`);
+  return lines.join('\n');
+}
+
+function formatSemanticDiff(r) {
+  const lines = ['# Semantic Diff'];
+  lines.push(`\n- **Files changed:** ${r.files_changed}`);
+  lines.push(`- **New files:** ${r.new_files.length}`);
+  lines.push(`- **Deleted files:** ${r.deleted_files.length}`);
+  if (r.renames && r.renames.length > 0) {
+    lines.push('\n## Renames detected');
+    for (const x of r.renames) lines.push(`- ${x.file}: \`${x.from}\` → \`${x.to}\``);
+  }
+  if (r.relocations && r.relocations.length > 0) {
+    lines.push('\n## Symbol relocations');
+    for (const x of r.relocations) lines.push(`- \`${x.symbol}\`: ${x.from_file} → ${x.to_file}`);
+  }
+  if (r.new_domains && r.new_domains.length > 0) {
+    lines.push('\n## New domain prefixes');
+    for (const x of r.new_domains) lines.push(`- ${x}/`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * runPredictiveTool(name, args) — dispatcher for the predictive tools.
+ */
+function runPredictiveTool(name, args) {
+  const s = getStore();
+  if (!s) return notIndexed();
+  const { TemporalStore } = require('../temporal/store');
+  const temporalStore = TemporalStore.openIfExists(projectRoot, { readonly: true });
+  try {
+    if (name === 'get_predictive_risk') {
+      const { scoreFiles } = require('../predictive/risk-score');
+      const filesArg = args.file ? [args.file] : null;
+      const r = scoreFiles({ store: s, temporalStore, projectRoot, files: filesArg });
+      return text(formatRiskScores(r));
+    }
+    if (name === 'get_microservice_cut_points') {
+      const { findCutPoints } = require('../predictive/cut-points');
+      const r = findCutPoints({ store: s, threshold: args.threshold || 0.7 });
+      return text(formatCutPoints(r));
+    }
+    if (name === 'validate_change') {
+      const { validateChange } = require('../predictive/validate-change');
+      const r = validateChange({ store: s, projectRoot, file: args.file, content: args.content });
+      return text(formatValidateChange(r));
+    }
+    if (name === 'get_file_ownership') {
+      const { ownersForFile } = require('../predictive/ownership');
+      const r = ownersForFile({ projectRoot, file: args.file });
+      return text(formatOwnership(r));
+    }
+    if (name === 'get_cross_team_coupling') {
+      const { crossTeamCoupling } = require('../predictive/ownership');
+      const r = crossTeamCoupling({ store: s, projectRoot });
+      return text(formatCrossTeamCoupling(r));
+    }
+    if (name === 'get_drift_digest') {
+      const { renderDriftDigest } = require('../predictive/drift-digest');
+      return text(renderDriftDigest({ store: s, temporalStore, projectRoot, timeRange: args.time_range || '7d' }));
+    }
+    if (name === 'get_ai_cost_attribution') {
+      const { aiCostAttribution } = require('../predictive/ownership');
+      const r = aiCostAttribution({ store: s, hours: args.hours || 168 });
+      return text(formatAiCost(r));
+    }
+    return text(`Unknown predictive tool: ${name}`);
+  } finally {
+    if (temporalStore) temporalStore.close();
+  }
+}
+
+function formatRiskScores(rows) {
+  const lines = ['# Predictive Risk'];
+  if (!rows || rows.length === 0) {
+    lines.push('\n_No files scored._');
+    return lines.join('\n');
+  }
+  lines.push(`\nTop ${Math.min(rows.length, 30)} of ${rows.length} files by P(incident) score.\n`);
+  lines.push('| File | Score | Blast | Churn | Cross | IV | NoTest |');
+  lines.push('|------|------:|------:|------:|------:|---:|-------:|');
+  for (const r of rows.slice(0, 30)) {
+    const c = r.components || {};
+    lines.push(`| ${r.path} | ${r.score} | ${(c.blast || 0).toFixed(2)} | ${(c.churn || 0).toFixed(2)} | ${c.cross || 0} | ${(c.intervention || 0).toFixed(2)} | ${c.no_test || 0} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatCutPoints(r) {
+  const lines = ['# Microservice Cut-Points'];
+  if (!r.all_domains || r.all_domains.length === 0) {
+    lines.push('\n_No domain data._');
+    return lines.join('\n');
+  }
+  if (r.cut_points && r.cut_points.length > 0) {
+    lines.push(`\n## Candidates (${r.cut_points.length})`);
+    lines.push('| Domain | Files | Cohesion | Intra | Out | In |');
+    lines.push('|--------|------:|---------:|------:|----:|---:|');
+    for (const d of r.cut_points) {
+      lines.push(`| ${d.domain} | ${d.files} | ${d.cohesion} | ${d.intra_edges} | ${d.outbound_edges} | ${d.inbound_edges} |`);
+    }
+  } else {
+    lines.push('\n_No high-cohesion domains pass the candidate threshold._');
+  }
+  lines.push('\n## All domains');
+  lines.push('| Domain | Files | Cohesion | Candidate? |');
+  lines.push('|--------|------:|---------:|:----------:|');
+  for (const d of r.all_domains) {
+    lines.push(`| ${d.domain} | ${d.files} | ${d.cohesion} | ${d.candidate ? '✅' : '—'} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatValidateChange(r) {
+  const lines = ['# validate_change'];
+  lines.push(`\n- **Risk:** ${r.risk}`);
+  if (r.reason) lines.push(`- **Reason:** ${r.reason}`);
+  if (r.files_changed && r.files_changed.length > 0) {
+    lines.push(`- **Files:** ${r.files_changed.join(', ')}`);
+  }
+  if (r.violations && r.violations.length > 0) {
+    lines.push('\n## Violations');
+    for (const v of r.violations.slice(0, 10)) {
+      lines.push(`- **${v.severity}** ${v.kind}: ${v.detail || v.file || ''}`);
+    }
+  }
+  if (r.suggestions && r.suggestions.length > 0) {
+    lines.push('\n## Suggestions');
+    for (const s of r.suggestions) lines.push(`- ${s}`);
+  }
+  return lines.join('\n');
+}
+
+function formatOwnership(r) {
+  const lines = [`# Ownership: ${r.file || ''}`];
+  lines.push(`\n- **Top author:** ${r.top_author || '—'}`);
+  if (r.authors && r.authors.length > 0) {
+    lines.push('| Author | Lines |');
+    lines.push('|--------|------:|');
+    for (const a of r.authors.slice(0, 20)) lines.push(`| ${a.name} | ${a.lines} |`);
+  } else {
+    lines.push('\n_No blame data available (git missing or file not tracked)._');
+  }
+  return lines.join('\n');
+}
+
+function formatCrossTeamCoupling(r) {
+  const lines = ['# Cross-Team Coupling'];
+  if (!r.warnings || r.warnings.length === 0) {
+    lines.push('\n_No cross-team coupling warnings._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${r.warnings.length} coordination warning(s).\n`);
+  lines.push('| From file | From owner | To file | To owner |');
+  lines.push('|-----------|------------|---------|----------|');
+  for (const w of r.warnings.slice(0, 30)) {
+    lines.push(`| ${w.from_file} | ${w.from_owner} | ${w.to_file} | ${w.to_owner} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatAiCost(r) {
+  const lines = [`# AI Cost Attribution (${r.hours}h)`];
+  if (!r.clients || r.clients.length === 0) {
+    lines.push('\n_No AI session data in window._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${r.clients.length} client(s).\n`);
+  lines.push('| Client | Decisions | Violations |');
+  lines.push('|--------|----------:|----------:|');
+  for (const c of r.clients) {
+    lines.push(`| ${c.client} | ${c.decisions} | ${c.violations} |`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * runOrgTool(name, args) — dispatcher for the cross-repo / org-wide tools.
+ *
+ * Opens `~/.carto/org.db` read+write so any future tool that needs to
+ * persist (none currently) doesn't have to switch modes. Returns a
+ * graceful "no org" message when the org store is missing.
+ */
+function runOrgTool(name, args) {
+  const { OrgStore } = require('../org/store');
+  const orgStore = OrgStore.openIfExists();
+  if (!orgStore) {
+    return text(`# Org tool: ${name}\n\nNo org store yet. Run \`carto org init\` then \`carto org add <name> <path>\` then \`carto org sync\` to register repos.`);
+  }
+  try {
+    const q = require('../org/queries');
+    if (name === 'get_org_architecture') {
+      return text(formatOrgArchitecture(q.orgArchitectureOverview(orgStore)));
+    }
+    if (name === 'get_service_dependency_graph') {
+      return text(formatServiceGraph(q.serviceDependencyGraph(orgStore)));
+    }
+    if (name === 'get_cross_repo_blast_radius') {
+      return text(formatCrossRepoBlast(q.crossRepoBlastRadius(orgStore, args.repo)));
+    }
+    if (name === 'find_consumers_of_api') {
+      return text(formatConsumers(q.findConsumersOfApi(orgStore, args.target), args.target));
+    }
+    if (name === 'get_org_domain_mapping') {
+      return text(formatOrgDomainMapping(q.orgDomainMapping(orgStore)));
+    }
+    if (name === 'get_service_boundary_violations') {
+      return text(formatBoundaryViolations(q.serviceBoundaryViolations(orgStore)));
+    }
+    if (name === 'get_microservices_migration_cut_points') {
+      return text(formatMigrationCutPoints(q.microservicesMigrationCutPoints(orgStore)));
+    }
+    return text(`Unknown org tool: ${name}`);
+  } finally {
+    orgStore.close();
+  }
+}
+
+function formatOrgArchitecture(o) {
+  const lines = ['# Org Architecture'];
+  lines.push(`\n- **Repos:** ${o.summary.total_repos}`);
+  lines.push(`- **Cross-repo edges:** ${o.summary.total_edges}`);
+  if (o.summary.edges_by_kind && o.summary.edges_by_kind.length > 0) {
+    lines.push('\n## Edges by kind');
+    for (const e of o.summary.edges_by_kind) lines.push(`- ${e.edge_kind}: ${e.c}`);
+  }
+  if (o.repos && o.repos.length > 0) {
+    lines.push('\n## Repos');
+    lines.push('| Name | Root | Last sync |');
+    lines.push('|------|------|-----------|');
+    for (const r of o.repos) {
+      const ls = r.last_sync_at ? new Date(r.last_sync_at).toISOString() : '—';
+      lines.push(`| ${r.name} | ${r.root_path} | ${ls} |`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatServiceGraph(g) {
+  const lines = ['# Service Dependency Graph'];
+  lines.push(`\n${g.nodes.length} repo(s); ${g.edges.length} aggregated edge(s).`);
+  if (g.edges.length === 0) {
+    lines.push('\n_No resolved cross-repo edges yet._');
+    return lines.join('\n');
+  }
+  lines.push('\n| From | To | Kind | Count |');
+  lines.push('|------|----|------|------:|');
+  for (const e of g.edges) lines.push(`| ${e.from_repo} | ${e.to_repo} | ${e.edge_kind} | ${e.count} |`);
+  return lines.join('\n');
+}
+
+function formatCrossRepoBlast(r) {
+  const lines = ['# Cross-Repo Blast Radius'];
+  if (!r.downstream_repos || r.downstream_repos.length === 0) {
+    lines.push('\n_No downstream consumers._');
+    return lines.join('\n');
+  }
+  lines.push(`\nDownstream consumers (${r.downstream_repos.length}):`);
+  for (const r2 of r.downstream_repos) lines.push(`- ${r2}`);
+  if (r.paths && r.paths.length > 0) {
+    lines.push('\n## Edge breakdown');
+    lines.push('| Consumer | Kind | Count |');
+    lines.push('|----------|------|------:|');
+    for (const p of r.paths) lines.push(`| ${p.from_repo} | ${p.edge_kind} | ${p.count} |`);
+  }
+  return lines.join('\n');
+}
+
+function formatConsumers(rows, target) {
+  const lines = [`# Consumers of ${target || ''}`];
+  if (!rows || rows.length === 0) { lines.push('\n_No consumers found._'); return lines.join('\n'); }
+  lines.push(`\n${rows.length} consuming file(s).\n`);
+  lines.push('| Repo | Kind | File |');
+  lines.push('|------|------|------|');
+  for (const r of rows.slice(0, 50)) lines.push(`| ${r.from_repo} | ${r.edge_kind} | ${r.from_file || '—'} |`);
+  return lines.join('\n');
+}
+
+function formatOrgDomainMapping(o) {
+  const lines = ['# Org Domain Mapping'];
+  if (!o.domains || o.domains.length === 0) {
+    lines.push('\n_No domains found across org repos. Ensure each repo has been `carto sync`-ed first._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${o.domains.length} repo×domain entries.\n`);
+  lines.push('| Repo | Domain | Files |');
+  lines.push('|------|--------|------:|');
+  for (const d of o.domains) lines.push(`| ${d.repo} | ${d.domain} | ${d.file_count} |`);
+  return lines.join('\n');
+}
+
+function formatBoundaryViolations(o) {
+  const lines = ['# Service Boundary Violations'];
+  if (!o.violations || o.violations.length === 0) {
+    lines.push('\n_No boundary violations detected._');
+    return lines.join('\n');
+  }
+  lines.push(`\n${o.violations.length} edge(s) reach into private surface.\n`);
+  lines.push('| From repo | Target | Kind | File |');
+  lines.push('|-----------|--------|------|------|');
+  for (const v of o.violations.slice(0, 50)) lines.push(`| ${v.from_repo} | ${v.target} | ${v.edge_kind} | ${v.from_file || '—'} |`);
+  return lines.join('\n');
+}
+
+function formatMigrationCutPoints(o) {
+  const lines = ['# Microservices Migration Cut-Points'];
+  if (!o.order || o.order.length === 0) {
+    lines.push('\n_No repos registered._');
+    return lines.join('\n');
+  }
+  lines.push(`\nExtraction priority (high stability first; the producer repos to extract before their consumers):\n`);
+  lines.push('| Repo | Incoming | Outgoing | Stability |');
+  lines.push('|------|---------:|---------:|----------:|');
+  for (const r of o.order) lines.push(`| ${r.repo} | ${r.incoming} | ${r.outgoing} | ${r.stability} |`);
+  return lines.join('\n');
+}
+
+/**
  * parseTimeRange("7d" | "24h" | "1h" | "30m" | "60s") → ms | null
  *
  * Small parser for the `get_recent_decisions` time_range arg.
@@ -208,7 +1380,7 @@ function summarizeDecisionPayload(json) {
   return parts.length === 0 ? '—' : parts.join(', ');
 }
 
-// ─── Tool definitions (same as V1) ──────────────────────────────────────────
+// ─── Tool definitions ───────────────────────────────────────────────────────
 
 const TOOLS = [
   { name: 'get_routes', description: 'Get all API routes in this project including REST, tRPC, and webhooks.', inputSchema: { type: 'object', properties: {}, required: [] } },
@@ -234,6 +1406,72 @@ const TOOLS = [
   { name: 'get_session_context', description: 'Full context for an AI session: every decision and every intervention, ordered chronologically. Use to recap what happened in a long-running session.', inputSchema: { type: 'object', properties: { session_id: { type: 'number', description: 'Session id. Defaults to the most recent active session.' } }, required: [] } },
   { name: 'did_we_discuss_this', description: 'Substring search over the episodic memory log (decisions + interventions) for prior discussions of a topic. Use to avoid re-deciding settled questions.', inputSchema: { type: 'object', properties: { topic: { type: 'string', description: 'Topic to search for, e.g. "auth", "snake_case", "blast radius".' } }, required: ['topic'] } },
   { name: 'get_intervention_history', description: 'List interventions (Carto-issued violations and suggestions) optionally filtered by file. Use to see prior warnings on a file before editing it.', inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Optional file filter (relative path from project root).' } }, required: [] } },
+
+  // ─── Temporal layer ─────────────────────────────────────────────
+  { name: 'get_architectural_drift', description: 'Per-domain growth/shrink and event count over a time window. Run `carto temporal init` first to backfill from git history.', inputSchema: { type: 'object', properties: { domain: { type: 'string', description: 'Optional domain filter (e.g. AUTH).' }, time_range: { type: 'string', description: 'Window like "30d", "90d", "1y" (default "30d").' } }, required: [] } },
+  { name: 'get_domain_evolution', description: 'Time-series of a single domain\'s file count, by snapshot. Use to chart a domain\'s growth over the last quarter.', inputSchema: { type: 'object', properties: { domain: { type: 'string', description: 'Domain name (e.g. AUTH).' }, time_range: { type: 'string', description: 'Window like "30d", "90d" (default "90d").' } }, required: ['domain'] } },
+  { name: 'get_hotspot_files', description: 'Top files by churn × blast_radius score over a window. The CodeHealth heuristic: high-churn files in high-blast-radius positions are where bugs cluster.', inputSchema: { type: 'object', properties: { time_range: { type: 'string', description: 'Window like "30d", "90d" (default "90d").' }, limit: { type: 'number', description: 'Max rows (default 20).' } }, required: [] } },
+  { name: 'get_complexity_trend', description: 'A single file\'s presence across snapshots + commit count + current blast_radius. Use to track how a file\'s footprint evolved.', inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Relative file path.' }, time_range: { type: 'string', description: 'Window like "90d" (default "90d").' } }, required: ['file'] } },
+  { name: 'get_churn_vs_blast_radius', description: 'Scatter data of churn vs blast_radius for every changed file in a window. Use to find risk hotspots.', inputSchema: { type: 'object', properties: { time_range: { type: 'string', description: 'Window like "90d" (default "90d").' } }, required: [] } },
+  { name: 'get_arch_events', description: 'Architectural events (domain split, merge, growth, hotspot emergence). Severity filter: minor | major | critical.', inputSchema: { type: 'object', properties: { severity: { type: 'string', description: 'Filter: minor | major | critical.' }, kind: { type: 'string', description: 'Optional kind filter (e.g. domain_growth, hotspot_active).' }, time_range: { type: 'string', description: 'Window like "90d" (default "90d").' } }, required: [] } },
+  { name: 'get_domain_health', description: 'Per-domain growth rate, instability, recent events, and hotspot files. Use to spot domains drifting out of bounds.', inputSchema: { type: 'object', properties: { domain: { type: 'string', description: 'Optional domain filter.' } }, required: [] } },
+  { name: 'get_temporal_context', description: 'A file\'s full temporal context: first_seen_ts, last_modified_ts, commit_count, blast_radius, recent events, age in days.', inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Relative file path.' } }, required: ['file'] } },
+
+  // ─── Brain: semantic + procedural + working memory ──────────────
+  { name: 'get_invariants', description: 'Architectural invariants mined from the import graph: "Domain X never imports from Y", "Files in Z always export N symbols", etc. Confidence-scored.', inputSchema: { type: 'object', properties: { domain: { type: 'string', description: 'Optional domain filter.' }, threshold: { type: 'number', description: 'Confidence threshold 0-1 (default 0.85).' } }, required: [] } },
+  { name: 'get_canonical_pattern', description: 'Highest-quality example of a pattern in the codebase (e.g. canonical route handler). Use as a copy-paste template before writing similar code.', inputSchema: { type: 'object', properties: { pattern_type: { type: 'string', description: 'route_handler | model_definition' }, domain: { type: 'string', description: 'Optional domain filter.' } }, required: ['pattern_type'] } },
+  { name: 'get_conventions', description: 'Naming + export + directory conventions that apply to a given file or directory. Confidence-scored. Use before writing new code in this location.', inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Relative file path or directory.' } }, required: [] } },
+  { name: 'get_action_patterns', description: 'Procedural patterns mined from git history: "when developers add X, they also touch Y". Filter by natural-language intent.', inputSchema: { type: 'object', properties: { intent: { type: 'string', description: 'Optional intent filter (e.g. "add route").' } }, required: [] } },
+  { name: 'scaffold_for_intent', description: 'For a natural-language intent ("add a payment route"), returns: anchor file + co-changed files + canonical pattern + conventions to follow. Combines invariants, conventions, and procedural memory.', inputSchema: { type: 'object', properties: { intent: { type: 'string', description: 'Natural-language description of the change.' } }, required: ['intent'] } },
+  { name: 'get_working_memory', description: 'Live state snapshot: branch, HEAD, uncommitted files, recent decision count, open HIGH-severity warnings, recent drift. Read this at the start of every AI session.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_pending_decisions', description: 'Recent decisions with pending/unresolved/HIGH-risk flags in their payload. Surfaces unfinished AI work from the episodic log.', inputSchema: { type: 'object', properties: { hours: { type: 'number', description: 'Lookback window in hours (default 6).' } }, required: [] } },
+  { name: 'get_active_drift', description: 'Domains with active drift in the last 7d: growth, threshold breaches. Use to spot domains drifting before they reach a critical event.', inputSchema: { type: 'object', properties: { threshold: { type: 'number', description: 'Drift threshold 0-1 (default 0.2 = 20%).' } }, required: [] } },
+  { name: 'get_active_suggestions', description: 'Active Suggestion Engine output. 4 triggers: cross-domain coupling jump, AI session conflict, convention violation mid-session, hotspot threshold crossed. Read periodically.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'dismiss_suggestion', description: 'Mark a suggestion ID as dismissed for the current session. Acknowledgment-only; the underlying signal still exists.', inputSchema: { type: 'object', properties: { id: { type: 'string', description: 'Suggestion id from get_active_suggestions.' } }, required: ['id'] } },
+
+  // ─── AI-native primitives — 14 tools ────────────────────────────
+  { name: 'get_minimal_context_for_intent', description: 'Token-budgeted context picker. Given a natural-language intent + a budget (default 4000 tokens), returns the minimum file set needed via hybrid retrieval (structural + lexical + semantic) with RRF fusion and high-blast / same-domain / recent-changes boosts. Reports per-file token cost.', inputSchema: { type: 'object', properties: { intent: { type: 'string', description: 'Natural-language description of the change.' }, budget_tokens: { type: 'number', description: 'Token budget (default 4000).' } }, required: ['intent'] } },
+  { name: 'get_progressive_disclosure_tree', description: 'Pre-computed hierarchy: domain → top files per domain → per-file exports. Use as a structured table-of-contents for the codebase before drilling in.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_token_budget_report', description: 'Diagnostic complement to get_minimal_context_for_intent. Returns context efficiency as a fraction of repo size (used / total tokens approx).', inputSchema: { type: 'object', properties: { intent: { type: 'string', description: 'Intent to budget for.' }, budget_tokens: { type: 'number' } }, required: [] } },
+  { name: 'get_decision_log', description: 'Recent decisions from the episodic-memory log, optionally annotated with concurrent architectural events from the temporal store.', inputSchema: { type: 'object', properties: { hours: { type: 'number', description: 'Lookback hours (default 168 = 7d).' } }, required: [] } },
+  { name: 'get_evolution_delta', description: 'Architectural delta across a time window (requires temporal store). Returns per-domain before/after file counts + event count.', inputSchema: { type: 'object', properties: { domain: { type: 'string' }, time_range: { type: 'string', description: 'Window like "30d", "90d" (default "30d").' } }, required: [] } },
+  { name: 'get_change_velocity', description: 'Commits-per-day over a window (requires temporal store). Useful for spotting development tempo shifts.', inputSchema: { type: 'object', properties: { days: { type: 'number', description: 'Lookback days (default 30).' } }, required: [] } },
+  { name: 'get_test_coverage_map', description: 'Surfaces files with no detected test alongside their blast radius. High-blast untested files are the riskiest.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_safety_checklist', description: 'Per-file safety checklist: blast radius, cross-domain coupling, missing tests, temporal hotspot, unresolved interventions. Run before writing a high-impact change.', inputSchema: { type: 'object', properties: { file: { type: 'string' } }, required: ['file'] } },
+  { name: 'get_data_flow', description: 'Per-file data-flow snapshot: upstream imports + downstream importers + routes + models + env vars in the file. The AI-friendly view, not full taint analysis.', inputSchema: { type: 'object', properties: { file: { type: 'string' } }, required: ['file'] } },
+  { name: 'get_interface_contract', description: 'Exported symbols + models + routes the file exposes. Use to understand a module\'s public API before consuming it.', inputSchema: { type: 'object', properties: { file: { type: 'string' } }, required: ['file'] } },
+  { name: 'explain_change_in_natural_language', description: 'Given a unified diff, returns a plain-language summary + risk + violation list + suggestions. Powered by validate_diff.', inputSchema: { type: 'object', properties: { diff: { type: 'string' } }, required: ['diff'] } },
+  { name: 'get_stale_docs', description: 'Docs/markdown files older than 30 days. Heuristic surface for documentation that probably needs refresh.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_dependency_surface', description: 'Deduped external dependencies + pinned versions across package.json, pyproject.toml, go.mod, etc. The "what does this project depend on" view.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_upgrade_risk', description: 'Cross-references each external dep against the import graph. Returns usage count + domain count + LOW/MEDIUM/HIGH risk per dep. Use before bumping a dep version.', inputSchema: { type: 'object', properties: {}, required: [] } },
+
+  // ─── Adjacent positioning — 8 tools ─────────────────────────────
+  { name: 'get_cross_language_call_graph', description: 'Match frontend HTTP fetches (fetch / axios / jQuery) to backend route handlers. Returns caller→callee pairs across language boundaries.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_iac_resources', description: 'Surface Terraform / Helm / Pulumi / AWS CDK resources discovered in the repo. Returns kind, name, file, dependencies.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'ingest_otlp_traces', description: 'Parse an OpenTelemetry OTLP JSON/JSONL trace file and aggregate per-route hit counts. Use the resulting counts with get_risk_weighted_blast_radius.', inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Path to OTLP file' } }, required: ['path'] } },
+  { name: 'get_risk_weighted_blast_radius', description: 'Combine static dependents with runtime call counts (from ingest_otlp_traces or similar) to rank routes by real-world risk. `risk = dependents × runtime_calls + dependents`.', inputSchema: { type: 'object', properties: { otlp_path: { type: 'string', description: 'Optional OTLP file for runtime data.' } }, required: [] } },
+  { name: 'get_dead_code_with_confidence', description: 'Files with zero static dependents AND (when runtime data is supplied) zero observed runtime hits. The "safe to delete" list.', inputSchema: { type: 'object', properties: { otlp_path: { type: 'string', description: 'Optional OTLP file for runtime confirmation.' } }, required: [] } },
+  { name: 'get_hot_in_prod_no_tests', description: 'Files whose routes receive >0 runtime hits but have no detected test file. The "ship a test here first" list.', inputSchema: { type: 'object', properties: { otlp_path: { type: 'string', description: 'Path to OTLP file (required).' } }, required: ['otlp_path'] } },
+  { name: 'get_semantic_diff', description: 'Beyond line-by-line: detect renames, symbol relocations across files, and new-domain introductions from a unified diff.', inputSchema: { type: 'object', properties: { diff: { type: 'string', description: 'Unified diff text.' } }, required: ['diff'] } },
+  { name: 'get_llm_enrichment', description: 'Per-node summary via a local LLM. Opt-in only; returns disabled stub until `ai.llm` is wired in carto.config.json.', inputSchema: { type: 'object', properties: { file: { type: 'string' } }, required: ['file'] } },
+
+  // ─── Predictive — 7 tools ───────────────────────────────────────
+  { name: 'get_predictive_risk', description: 'Predictive risk score per file: P(this file causes the next incident). Combines blast radius, churn, cross-domain coupling, intervention history, test presence into a 0-1 score.', inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Optional single-file filter; otherwise scores all files.' } }, required: [] } },
+  { name: 'get_microservice_cut_points', description: 'Natural microservice cut-points: domains with high cohesion (intra-edges) AND low external coupling. Use to plan extraction-style refactors.', inputSchema: { type: 'object', properties: { threshold: { type: 'number', description: 'Cohesion threshold 0-1 (default 0.7).' } }, required: [] } },
+  { name: 'validate_change', description: 'Pre-write governance: given a file + proposed full content, synthesizes a diff vs disk and runs validate_diff. Use in IDE onWillSaveTextDocument hooks.', inputSchema: { type: 'object', properties: { file: { type: 'string' }, content: { type: 'string' } }, required: ['file', 'content'] } },
+  { name: 'get_file_ownership', description: 'Implicit ownership detection via `git blame`. Returns top author + per-author line counts. Fails soft if git is unavailable.', inputSchema: { type: 'object', properties: { file: { type: 'string' } }, required: ['file'] } },
+  { name: 'get_cross_team_coupling', description: 'Cross-domain edges where the source-file owner differs from the target-file owner — surface for coordination warnings.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_drift_digest', description: 'Weekly architectural digest: domain drift, hotspots, events, predicted-risk top 10. CLI-renderable markdown.', inputSchema: { type: 'object', properties: { time_range: { type: 'string', description: 'Window like "7d", "30d" (default "7d").' } }, required: [] } },
+  { name: 'get_ai_cost_attribution', description: 'Per-AI-client decision counts + violation counts. Use to attribute cross-domain coupling cost to individual AI sessions / developers.', inputSchema: { type: 'object', properties: { hours: { type: 'number', description: 'Lookback hours (default 168 = 7d).' } }, required: [] } },
+
+  // ─── Cross-repo / Org-wide — 7 tools ────────────────────────────
+  { name: 'get_org_architecture', description: 'Org-wide summary: registered repos + total cross-repo edge count + edges by kind. Requires `carto org init` + `carto org sync`.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_service_dependency_graph', description: 'Aggregated cross-repo graph: each repo is a node, edges grouped by (from_repo, to_repo, edge_kind).', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_cross_repo_blast_radius', description: 'Direct downstream consumers of a producer repo. "If I break repo X, who notices?"', inputSchema: { type: 'object', properties: { repo: { type: 'string', description: 'Producer repo name' } }, required: ['repo'] } },
+  { name: 'find_consumers_of_api', description: 'Across all org repos, find every file importing a given npm/pypi/go/maven target.', inputSchema: { type: 'object', properties: { target: { type: 'string', description: 'Target package or module name' } }, required: ['target'] } },
+  { name: 'get_org_domain_mapping', description: 'Per-repo domain list across all org repos (reads each repo\'s carto.db if registered).', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_service_boundary_violations', description: 'Cross-repo edges that import private/internal surface (heuristic: target path contains internal / private / _lib).', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_microservices_migration_cut_points', description: 'Suggested microservices extraction order. Repos with high stability (more incoming than outgoing edges) extract first.', inputSchema: { type: 'object', properties: {}, required: [] } },
 ];
 
 // ─── Server setup ─────────────────────────────────────────────────────────────
@@ -963,6 +2201,74 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     if (rows.length > 100) lines.push(`\n_...and ${rows.length - 100} more._`);
     return text(lines.join('\n'));
+  }
+
+  // ─── Temporal layer tool dispatch ─────────────────────────────────
+  // All temporal tools share the same shape: open the temporal store
+  // readonly, run the query, format markdown. Missing temporal DB is
+  // graceful — we tell the user to run `carto temporal init`.
+  const TEMPORAL_TOOLS = new Set([
+    'get_architectural_drift', 'get_domain_evolution', 'get_hotspot_files',
+    'get_complexity_trend', 'get_churn_vs_blast_radius', 'get_arch_events',
+    'get_domain_health', 'get_temporal_context',
+  ]);
+  if (TEMPORAL_TOOLS.has(name)) {
+    return runTemporalTool(name, args || {});
+  }
+
+  // ─── Brain tool dispatch (semantic + procedural + working) ───────
+  const BRAIN_TOOLS = new Set([
+    'get_invariants', 'get_canonical_pattern', 'get_conventions',
+    'get_action_patterns', 'scaffold_for_intent', 'get_working_memory',
+    'get_pending_decisions', 'get_active_drift', 'get_active_suggestions',
+    'dismiss_suggestion',
+  ]);
+  if (BRAIN_TOOLS.has(name)) {
+    return runBrainTool(name, args || {});
+  }
+
+  // ─── AI-native primitives ────────────────────────────────────────
+  const AI_TOOLS = new Set([
+    'get_minimal_context_for_intent', 'get_progressive_disclosure_tree',
+    'get_token_budget_report', 'get_decision_log', 'get_evolution_delta',
+    'get_change_velocity', 'get_test_coverage_map', 'get_safety_checklist',
+    'get_data_flow', 'get_interface_contract', 'explain_change_in_natural_language',
+    'get_stale_docs', 'get_dependency_surface', 'get_upgrade_risk',
+  ]);
+  if (AI_TOOLS.has(name)) {
+    return runAiTool(name, args || {});
+  }
+
+  // ─── Adjacent positioning ────────────────────────────────────────
+  const ADJ_TOOLS = new Set([
+    'get_cross_language_call_graph', 'get_iac_resources',
+    'ingest_otlp_traces', 'get_risk_weighted_blast_radius',
+    'get_dead_code_with_confidence', 'get_hot_in_prod_no_tests',
+    'get_semantic_diff', 'get_llm_enrichment',
+  ]);
+  if (ADJ_TOOLS.has(name)) {
+    return runAdjacentTool(name, args || {});
+  }
+
+  // ─── Predictive ──────────────────────────────────────────────────
+  const PRED_TOOLS = new Set([
+    'get_predictive_risk', 'get_microservice_cut_points', 'validate_change',
+    'get_file_ownership', 'get_cross_team_coupling', 'get_drift_digest',
+    'get_ai_cost_attribution',
+  ]);
+  if (PRED_TOOLS.has(name)) {
+    return runPredictiveTool(name, args || {});
+  }
+
+  // ─── Cross-repo / Org-wide ───────────────────────────────────────
+  const ORG_TOOLS = new Set([
+    'get_org_architecture', 'get_service_dependency_graph',
+    'get_cross_repo_blast_radius', 'find_consumers_of_api',
+    'get_org_domain_mapping', 'get_service_boundary_violations',
+    'get_microservices_migration_cut_points',
+  ]);
+  if (ORG_TOOLS.has(name)) {
+    return runOrgTool(name, args || {});
   }
 
   return text(`Unknown tool: ${name}`);
