@@ -28,7 +28,7 @@ const IGNORE_DIRS = new Set([
   'out', '.cache', 'generated', '__generated__',
   'storybook-static', 'public', 'static',
   'tmp-bench', 'vendor', 'third_party', '.yarn',
-  // Test directories — ported from V1 detector/files.js
+  // Test directories.
   'test', 'tests', '__tests__', 'e2e', 'playwright',
   'cypress', 'fixtures', 'mocks', '__mocks__'
 ]);
@@ -37,14 +37,14 @@ const CODE_EXTS = new Set([
   '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
   '.py', '.r', '.R', '.prisma', '.html', '.go', '.rb',
   '.rs', '.java', '.cs', '.cpp', '.cc', '.cxx', '.h', '.hpp',
-  '.swift', '.kt'
+  '.swift', '.kt', '.kts', '.php', '.dart'
 ]);
 
 const JS_LIKE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs']);
 
 /**
  * isTestFile(relPath) → true if the file is a test or stories file.
- * Ported from V1 detector/files.js exclusion patterns.
+ * Filename-pattern exclusions:
  *   R:      test_*, test-*, *_test.r (case-insensitive)
  *   Python: test_*.py, *_test.py
  *   JS/TS:  *.test.*, *.spec.*, *.stories.*
@@ -75,9 +75,11 @@ function isTestFile(relPath) {
  * Recursively walks the project tree. No file cap. Respects ignore dirs + .cartoignore.
  * Returns array of relative paths.
  */
-function discoverFiles(projectRoot) {
+function discoverFiles(projectRoot, opts) {
   const isIgnored = parseCartoIgnore(projectRoot);
   const results = [];
+  const onProgress = (typeof opts === 'object' && opts && typeof opts.onProgress === 'function') ? opts.onProgress : null;
+  const reportEvery = 500;
 
   const walk = (dir) => {
     let entries;
@@ -93,11 +95,13 @@ function discoverFiles(projectRoot) {
         const ext = path.extname(entry.name).toLowerCase();
         if (CODE_EXTS.has(ext) && !isIgnored(rel) && !isTestFile(rel)) {
           results.push(rel);
+          if (onProgress && results.length % reportEvery === 0) onProgress(results.length);
         }
       }
     }
   };
   walk(projectRoot);
+  if (onProgress) onProgress(results.length);
   return results;
 }
 
@@ -105,9 +109,9 @@ function discoverFiles(projectRoot) {
  * extractFile(relPath, projectRoot)
  * Extracts all data from a single file. Returns extraction result or null.
  *
- * Instead of just `console.warn`-ing on extractor failures, the
- * returned result includes an `errors` array of `{ phase, message }` so
- * the caller can persist them in `extraction_errors`. Phases:
+ * Instead of just `console.warn`-ing on extractor failures, the returned
+ * result includes an `errors` array of `{ phase, message }` so the caller
+ * can persist them in `extraction_errors`. Values of `phase`:
  *   - 'extract'  → plugin.extract threw (parse error, plugin bug, ...)
  *   - 'imports'  → extractImports threw
  * On a plugin.extract throw the file is still indexed with empty
@@ -167,7 +171,7 @@ function extractFile(relPath, projectRoot) {
 /**
  * runSync(config)
  *
- * The V2 sync pipeline:
+ * The sync pipeline:
  * 1. Open/create SQLite DB
  * 2. Migrate from JSON blobs if needed
  * 3. Discover all files (no cap)
@@ -493,6 +497,42 @@ async function runSync(config) {
     } catch (err) {
       process.stderr.write(
         `[CARTO] ANCI publish failed (anci.{yaml,bin} not written): ` +
+        `${err && err.message ? err.message : err}\n`
+      );
+    }
+  }
+
+  // Capture a temporal snapshot. Best-effort: failure never breaks sync.
+  // Skipped when the bitmap build failed.
+  // Captures one snapshot per `carto sync`, refreshing file_domains_at +
+  // file_churn.blast_radius + XOR delta + arch_events. The temporal DB is
+  // separate from carto.db so growth doesn't bloat the hot index.
+  if (sidecarForAnci && config.temporal !== false) {
+    try {
+      const { captureSnapshot } = require('../temporal/snapshot');
+      captureSnapshot({
+        projectRoot,
+        sidecar: sidecarForAnci,
+        store,
+        source: 'sync',
+      });
+    } catch (err) {
+      process.stderr.write(
+        `[CARTO] temporal snapshot failed: ` +
+        `${err && err.message ? err.message : err}\n`
+      );
+    }
+  }
+
+  // Refresh the FTS5 lexical index so read-only MCP queries can search
+  // file paths + symbol names. Best-effort: failure logs to stderr.
+  if (toProcess.length > 0) {
+    try {
+      const { refreshFts } = require('../ai/retrieval/lexical');
+      refreshFts(store);
+    } catch (err) {
+      process.stderr.write(
+        `[CARTO] FTS refresh failed (AI tools may return [] for lexical): ` +
         `${err && err.message ? err.message : err}\n`
       );
     }
