@@ -8,8 +8,8 @@ The bitmap-backed graph engine is designed to handle 100K-1M files cleanly. This
 
 For each run we capture:
 
-- **Init time** — full `runSyncV2` from a wiped `.carto/` directory.
-- **Sync time** — second `runSyncV2` immediately after, no files changed (mtime+hash skip path).
+- **Init time** — full `runSync` from a wiped `.carto/` directory.
+- **Sync time** — second `runSync` immediately after, no files changed (mtime+hash skip path).
 - **DB size** — `.carto/carto.db` bytes on disk.
 - **bitmap.bin size** — the sidecar bytes on disk.
 - **Sidecar (RAM)** — sum of all bitmap word-array byte lengths held in memory.

@@ -4,8 +4,8 @@
  * Scale-test runner.
  *
  * Drives a synth (or any pre-indexed) repo through:
- *   1. Cold `carto init` (full `runSyncV2`)
- *   2. Warm `carto sync` (no-op `runSyncV2`)
+ *   1. Cold `carto init` (full `runSync`)
+ *   2. Warm `carto sync` (no-op `runSync`)
  *   3. Bitmap sidecar load (cold from disk via `ensureBitmapFresh`)
  *   4. 1000-call latency for each of the 5 production bitmap tools
  *      plus `simulate_change_impact`.
@@ -24,7 +24,7 @@
 const path = require('path');
 const fs = require('fs');
 
-const { runSyncV2 } = require('../../src/store/sync-v2');
+const { runSync } = require('../../src/store/sync');
 const { SQLiteStore } = require('../../src/store/sqlite-store');
 const { ensureBitmapFresh, _resetForTests: resetBitmapCache } = require('../../src/bitmap/index');
 const bitmapTools = require('../../src/bitmap/tools');
@@ -86,7 +86,7 @@ async function runScale(projectRoot, opts = {}) {
     try { fs.rmSync(cartoDir, { recursive: true, force: true }); } catch {}
 
     const t0 = Date.now();
-    const initResult = await runSyncV2({ projectRoot, output: null });
+    const initResult = await runSync({ projectRoot, output: null });
     initMs = Date.now() - t0;
     totalFiles = initResult.totalFiles;
     extractionErrorCount = initResult.extractionErrorCount;
@@ -94,7 +94,7 @@ async function runScale(projectRoot, opts = {}) {
 
     // Step 2: warm sync (no files changed)
     const t1 = Date.now();
-    await runSyncV2({ projectRoot, output: null });
+    await runSync({ projectRoot, output: null });
     syncMs = Date.now() - t1;
   } else {
     // External-clone case: read totalFiles back from meta.

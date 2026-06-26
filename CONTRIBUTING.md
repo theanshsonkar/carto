@@ -37,8 +37,8 @@ Framework-specific route and model extraction lives inside the language plugins.
 - `src/agents/merger.js` — merger logic. One bad merge = developer loses manual notes.
 - `src/agents/leiden.js` — Leiden+CPM graph clustering. Wrong clusters = wrong domain context.
 - `src/store/sqlite-store.js` — SQLite persistence layer.
-- `src/mcp/server-v2.js` — MCP server tools. Breaking changes affect Kiro/Cursor/Claude.
-- `src/store/sync-v2.js` — full sync pipeline.
+- `src/mcp/server.js` — MCP server tools. Breaking changes affect Kiro/Cursor/Claude.
+- `src/store/sync.js` — full sync pipeline.
 - `src/cli/watch.js` — incremental update pipeline.
 - `src/extractors/imports.js` — import resolution for all languages.
 
@@ -124,7 +124,7 @@ If your language has resolvable local imports (not just package names), add a ca
 
 Then implement `extractYourLanguageImports()` at the bottom of the file. It should return an array of relative file paths (from project root) that actually exist on disk.
 
-### Step 5: Add to `CODE_EXTS` in `src/store/sync-v2.js`
+### Step 5: Add to `CODE_EXTS` in `src/store/sync.js`
 
 ```js
 const CODE_EXTS = new Set([
@@ -133,7 +133,7 @@ const CODE_EXTS = new Set([
 ]);
 ```
 
-### Step 6: Add to `detectLanguage()` in `src/store/sync-v2.js`
+### Step 6: Add to `detectLanguage()` in `src/store/sync.js`
 
 ```js
 '.ext': 'yourlanguage',
@@ -192,7 +192,7 @@ For non-SaaS repos, users can define custom domains in `carto.config.json`:
 }
 ```
 
-The keyword seeds in `src/store/sync-v2.js` (the `keywordSeeds` object) can be extended for new domain types.
+The keyword seeds in `src/store/sync.js` (the `keywordSeeds` object) can be extended for new domain types.
 
 ---
 
@@ -255,7 +255,7 @@ npm run test:bench-ci        # self-bench (matches what bench.yml runs)
 - [ ] Plugin uses tree-sitter for imports/symbols (not Babel or regex for the hot path)
 - [ ] Plugin returns all fields including `_tsImports` and `_tsSymbols`
 - [ ] Import resolution added to `src/extractors/imports.js` if language has local imports
-- [ ] Extension added to `CODE_EXTS` and `detectLanguage()` in `sync-v2.js`
+- [ ] Extension added to `CODE_EXTS` and `detectLanguage()` in `sync.js`
 - [ ] No changes to merger logic (unless explicitly fixing a merger bug)
 - [ ] No network calls added
 - [ ] `npm test` passes (62/62)

@@ -8,7 +8,7 @@ const fs = require('fs');
  * This is intentionally a *small* set tuned for the "Project Structure (auto)"
  * block in AGENTS.md. It is NOT the same as the recursive file-discovery
  * ignore lists (e.g. JS_IGNORE / PYTHON_IGNORE in src/detector/files.js or
- * IGNORE_DIRS in src/store/sync-v2.js) — those filter what gets indexed.
+ * IGNORE_DIRS in src/store/sync.js) — those filter what gets indexed.
  *
  * Top-level structure should still surface things like `dist/`, `build/`,
  * `coverage/` (so users see what their project actually contains), but it

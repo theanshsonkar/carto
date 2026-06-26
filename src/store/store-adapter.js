@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { SQLiteStore } = require('./sqlite-store');
-const { runSyncV2 } = require('./sync-v2');
+const { runSync } = require('./sync');
 
 /**
  * StoreAdapter — V1-compatible API wrapping SQLiteStore.
@@ -18,7 +18,7 @@ class StoreAdapter {
 
   /**
    * index(projectRoot, opts?)
-   * Opens the SQLite DB; runs runSyncV2 if DB is missing.
+   * Opens the SQLite DB; runs runSync if DB is missing.
    * opts.force — re-extract all files
    * opts.writeOutputs — if false, skip AGENTS.md + context file generation (default: false)
    */
@@ -28,7 +28,7 @@ class StoreAdapter {
     const dbExists = fs.existsSync(dbPath);
 
     if (!dbExists || opts.force) {
-      await runSyncV2({
+      await runSync({
         projectRoot,
         output: opts.writeOutputs ? path.resolve(projectRoot, 'AGENTS.md') : null,
       });

@@ -17,8 +17,8 @@
  *
  * What happens:
  *   1. Wipe `<repo>/.carto`
- *   2. `runSyncV2` cold (full index)
- *   3. `runSyncV2` again (warm sync)
+ *   2. `runSync` cold (full index)
+ *   3. `runSync` again (warm sync)
  *   4. Capture DB + bitmap.bin sizes, peak RSS, extraction-error count
  *   5. Run 1000-call latency for the 5 production bitmap tools +
  *      `simulate_change_impact` against the indexed graph

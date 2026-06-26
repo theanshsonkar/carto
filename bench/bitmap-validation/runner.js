@@ -73,7 +73,7 @@ function run(repoPath) {
       if (!file) return [];
       // SQLite has no native single-call equivalent to the bitmap Jaccard
       // similarity. Use getNeighbors(2) as a comparable-cost graph
-      // traversal (server-v2.js's legacy 3-strategy SQLite path runs
+      // traversal (server.js's legacy 3-strategy SQLite path runs
       // multiple separate queries, so picking any one of them would
       // understate the SQLite cost).
       return store.getNeighbors(p, 2);

@@ -4,7 +4,7 @@ Drives Carto end-to-end at sizes far beyond the corpus repos in `~/carto-test-re
 
 ## Synth
 
-Generates a deterministic-for-seed TypeScript repo with a real-shaped import graph (Pareto fan-out, hotspot-biased targets, 5 domain-like dirs) at any size, then runs `runSyncV2` cold + warm and benchmarks the bitmap query path.
+Generates a deterministic-for-seed TypeScript repo with a real-shaped import graph (Pareto fan-out, hotspot-biased targets, 5 domain-like dirs) at any size, then runs `runSync` cold + warm and benchmarks the bitmap query path.
 
 ```bash
 # Quick smoke (1K files, ~5s)
@@ -49,8 +49,8 @@ Output shape matches synth — both kinds end up in the same `REPORT.md` table.
 
 ## What gets measured
 
-- **Init time** — full `runSyncV2` from a wiped `.carto/`
-- **Sync time** — second `runSyncV2` immediately after, no files changed
+- **Init time** — full `runSync` from a wiped `.carto/`
+- **Sync time** — second `runSync` immediately after, no files changed
 - **DB size** — `.carto/carto.db` bytes on disk
 - **bitmap.bin size** — the sidecar bytes
 - **Sidecar (RAM)** — sum of all bitmap word-array byte lengths

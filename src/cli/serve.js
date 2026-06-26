@@ -18,7 +18,7 @@ function run(projectRoot) {
   }
 
   console.error('[CARTO] MCP server starting...');
-  require('../mcp/server-v2');
+  require('../mcp/server');
 }
 
 module.exports = { run };

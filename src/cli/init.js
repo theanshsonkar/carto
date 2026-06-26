@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { detectFramework } = require('../detector/framework');
 const { parseCartoIgnore } = require('../security/ignore');
-const { runSyncV2, discoverFiles: discoverFilesV2 } = require('../store/sync-v2');
+const { runSync, discoverFiles: discoverFilesV2 } = require('../store/sync');
 const { checkForUpdate } = require('./update-check');
 
 async function run(projectRoot) {
@@ -54,7 +54,7 @@ async function run(projectRoot) {
   installGitHooks(projectRoot);
 
   // Run first sync — V2 SQLite-backed indexer.
-  await runSyncV2({
+  await runSync({
     projectRoot,
     output: path.resolve(projectRoot, config.output || 'AGENTS.md')
   });

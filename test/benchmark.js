@@ -84,7 +84,7 @@ async function benchmarkRepo(repoName) {
   // Ensure clean state for first run
   deleteCarto(projectRoot);
 
-  const { runSyncV2, discoverFiles } = require('../src/store/sync-v2');
+  const { runSync, discoverFiles } = require('../src/store/sync');
 
   // ── File discovery ──────────────────────────────────────────────────────────
   const discStart = process.hrtime();
@@ -98,7 +98,7 @@ async function benchmarkRepo(repoName) {
 
   let run1Result;
   try {
-    run1Result = await runSyncV2({
+    run1Result = await runSync({
       projectRoot,
       output: path.join(projectRoot, 'AGENTS.md')
     });
@@ -120,7 +120,7 @@ async function benchmarkRepo(repoName) {
   const run2Start = process.hrtime();
   let run2Result;
   try {
-    run2Result = await runSyncV2({
+    run2Result = await runSync({
       projectRoot,
       output: path.join(projectRoot, 'AGENTS.md')
     });
@@ -192,7 +192,7 @@ async function benchmarkRepo(repoName) {
 
     const incrStart = process.hrtime();
     try {
-      await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+      await runSync({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
     } catch {}
     const incrMs = hrMs(incrStart);
     console.log(`\n  Incremental (1 file touched): ${fmtMs(incrMs)}`);

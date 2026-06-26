@@ -14,7 +14,7 @@
  *     GitHub Actions runner, so every repo gets skipped → empty output →
  *     regression-check has nothing to compare → false-pass.
  *   - bench-ci.js is hermetic: copies the working tree to a tmpdir,
- *     runs runSyncV2 against it twice (cold + warm cache), measures MCP
+ *     runs runSync against it twice (cold + warm cache), measures MCP
  *     query latencies, prints stable metrics, cleans up. Runs in <5s
  *     on a typical runner.
  *
@@ -64,12 +64,12 @@ async function main() {
   console.log(`copy_tree_ms: ${hrMs(copyStart)} ms`);
 
   // Lazy-require so import errors during fs.cpSync don't poison the run.
-  const { runSyncV2 } = require('../src/store/sync-v2');
+  const { runSync } = require('../src/store/sync');
   const { SQLiteStore } = require('../src/store/sqlite-store');
 
   // ── Cold run ──────────────────────────────────────────────────────────
   let t = process.hrtime();
-  const r1 = await runSyncV2({
+  const r1 = await runSync({
     projectRoot: target,
     output: path.join(target, 'AGENTS.md'),
   });
@@ -78,7 +78,7 @@ async function main() {
 
   // ── Warm run (everything cached) ──────────────────────────────────────
   t = process.hrtime();
-  await runSyncV2({
+  await runSync({
     projectRoot: target,
     output: path.join(target, 'AGENTS.md'),
   });

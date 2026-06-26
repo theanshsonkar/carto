@@ -5,7 +5,7 @@
  * methods plus one new tool that's only feasible with bitmap aggregation.
  *
  * Each function returns the same shape as the corresponding
- * `SQLiteStore` method so the MCP layer's formatting code (`server-v2.js`)
+ * `SQLiteStore` method so the MCP layer's formatting code (`server.js`)
  * is data-source-agnostic — bitmap and SQLite paths render identically.
  *
  * Performance contract (measured against the SQLite query path):
@@ -191,7 +191,7 @@ function highImpactFiles(sidecar, limit = 10) {
  * imports). Both answer "what does this file look like elsewhere?", but
  * Jaccard is the standard graph-similarity metric and runs in
  * microseconds where the 3-strategy SQL took milliseconds. The output
- * is structured so server-v2 can format a simple, focused result block.
+ * is structured so server can format a simple, focused result block.
  *
  * Returns `[]` when the target has no resolved imports — honest signal
  * that there's nothing structural to compare against.

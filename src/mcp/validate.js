@@ -20,7 +20,7 @@
  * microseconds; the budget is for diff parsing + result aggregation.
  *
  * Persistence: `recordSideEffects` is a separate function so
- * the read-only MCP `getStore()` path stays read-only — server-v2 opens
+ * the read-only MCP `getStore()` path stays read-only — server opens
  * a brief writer connection, calls validateDiff first (read-only), then
  * recordSideEffects, then closes. Tests can pass a writer directly as
  * `opts.writer` to inspect the rows produced.

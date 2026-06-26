@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { runSyncV2 } = require('../store/sync-v2');
+const { runSync } = require('../store/sync');
 const { checkForUpdate } = require('./update-check');
 
 async function run(projectRoot) {
@@ -20,7 +20,7 @@ async function run(projectRoot) {
     process.exit(1);
   }
 
-  await runSyncV2({
+  await runSync({
     projectRoot,
     output: path.resolve(projectRoot, config.output || 'AGENTS.md')
   });

@@ -165,7 +165,7 @@ function extractFile(relPath, projectRoot) {
 }
 
 /**
- * runSyncV2(config)
+ * runSync(config)
  *
  * The V2 sync pipeline:
  * 1. Open/create SQLite DB
@@ -177,7 +177,7 @@ function extractFile(relPath, projectRoot) {
  * 7. Compute reverse deps + domains
  * 8. Generate outputs (AGENTS.md, context files, map.json compat)
  */
-async function runSyncV2(config) {
+async function runSync(config) {
   const startTime = Date.now();
   const projectRoot = config.projectRoot || process.cwd();
 
@@ -851,10 +851,10 @@ function syncFiles(projectRoot, paths, opts = {}) {
         continue;
       }
 
-      // Skip large files (extractor cap matches runSyncV2 / applyIncrementalV2)
+      // Skip large files (extractor cap matches runSync / applyIncrementalV2)
       if (size > 1024 * 1024) { skipped++; continue; }
 
-      // Extract — single source of truth, same path runSyncV2 uses
+      // Extract — single source of truth, same path runSync uses
       const result = extractFile(relPath, projectRoot);
       if (!result) { skipped++; continue; }
 
@@ -993,4 +993,4 @@ function updateReverseDepsPartial(store, fileId) {
   for (const fid of affectedIds) updateCentrality.run(fid);
 }
 
-module.exports = { runSyncV2, syncFiles, updateReverseDepsPartial, discoverFiles, extractFile, buildFileDataFromStore, generateOutputs, buildRoutesByFile, detectLanguage, selectClusteringStrategy };
+module.exports = { runSync, syncFiles, updateReverseDepsPartial, discoverFiles, extractFile, buildFileDataFromStore, generateOutputs, buildRoutesByFile, detectLanguage, selectClusteringStrategy };

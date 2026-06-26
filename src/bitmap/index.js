@@ -101,7 +101,7 @@ function ensureBitmapFresh(cartoDir, store) {
 
 /**
  * invalidate(cartoDir?) — drop in-memory cache and (optionally) the
- * on-disk file. Called by `runSyncV2` (full sync rebuilds, then we
+ * on-disk file. Called by `runSync` (full sync rebuilds, then we
  * re-prime the cache on next ensureBitmapFresh) and `syncFiles`
  * (partial sync — disk file is now stale).
  */

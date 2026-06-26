@@ -9,7 +9,7 @@ const prismaPlugin = require('../src/extractors/languages/prisma');
 const { mergeIntoAgentsMd, START_MARKER, END_MARKER } = require('../src/agents/merger');
 const { extractImports } = require('../src/extractors/imports');
 const rPlugin = require('../src/extractors/languages/r');
-const { discoverFiles } = require('../src/store/sync-v2');
+const { discoverFiles } = require('../src/store/sync');
 
 // ── Helpers ─────────────────────────────────────────────────────────
 const results = { passed: 0, failed: 0, failures: [] };
@@ -632,7 +632,7 @@ async function runAsyncSuite() {
   fs.rmSync(tmp, { recursive: true, force: true });
 
   // ── V2 sync integration test ─────────────────────────────────────
-  const { runSyncV2 } = require('../src/store/sync-v2');
+  const { runSync } = require('../src/store/sync');
 
   await asyncTest('Project Structure', 'V2 sync writes populated structure block to AGENTS.md', async () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-v2-sync-'));
@@ -653,7 +653,7 @@ async function runAsyncSuite() {
 
     const agentsPath = path.join(projectRoot, 'AGENTS.md');
     try {
-      await runSyncV2({ projectRoot, output: agentsPath });
+      await runSync({ projectRoot, output: agentsPath });
     } catch (err) {
       fs.rmSync(projectRoot, { recursive: true, force: true });
       throw err;
@@ -679,7 +679,7 @@ async function runAsyncSuite() {
   });
 
   // ── Init flow integration tests ──────────────────────────────────
-  // Regression target: `carto init` must use V2 indexer (runSyncV2),
+  // Regression target: `carto init` must use V2 indexer (runSync),
   // not the legacy V1 runFullSync that produced an empty 23ms no-op.
   const initCli = require('../src/cli/init');
   const { SQLiteStore: InitTestStore } = require('../src/store/sqlite-store');
@@ -856,8 +856,8 @@ async function runAsyncSuite() {
       fs.writeFileSync(path.join(projectRoot, 'aaa.js'),
         "const zzz = require('./zzz');\nmodule.exports = zzz;\n");
 
-      const { runSyncV2 } = require('../src/store/sync-v2');
-      await runSyncV2({ projectRoot, output: null });
+      const { runSync } = require('../src/store/sync');
+      await runSync({ projectRoot, output: null });
 
       const { SQLiteStore } = require('../src/store/sqlite-store');
       const store = new SQLiteStore(projectRoot);
@@ -1242,11 +1242,11 @@ async function runAsyncSuite() {
   // yet, but the MCP server gets a query against one of those files.
   // The lazy mtime+size check at MCP query time detects staleness and
   // re-parses the file inline before answering. The workhorse is
-  // syncFiles() in sync-v2.js — these tests exercise its contract.
-  // The lazyReparseFile() handler in server-v2.js is a thin wrapper
+  // syncFiles() in sync.js — these tests exercise its contract.
+  // The lazyReparseFile() handler in server.js is a thin wrapper
   // that delegates to syncFiles() (best-effort, error-tolerant).
 
-  const { syncFiles } = require('../src/store/sync-v2');
+  const { syncFiles } = require('../src/store/sync');
 
   await asyncTest('Lazy MCP re-parse', 'syncFiles on unchanged files reparses 0 (mtime+size match)', async () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-lazy-clean-'));
@@ -1381,7 +1381,7 @@ async function runAsyncSuite() {
 
   // ── Store adapter (ACP V2) ──────────────────────────────────────
   const { StoreAdapter } = require('../src/store/store-adapter');
-  const { runSyncV2: runSyncV2ForAdapter } = require('../src/store/sync-v2');
+  const { runSync: runSyncForAdapter } = require('../src/store/sync');
 
   // Helper: build a minimal Express fixture for adapter tests
   function buildAdapterFixture() {
@@ -1467,11 +1467,11 @@ async function runAsyncSuite() {
     }
   });
 
-  // Test 4: runSyncV2 honors output:null
-  await asyncTest('Store adapter (ACP V2)', 'runSyncV2 with output:null creates DB but no AGENTS.md or context files', async () => {
+  // Test 4: runSync honors output:null
+  await asyncTest('Store adapter (ACP V2)', 'runSync with output:null creates DB but no AGENTS.md or context files', async () => {
     const fixture = buildAdapterFixture();
     try {
-      await runSyncV2ForAdapter({ projectRoot: fixture, output: null });
+      await runSyncForAdapter({ projectRoot: fixture, output: null });
 
       assert.ok(fs.existsSync(path.join(fixture, '.carto', 'carto.db')),
         'carto.db must exist');
@@ -1489,7 +1489,7 @@ async function runAsyncSuite() {
     // Separate fixture: verify output with a real path DOES write AGENTS.md
     const fixture2 = buildAdapterFixture();
     try {
-      await runSyncV2ForAdapter({ projectRoot: fixture2, output: path.join(fixture2, 'AGENTS.md') });
+      await runSyncForAdapter({ projectRoot: fixture2, output: path.join(fixture2, 'AGENTS.md') });
       assert.ok(fs.existsSync(path.join(fixture2, 'AGENTS.md')),
         'AGENTS.md must exist when output is a real path');
     } finally {
@@ -1629,7 +1629,7 @@ async function runAsyncSuite() {
   // ═════════════════════════════════════════════════════════════════
 
   await asyncTest('Secret leakage', 'fake secrets in fixture files do not appear in AGENTS.md or context files', async () => {
-    const { runSyncV2: runSync } = require('../src/store/sync-v2');
+    const { runSync: runSync } = require('../src/store/sync');
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-secrets-'));
 
     // Marker tokens that MUST NOT leak. Using clearly-fake but realistic
@@ -1834,11 +1834,11 @@ async function runAsyncSuite() {
   //
   // The error-recording infrastructure runs end-to-end: extractFile
   // captures plugin.extract / extractImports throws into a per-file
-  // `errors` array, storeExtraction persists them, runSyncV2 sets
+  // `errors` array, storeExtraction persists them, runSync sets
   // the `extraction_error_count` meta key, and the helpers feed
   // `carto check`. These tests exercise that pipeline directly.
   // ═════════════════════════════════════════════════════════════════
-  const { runSyncV2: runSyncForErr } = require('../src/store/sync-v2');
+  const { runSync: runSyncForErr } = require('../src/store/sync');
   const { SQLiteStore: ExtErrStore } = require('../src/store/sqlite-store');
 
   await asyncTest('Extraction errors', 'clean fixture: 0 errors recorded after sync, meta key set to 0', async () => {
@@ -1988,7 +1988,7 @@ async function runAsyncSuite() {
     }
   });
 
-  await asyncTest('Extraction errors', 'deliberately corrupt source file: parse failure surfaces end-to-end through runSyncV2', async () => {
+  await asyncTest('Extraction errors', 'deliberately corrupt source file: parse failure surfaces end-to-end through runSync', async () => {
     // Acceptance: deliberately corrupt a fixture file, expect the error
     // recorded in extraction_errors table, sync still completes, and
     // `carto check` shows the error. This test covers the full pipeline:
@@ -2012,9 +2012,9 @@ async function runAsyncSuite() {
       const result = await runSyncForErr({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
 
       // Sync still completes — no crash, no thrown rejection.
-      assert.ok(result, 'runSyncV2 must resolve');
+      assert.ok(result, 'runSync must resolve');
       assert.strictEqual(result.extractionErrorCount, 1,
-        `runSyncV2 must report 1 extraction error; got ${result.extractionErrorCount}`);
+        `runSync must report 1 extraction error; got ${result.extractionErrorCount}`);
 
       // Verify against the persisted DB.
       const store = new ExtErrStore(projectRoot);
@@ -2049,7 +2049,7 @@ async function runAsyncSuite() {
     }
   });
 
-  // ── Scale-test driver: end-to-end smoke through runSyncV2 ──────────
+  // ── Scale-test driver: end-to-end smoke through runSync ──────────
   await asyncTest('Scale-test driver', 'runScale at N=200 produces a valid index + bitmap.bin and per-tool stats', async () => {
     const scaleGen2 = require('../bench/scale-test/generator');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-scale-smoke-'));
@@ -2068,7 +2068,7 @@ async function runAsyncSuite() {
       assert.ok(result.bitmapBytes > 0,
         `bitmap.bin should exist and be > 0 bytes, got ${result.bitmapBytes}`);
       assert.ok(fs.existsSync(path.join(dir, '.carto', 'bitmap.bin')),
-        'bitmap.bin file must exist after runSyncV2');
+        'bitmap.bin file must exist after runSync');
 
       const expectedTools = [
         'blastRadius', 'crossDomain', 'highImpactFiles',
@@ -2088,7 +2088,7 @@ async function runAsyncSuite() {
   });
 
   // ── ANCI sync hook + CLI + consumer integration ──────────────────
-  await asyncTest('ANCI roundtrip', 'runSyncV2 writes anci.{yaml,bin} after a successful sync', async () => {
+  await asyncTest('ANCI roundtrip', 'runSync writes anci.{yaml,bin} after a successful sync', async () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-anci-sync-'));
     try {
       fs.mkdirSync(path.join(projectRoot, 'src'));
@@ -2102,8 +2102,8 @@ async function runAsyncSuite() {
       );
       fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"anci-fixture"}');
 
-      const { runSyncV2 } = require('../src/store/sync-v2');
-      await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+      const { runSync } = require('../src/store/sync');
+      await runSync({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
 
       const yamlPath = path.join(projectRoot, '.carto', 'anci.yaml');
       const binPath = path.join(projectRoot, '.carto', 'anci.bin');
@@ -2139,8 +2139,8 @@ async function runAsyncSuite() {
       );
       fs.writeFileSync(path.join(projectRoot, 'src', 'b.ts'), "export const b = () => 1;\n");
       fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"x"}');
-      const { runSyncV2 } = require('../src/store/sync-v2');
-      await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+      const { runSync } = require('../src/store/sync');
+      await runSync({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
 
       // Delete the auto-emitted ANCI files so we can prove `publish` regenerates them.
       const yamlPath = path.join(projectRoot, '.carto', 'anci.yaml');
@@ -2193,8 +2193,8 @@ async function runAsyncSuite() {
       }
       fs.writeFileSync(path.join(projectRoot, 'package.json'), '{"name":"x"}');
 
-      const { runSyncV2 } = require('../src/store/sync-v2');
-      await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+      const { runSync } = require('../src/store/sync');
+      await runSync({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
 
       // SQLite reference (via StoreAdapter, same shape Carto uses internally).
       const { SQLiteStore: Store } = require('../src/store/sqlite-store');
@@ -2472,8 +2472,12 @@ test('Change plan', 'pathTokens: splits on /, -, _, .', () => {
 });
 
 test('Change plan', 'pathTokens: handles version suffix (v2) and mcp', () => {
-  const t = pathTokens('src/mcp/server-v2.js');
-  for (const expected of ['src', 'mcp', 'server', 'v2', 'js']) {
+  // Tokenizer must split on hyphens so versioned filenames produce
+  // a clean `v2` token. Uses a synthetic path because the real tree
+  // no longer contains `-v2` filenames (V1 deleted in 2.0.6, suffix
+  // dropped in 2.1.0).
+  const t = pathTokens('src/mcp/legacy-v2.js');
+  for (const expected of ['src', 'mcp', 'legacy', 'v2', 'js']) {
     assert.ok(t.includes(expected), `expected "${expected}" in ${JSON.stringify(t)}`);
   }
 });
@@ -2693,7 +2697,7 @@ test('Change plan', 'formatPlanMarkdown: fallback message for no-anchor case', (
 // Adaptive clustering — 3 tests
 // ═══════════════════════════════════════════════════════════════════
 
-const { selectClusteringStrategy } = require('../src/store/sync-v2');
+const { selectClusteringStrategy } = require('../src/store/sync');
 
 test('Adaptive clustering', 'Small repo (<100 files) uses keyword method regardless of edge count', () => {
   const s = selectClusteringStrategy(50, 200);
@@ -2777,7 +2781,7 @@ test('Domain stability', 'First sync stores snapshot and drift = 0.00', () => {
     // Simulate: no previous snapshot exists
     const fileAssignments = new Map([['a.js', 'AUTH'], ['b.js', 'CORE']]);
     // Call the internal helper via require
-    const { selectClusteringStrategy: _ignore, ...rest } = require('../src/store/sync-v2');
+    const { selectClusteringStrategy: _ignore, ...rest } = require('../src/store/sync');
     // Directly call computeDomainStability (it's not exported, but we can test indirectly)
     // Instead, test the meta values after a full scenario:
     // Set no previous_domain_snapshot, run the logic inline:
@@ -3864,7 +3868,7 @@ test('Bitmap engine', 'bitmap blastRadius matches SQLite shape and result set', 
     assert.ok(bitmapResult, 'bitmap blastRadius must return a result');
     assert.ok(bitmapResult.length >= 5, `expected at least 5 dependents, got ${bitmapResult.length}`);
     // Output shape: [{file, hop_distance}] — same as SQLiteStore.getBlastRadius.
-    // This is the contract that lets server-v2.js's formatter swap data
+    // This is the contract that lets server.js's formatter swap data
     // sources without code changes.
     for (const row of bitmapResult) {
       assert.ok(typeof row.file === 'string');
@@ -4750,7 +4754,7 @@ test('PR impact', 'collectImpact throws a clear error when no carto index exists
 //
 // Three tests at small scale. The synth generator is the substrate the
 // 100K/500K/1M validation runs sit on top of, so determinism + import
-// graph constraints + an end-to-end smoke through `runSyncV2` cover the
+// graph constraints + an end-to-end smoke through `runSync` cover the
 // invariants that matter without making CI slow.
 //
 // Big runs live behind `npm run bench:scale -- --size <N>` — they're

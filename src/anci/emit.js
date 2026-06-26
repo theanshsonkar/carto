@@ -4,7 +4,7 @@
  * ANCI v0.1 — emit orchestrator.
  *
  * Glues serialize.js + yaml.js together and writes both files atomically
- * to `.carto/anci.{yaml,bin}`. Used by the runSyncV2 hook (called after
+ * to `.carto/anci.{yaml,bin}`. Used by the runSync hook (called after
  * every full sync) and by `carto anci publish`.
  *
  * Atomic write: each file goes to `.tmp` first, then rename. Crash
@@ -37,7 +37,7 @@ const {
  *   generatedAt  — ISO-8601 string, defaults to `new Date().toISOString()`.
  *
  * Throws on filesystem failure (caller wraps in try/catch when
- * best-effort behavior is needed — see runSyncV2 hook).
+ * best-effort behavior is needed — see runSync hook).
  */
 function emitToCartoDir({ cartoDir, sidecar, store, generator, generatedAt }) {
   fs.mkdirSync(cartoDir, { recursive: true });

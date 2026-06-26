@@ -4,8 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const chokidar = require('chokidar');
 const { SQLiteStore } = require('../store/sqlite-store');
-const { discoverFiles, generateOutputs, buildRoutesByFile, detectLanguage } = require('../store/sync-v2');
-const { runSyncV2 } = require('../store/sync-v2');
+const { discoverFiles, generateOutputs, buildRoutesByFile, detectLanguage } = require('../store/sync');
+const { runSync } = require('../store/sync');
 const { detectChangedFiles, hashFile, hashContent } = require('../store/change-detector');
 const { loadLanguagePlugins, getPluginForFile } = require('../extractors/loader');
 const { extractImports } = require('../extractors/imports');
@@ -177,7 +177,7 @@ async function run(projectRoot) {
 
   // Initial full sync using V2
   console.log('[CARTO] Starting initial sync...');
-  await runSyncV2({
+  await runSync({
     projectRoot,
     output: path.join(projectRoot, 'AGENTS.md')
   });
@@ -222,7 +222,7 @@ async function run(projectRoot) {
       domainsDirty = false;
       console.log('[CARTO] Idle 5min — reclustering domains...');
       try {
-        await runSyncV2({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
+        await runSync({ projectRoot, output: path.join(projectRoot, 'AGENTS.md') });
         console.log('[CARTO] Domain recluster complete.');
       } catch (err) {
         console.error(`[CARTO] Recluster error: ${err.message}`);
