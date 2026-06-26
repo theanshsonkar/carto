@@ -1,7 +1,7 @@
 {
   "name": "carto-md",
   "version": "2.0.9",
-  "description": "Structural intelligence layer for AI coding tools. Indexes your codebase into SQLite — routes, models, import graph, blast radius, domains — and exposes 22 MCP tools for Kiro, Cursor, and Claude.",
+  "description": "Structural intelligence + episodic memory for AI coding tools. Indexes your codebase into SQLite — routes, models, import graph, blast radius, domains — and exposes ~75 MCP tools (validate_diff, get_change_plan, did_we_discuss_this, get_predictive_risk, …) for Cursor, Claude Code, Codex, Kiro, and any other MCP client.",
   "bin": {
     "carto": "src/cli/index.js"
   },
@@ -39,7 +39,7 @@
   "author": {
     "name": "Ansh Sonkar",
     "url": "https://github.com/theanshsonkar",
-    "twitter": "https://x.com/theanshsonkar"
+    "linkedin": "https://www.linkedin.com/in/theanshsonkar"
   },
   "license": "MIT",
   "keywords": [
@@ -59,8 +59,14 @@
     "sqlite",
     "blast-radius",
     "import-graph",
+    "episodic-memory",
+    "validate-diff",
     "kiro",
     "claude",
-    "zed"
+    "claude-code",
+    "codex",
+    "windsurf",
+    "zed",
+    "anci"
   ]
 }
