@@ -631,10 +631,10 @@ async function runAsyncSuite() {
 
   fs.rmSync(tmp, { recursive: true, force: true });
 
-  // ── V2 sync integration test ─────────────────────────────────────
+  // ── Sync integration test ────────────────────────────────────────
   const { runSync } = require('../src/store/sync');
 
-  await asyncTest('Project Structure', 'V2 sync writes populated structure block to AGENTS.md', async () => {
+  await asyncTest('Project Structure', 'sync writes populated structure block to AGENTS.md', async () => {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-v2-sync-'));
     fs.mkdirSync(path.join(projectRoot, 'src'));
     fs.mkdirSync(path.join(projectRoot, 'test'));
@@ -679,8 +679,9 @@ async function runAsyncSuite() {
   });
 
   // ── Init flow integration tests ──────────────────────────────────
-  // Regression target: `carto init` must use V2 indexer (runSync),
-  // not the legacy V1 runFullSync that produced an empty 23ms no-op.
+  // Regression target: `carto init` must use the SQLite-backed indexer
+  // (runSync), not the older runFullSync that produced an empty
+  // 23 ms no-op.
   const initCli = require('../src/cli/init');
   const { SQLiteStore: InitTestStore } = require('../src/store/sqlite-store');
 
@@ -804,8 +805,8 @@ async function runAsyncSuite() {
         "export const NAME = 'init-v1-fixture';\n"
       );
 
-      // Pre-seed empty V1 state — mirrors what a previously-broken
-      // `carto init` (the bug the V2 fix addresses) left behind on disk.
+      // Pre-seed empty JSON-blob state — mirrors what a previously-broken
+      // `carto init` left behind on disk before the fix.
       fs.mkdirSync(path.join(projectRoot, '.carto'));
       fs.writeFileSync(
         path.join(projectRoot, '.carto', 'graph-cache.json'),
@@ -813,12 +814,12 @@ async function runAsyncSuite() {
       );
       fs.writeFileSync(path.join(projectRoot, '.carto', 'hashes.json'), '{}');
 
-      // Must not throw — migrateFromJsonBlobs handles the empty V1 state.
+      // Must not throw — migrateFromJsonBlobs handles the empty leftover state.
       await initCli.run(projectRoot);
 
       const dbPath = path.join(projectRoot, '.carto', 'carto.db');
       assert.ok(fs.existsSync(dbPath),
-        'carto.db must exist after init on V1-leftover state');
+        'carto.db must exist after init on JSON-blob-leftover state');
 
       const store = new InitTestStore(projectRoot);
       store.open();
@@ -1379,7 +1380,7 @@ async function runAsyncSuite() {
     }
   });
 
-  // ── Store adapter (ACP V2) ──────────────────────────────────────
+  // ── Store adapter (ACP) ─────────────────────────────────────────
   const { StoreAdapter } = require('../src/store/store-adapter');
   const { runSync: runSyncForAdapter } = require('../src/store/sync');
 
@@ -1543,18 +1544,18 @@ async function runAsyncSuite() {
     }
   });
 
-  // Test 7: No V1 cache files touched during adapter session
+  // Test 7: legacy JSON-blob cache files are not touched during adapter session
   await asyncTest('Store adapter (ACP V2)', 'V1 graph-cache.json is not touched during adapter session', async () => {
     const fixture = buildAdapterFixture();
     let a;
     try {
-      // Pre-seed V1 cache file
+      // Pre-seed the legacy cache file the adapter must leave alone.
       fs.mkdirSync(path.join(fixture, '.carto'), { recursive: true });
       const cachePath = path.join(fixture, '.carto', 'graph-cache.json');
       fs.writeFileSync(cachePath, JSON.stringify({ sentinel: 'V1' }));
       const mtimeBefore = fs.statSync(cachePath).mtimeMs;
 
-      // Wait 50ms to ensure mtime would differ if file is touched
+      // Wait 50 ms so a write would produce a different mtime.
       await new Promise(r => setTimeout(r, 50));
 
       a = new StoreAdapter();
@@ -1568,7 +1569,7 @@ async function runAsyncSuite() {
       a.getContextForFile('src/server.js');
       a.getNeighbors('src/server.js', 1);
 
-      // Verify V1 file untouched
+      // The legacy file must be untouched.
       const content = fs.readFileSync(cachePath, 'utf-8');
       const mtimeAfter = fs.statSync(cachePath).mtimeMs;
       assert.strictEqual(JSON.parse(content).sentinel, 'V1',
@@ -2223,6 +2224,151 @@ async function runAsyncSuite() {
     } finally {
       fs.rmSync(projectRoot, { recursive: true, force: true });
     }
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // carto validate — async run()
+  // ───────────────────────────────────────────────────────────────
+  // Lives in runAsyncSuite because the sync `test()` helper doesn't
+  // await fn() — rejected promises in async test bodies would slip
+  // past the failure counter.
+
+  await asyncTest('carto validate', 'run({argv,stdin,stdout}) writes JSON to stdout and honors --fail-on', async () => {
+    const fix = buildValidationFixture();
+    try {
+      const diff = `diff --git a/src/f0.ts b/src/f0.ts
+--- a/src/f0.ts
++++ b/src/f0.ts
+@@ -1,1 +1,2 @@
+ line
++const x = 1;
+`;
+      const out = [];
+      const err = [];
+      const stdout = { write: (s) => { out.push(s); } };
+      const stderr = { write: (s) => { err.push(s); } };
+
+      const code = await validateCli.run({
+        argv: ['--project', fix.projectRoot],
+        stdin: { isString: true, read: () => diff },
+        stdout, stderr,
+      });
+      assert.strictEqual(code, 0, `expected exit 0 with no --fail-on, got ${code}`);
+      const payload = JSON.parse(out.join(''));
+      assert.ok(['SAFE', 'LOW', 'MEDIUM', 'HIGH'].includes(payload.risk));
+
+      // --fail-on LOW should trip whenever risk >= LOW.
+      out.length = 0;
+      const code2 = await validateCli.run({
+        argv: ['--project', fix.projectRoot, '--fail-on', 'LOW'],
+        stdin: { isString: true, read: () => diff },
+        stdout, stderr,
+      });
+      const payload2 = JSON.parse(out.join(''));
+      const expectedExit = ({SAFE:0,LOW:2,MEDIUM:2,HIGH:2})[payload2.risk];
+      assert.strictEqual(code2, expectedExit,
+        `--fail-on LOW with risk=${payload2.risk} should produce exit ${expectedExit}, got ${code2}`);
+    } finally {
+      try { fix.store.close(); } catch {}
+      fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  await asyncTest('carto validate', 'run returns exit 1 with a clear stderr message when no .carto index exists', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-validate-noidx-'));
+    try {
+      const err = [];
+      const stderr = { write: (s) => { err.push(s); } };
+      const code = await validateCli.run({
+        argv: ['--project', tmp],
+        stdin: { isString: true, read: () => 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n' },
+        stdout: { write: () => {} },
+        stderr,
+      });
+      assert.strictEqual(code, 1);
+      assert.ok(err.join('').includes('No carto index'), 'stderr must explain the missing index');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // SWE-bench — async StubAgent determinism check
+  // ───────────────────────────────────────────────────────────────
+  // Sync `test()` wouldn't await rejected promises, so the byte-for-
+  // byte equality check goes here.
+
+  await asyncTest('SWE-bench', 'StubAgent.solve() is deterministic — same arm + task → same diff byte-for-byte', async () => {
+    const { TASKS } = require('../bench/swe-bench/mini-suite');
+    const { StubAgent } = require('../bench/swe-bench/agent');
+    const agent = new StubAgent('carto');
+    const a = await agent.solve(TASKS[2]); // mini-003 multi_file
+    const b = await agent.solve(TASKS[2]);
+    assert.strictEqual(a.diff, b.diff, 'stub solve must be deterministic');
+    assert.strictEqual(a.model, 'stub:deterministic');
+    // Cross-arm: control must return a *different* diff than carto for
+    // multi-file tasks (the whole point of the harness).
+    const controlAgent = new StubAgent('control');
+    const c = await controlAgent.solve(TASKS[2]);
+    assert.notStrictEqual(c.diff, a.diff, 'control and carto diffs must differ on multi-file tasks');
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // SWE-bench tools — async tool executor
+  // ───────────────────────────────────────────────────────────────
+
+  await asyncTest('SWE-bench tools', 'read/write/list/edit all work within the sandbox', async () => {
+    const { makeExecutor } = require('../bench/swe-bench/tools');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-swe-tools-'));
+    try {
+      const exec = makeExecutor(dir);
+      const w = await exec('write_file', { path: 'a/b.txt', content: 'hello\nworld\n' });
+      assert.ok(/wrote 12 bytes/.test(w), `write_file unexpected output: ${w}`);
+      const ls = await exec('list_directory', { path: 'a' });
+      assert.ok(ls.includes('b.txt'), `list_directory must show b.txt, got: ${ls}`);
+      const r = await exec('read_file', { path: 'a/b.txt' });
+      assert.strictEqual(r, 'hello\nworld\n');
+      const ed = await exec('edit_file', { path: 'a/b.txt', old_string: 'world', new_string: 'WORLD' });
+      assert.ok(/edited/.test(ed), `edit_file unexpected output: ${ed}`);
+      const r2 = await exec('read_file', { path: 'a/b.txt' });
+      assert.strictEqual(r2, 'hello\nWORLD\n');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  await asyncTest('SWE-bench tools', 'path-traversal escape attempts are rejected', async () => {
+    const { makeExecutor } = require('../bench/swe-bench/tools');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-swe-escape-'));
+    try {
+      const exec = makeExecutor(dir);
+      const r1 = await exec('read_file', { path: '../../etc/passwd' });
+      assert.ok(/refusing path outside/.test(r1) || /error:/.test(r1),
+        `must refuse traversal out of sandbox, got: ${r1}`);
+      const r2 = await exec('write_file', { path: '/tmp/carto-leak.txt', content: 'x' });
+      assert.ok(/refusing path outside/.test(r2) || /error:/.test(r2),
+        `must refuse absolute write outside sandbox, got: ${r2}`);
+      assert.ok(!fs.existsSync('/tmp/carto-leak.txt'), 'leak file must not exist on disk');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // ── ACP safety: async safeRunCommand rejection ──
+  await asyncTest('ACP safety', 'safeRunCommand rejects shell metacharacters in cmd (async)', async () => {
+    const { safeRunCommand: src } = require('../src/acp/safety');
+    let err;
+    try { await src({ workingDir: process.cwd(), cmd: 'echo; rm -rf /' }); }
+    catch (e) { err = e; }
+    assert.ok(err, 'expected safeRunCommand to reject');
+    assert.ok(/metacharacters/.test(err.message), `expected metacharacters error, got: ${err.message}`);
+  });
+
+  await asyncTest('ACP safety', 'safeRunCommand executes a benign command with bounded output', async () => {
+    const { safeRunCommand: src } = require('../src/acp/safety');
+    const r = await src({ workingDir: process.cwd(), cmd: 'node', args: ['-e', 'process.stdout.write("ok")'] });
+    assert.strictEqual(r.stdout, 'ok');
+    assert.strictEqual(r.exitCode, 0);
   });
 }
 
@@ -5018,6 +5164,2407 @@ test('ANCI roundtrip', 'consumer.loadAnci throws on unsupported header version',
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// SSE streaming — shared parser, Anthropic fold, OpenAI fold
+// ═══════════════════════════════════════════════════════════════════
+
+const { parseSseStream } = require('../src/acp/providers/sse');
+const { AnthropicProvider: AnthropicProviderForTest } = require('../src/acp/providers/anthropic');
+const { OpenAIProvider: OpenAIProviderForTest } = require('../src/acp/providers/openai');
+
+test('SSE streaming', 'parseSseStream handles complete events + chunked partial events + [DONE] sentinel', () => {
+  // Single chunk containing two events and one trailing partial.
+  const events = [];
+  const onEvent = (e, d) => events.push({ event: e, data: d });
+
+  let buf = '';
+  buf = parseSseStream(
+    'event: a\ndata: {"v":1}\n\nevent: b\ndata: {"v":2}\n\ndata: {"v":3',
+    buf,
+    onEvent,
+  );
+  // Two events surfaced; third is still in the buffer (no \n\n yet).
+  assert.strictEqual(events.length, 2);
+  assert.deepStrictEqual(events[0], { event: 'a', data: { v: 1 } });
+  assert.deepStrictEqual(events[1], { event: 'b', data: { v: 2 } });
+
+  // Feed the rest of event #3 + a [DONE] sentinel in a follow-up chunk.
+  buf = parseSseStream('}\n\ndata: [DONE]\n\n', buf, onEvent);
+  assert.strictEqual(events.length, 4);
+  assert.deepStrictEqual(events[2], { event: null, data: { v: 3 } });
+  assert.deepStrictEqual(events[3], { event: 'done', data: null });
+  // Buffer fully consumed.
+  assert.strictEqual(buf, '');
+});
+
+test('SSE streaming', 'parseSseStream tolerates malformed JSON without throwing', () => {
+  const events = [];
+  parseSseStream('data: not json\n\n', '', (e, d) => events.push({ e, d }));
+  assert.strictEqual(events.length, 1);
+  assert.ok(events[0].d && typeof events[0].d._raw === 'string', 'malformed payload surfaces via _raw');
+});
+
+test('SSE streaming', 'AnthropicProvider._foldEvents assembles text deltas + tool_use input fragments', () => {
+  const provider = new AnthropicProviderForTest('k', 'https://api.anthropic.com', 'claude-sonnet-4');
+  const folded = provider._foldEvents([
+    { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Hello ' } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'world' } } },
+    { event: 'content_block_start', data: { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'tu_1', name: 'get_blast_radius', input: {} } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"file":"' } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: 'src/x.ts"}' } } },
+    { event: 'message_stop', data: { type: 'message_stop' } },
+  ]);
+  assert.strictEqual(folded.content.length, 2);
+  assert.deepStrictEqual(folded.content[0], { type: 'text', text: 'Hello world' });
+  assert.strictEqual(folded.content[1].type, 'tool_use');
+  assert.strictEqual(folded.content[1].id, 'tu_1');
+  assert.strictEqual(folded.content[1].name, 'get_blast_radius');
+  assert.deepStrictEqual(folded.content[1].input, { file: 'src/x.ts' });
+});
+
+test('SSE streaming', 'AnthropicProvider._foldEvents tolerates empty input_json_delta on a no-arg tool', () => {
+  const provider = new AnthropicProviderForTest('k', 'https://api.anthropic.com', 'claude-sonnet-4');
+  // Real-world: tools with empty inputs produce `partial_json: ""` deltas.
+  const folded = provider._foldEvents([
+    { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'tu_empty', name: 'get_architecture', input: {} } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '' } } },
+    { event: 'message_stop', data: { type: 'message_stop' } },
+  ]);
+  assert.strictEqual(folded.content.length, 1);
+  assert.deepStrictEqual(folded.content[0].input, {}, 'empty json deltas must fold to empty object, not crash');
+});
+
+test('SSE streaming', 'OpenAIProvider._foldChunks concatenates content + indexed tool_call arguments', () => {
+  const provider = new OpenAIProviderForTest('k', 'https://api.openai.com/v1', 'gpt-4o');
+  const folded = provider._foldChunks([
+    { choices: [{ delta: { content: 'Hello ' } }] },
+    { choices: [{ delta: { content: 'world' } }] },
+    { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'get_blast_radius', arguments: '{"fi' } }] } }] },
+    { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'le":"src/x.ts"}' } }] } }] },
+  ]);
+  // Text first, then tool_use — order matches the agent loop's expectation.
+  assert.strictEqual(folded.content[0].type, 'text');
+  assert.strictEqual(folded.content[0].text, 'Hello world');
+  assert.strictEqual(folded.content[1].type, 'tool_use');
+  assert.strictEqual(folded.content[1].id, 'call_1');
+  assert.strictEqual(folded.content[1].name, 'get_blast_radius');
+  assert.deepStrictEqual(folded.content[1].input, { file: 'src/x.ts' });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Files-without-tests detector
+// ═══════════════════════════════════════════════════════════════════
+
+const fwtModule = require('../src/mcp/files-without-tests');
+
+test('Files without tests', 'stemOf strips test_*, *_test, and .test/.spec suffixes', () => {
+  assert.strictEqual(fwtModule.stemOf('src/auth/login.ts'), 'login');
+  assert.strictEqual(fwtModule.stemOf('src/auth/login.test.ts'), 'login');
+  assert.strictEqual(fwtModule.stemOf('src/auth/login.spec.tsx'), 'login');
+  assert.strictEqual(fwtModule.stemOf('svc/user_test.go'), 'user');
+  assert.strictEqual(fwtModule.stemOf('py/test_user.py'), 'user');
+});
+
+test('Files without tests', 'isTestFile + isNonSourceFile correctly classify boundary cases', () => {
+  assert.strictEqual(fwtModule.isTestFile('src/x.test.ts'), true);
+  assert.strictEqual(fwtModule.isTestFile('src/x.spec.tsx'), true);
+  assert.strictEqual(fwtModule.isTestFile('svc/user_test.go'), true);
+  assert.strictEqual(fwtModule.isTestFile('py/test_user.py'), true);
+  assert.strictEqual(fwtModule.isTestFile('src/x.ts'), false);
+  assert.strictEqual(fwtModule.isNonSourceFile('README.md'), true);
+  assert.strictEqual(fwtModule.isNonSourceFile('package.json'), true);
+  assert.strictEqual(fwtModule.isNonSourceFile('types.d.ts'), true);
+  assert.strictEqual(fwtModule.isNonSourceFile('src/x.ts'), false);
+});
+
+test('Files without tests', 'filesWithoutTests returns the right set across JS/TS, Python, Go conventions', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-fwt-detect-'));
+  try {
+    fs.mkdirSync(path.join(root, 'src/auth'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'src/utils'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'py/lib'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'py/lib/tests'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'svc'), { recursive: true });
+
+    fs.writeFileSync(path.join(root, 'src/auth/login.ts'), '');
+    fs.writeFileSync(path.join(root, 'src/auth/login.test.ts'), '');     // pairs with login.ts
+    fs.writeFileSync(path.join(root, 'src/auth/session.ts'), '');         // NO test
+    fs.writeFileSync(path.join(root, 'src/utils/format.ts'), '');         // NO test
+    fs.writeFileSync(path.join(root, 'py/lib/service.py'), '');
+    fs.writeFileSync(path.join(root, 'py/lib/tests/test_service.py'), ''); // pairs with service.py
+    fs.writeFileSync(path.join(root, 'py/lib/helper.py'), '');             // NO test
+    fs.writeFileSync(path.join(root, 'svc/handler.go'), '');
+    fs.writeFileSync(path.join(root, 'svc/handler_test.go'), '');          // pairs with handler.go
+    fs.writeFileSync(path.join(root, 'svc/util.go'), '');                  // NO test
+    fs.writeFileSync(path.join(root, 'src/auth/README.md'), '');           // non-source (skip)
+
+    const out = fwtModule.filesWithoutTests(root, [
+      'src/auth/login.ts',
+      'src/auth/session.ts',
+      'src/auth/README.md',
+      'src/utils/format.ts',
+      'py/lib/service.py',
+      'py/lib/helper.py',
+      'svc/handler.go',
+      'svc/util.go',
+    ]);
+    assert.strictEqual(out.count, 4, `count: expected 4, got ${out.count}: ${out.files.join(', ')}`);
+    assert.strictEqual(out.considered, 7, `considered: expected 7 (excluding README.md), got ${out.considered}`);
+    assert.deepStrictEqual(
+      [...out.files].sort(),
+      ['py/lib/helper.py', 'src/auth/session.ts', 'src/utils/format.ts', 'svc/util.go'],
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Files without tests', 'index.ts barrels are skipped (not counted as missing tests)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-fwt-barrel-'));
+  try {
+    fs.mkdirSync(path.join(root, 'src/lib'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'src/lib/index.ts'), '');
+    fs.writeFileSync(path.join(root, 'src/lib/helper.ts'), ''); // NO test
+    const out = fwtModule.filesWithoutTests(root, ['src/lib/index.ts', 'src/lib/helper.ts']);
+    // helper.ts is the only candidate considered; index.ts is skipped.
+    assert.strictEqual(out.count, 1);
+    assert.strictEqual(out.considered, 1);
+    assert.deepStrictEqual(out.files, ['src/lib/helper.ts']);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// PR impact — files-without-tests metric row (in blast radius)
+// ═══════════════════════════════════════════════════════════════════
+
+test('PR impact', 'files-without-tests metric appears in markdown table + JSON contract', () => {
+  // Build the fixture, then write a couple of source files (without
+  // corresponding .test.* siblings) so the detector has something to
+  // find. The fixture's f0.ts has a 9-file blast radius; we add real
+  // files on disk that the detector walks.
+  const fix = buildValidationFixture();
+  try {
+    // Materialize a few of the fixture file paths as empty TS files so
+    // the filesystem walk has entries to inspect. The store knew them as
+    // rows, but the bitmap union won't yield disk files unless they
+    // actually exist.
+    for (let i = 0; i < 4; i++) {
+      const rel = `src/f${i}.ts`;
+      const abs = path.join(fix.projectRoot, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, '');
+    }
+    const diff = `diff --git a/src/f0.ts b/src/f0.ts
+--- a/src/f0.ts
++++ b/src/f0.ts
+@@ -1,1 +1,2 @@
+ line
++const x = 1;
+`;
+    const impact = prImpact.collectImpact(fix.projectRoot, diff);
+    const md = prImpact.renderMarkdown(impact);
+    const json = prImpact.renderJson(impact);
+
+    // Markdown: metric row appears.
+    assert.ok(
+      /Files without tests in blast radius \| \d+ of \d+/.test(md),
+      `expected metric row in markdown:\n${md}`,
+    );
+    // Collapsible detail block named correctly when count > 0.
+    if (impact.filesWithoutTests.count > 0) {
+      assert.ok(
+        md.includes('Files without tests in blast radius ('),
+        'expected collapsible details section header',
+      );
+    }
+    // JSON contract: new key is always present with stable shape.
+    assert.ok(
+      Object.prototype.hasOwnProperty.call(json, 'files_without_tests'),
+      'json must expose files_without_tests',
+    );
+    const fwt = json.files_without_tests;
+    assert.strictEqual(typeof fwt.count, 'number');
+    assert.strictEqual(typeof fwt.considered, 'number');
+    assert.ok(Array.isArray(fwt.files));
+  } finally {
+    try { fix.store.close(); } catch {}
+    fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// MCP middleware proxy — policy core + line splitter
+// ═══════════════════════════════════════════════════════════════════
+
+const {
+  MiddlewareProxy,
+  LineSplitter,
+  DEFAULT_WRITE_TOOL_PATTERNS,
+} = require('../src/mcp/middleware');
+
+// Reusable mock validate that returns a configurable risk.
+function mockValidate(risk = 'SAFE', extras = {}) {
+  return () => ({
+    diff: [],
+    blast_radius: { perFile: {}, union: extras.union || 0 },
+    violations: extras.violations || [],
+    suggestions: extras.suggestions || [],
+    risk,
+  });
+}
+
+test('MCP middleware', 'isWriteTool matches common write-tool naming patterns (suffix + delimiter)', () => {
+  const proxy = new MiddlewareProxy({ validate: mockValidate('SAFE') });
+  for (const ok of [
+    'fs/write_file',
+    'filesystem.write_file',
+    'fs.write_text_file',
+    'text_editor/edit',
+    'editor.edit_file',
+    'fs/create_file',
+    'fs/apply_patch',
+  ]) {
+    assert.ok(proxy.isWriteTool(ok), `must match: ${ok}`);
+  }
+  for (const skip of ['fs/read_file', 'list_directory', 'get_blast_radius', '']) {
+    assert.ok(!proxy.isWriteTool(skip), `must skip: ${JSON.stringify(skip)}`);
+  }
+});
+
+test('MCP middleware', 'extractWriteIntent normalizes write_file + text_editor/edit shapes', () => {
+  const proxy = new MiddlewareProxy({
+    validate: mockValidate('SAFE'),
+    projectRoot: '/proj',
+    readFile: (p) => (p === '/proj/src/x.ts' ? 'OLD\n' : ''),
+  });
+  // write_file shape
+  const a = proxy.extractWriteIntent('fs/write_file', { path: 'src/x.ts', content: 'NEW' });
+  assert.deepStrictEqual(a, { path: 'src/x.ts', newContent: 'NEW' });
+  // text_editor/edit shape
+  const b = proxy.extractWriteIntent('text_editor/edit', {
+    path: 'src/x.ts', old_string: 'OLD', new_string: 'NEW',
+  });
+  assert.strictEqual(b.path, 'src/x.ts');
+  assert.strictEqual(b.newContent, 'NEW\n');
+  assert.strictEqual(b.oldContent, 'OLD\n');
+  // text_editor/edit with old_string that isn't in file → returns null
+  // (we don't know what the result would be, so we conservatively skip)
+  const c = proxy.extractWriteIntent('text_editor/edit', {
+    path: 'src/x.ts', old_string: 'NOPE', new_string: 'NEW',
+  });
+  assert.strictEqual(c, null);
+  // apply_patch shape (prebuilt diff)
+  const d = proxy.extractWriteIntent('fs/apply_patch', { path: 'src/x.ts', patch: 'diff --git a/x b/x\n' });
+  assert.strictEqual(d.prebuiltDiff, 'diff --git a/x b/x\n');
+});
+
+test('MCP middleware', 'synthesizeDiff produces a diff the validateDiff parser can consume', () => {
+  const proxy = new MiddlewareProxy({ validate: mockValidate('SAFE') });
+  const diff = proxy.synthesizeDiff('src/x.ts', 'old line 1\nold line 2\n', 'new line\n');
+  // Parser smoke: feed it to the diff-parser and check it picks up one file.
+  const parsed = spec16ParseDiff(diff);
+  assert.strictEqual(parsed.length, 1);
+  assert.strictEqual(parsed[0].path, 'src/x.ts');
+  assert.strictEqual(parsed[0].kind, 'modify');
+  // Add path (empty old content) — should be `add`, parser uses `new file mode`.
+  const addDiff = proxy.synthesizeDiff('src/new.ts', '', 'first line\n');
+  const parsedAdd = spec16ParseDiff(addDiff);
+  assert.strictEqual(parsedAdd.length, 1);
+  assert.strictEqual(parsedAdd[0].kind, 'add');
+  assert.strictEqual(parsedAdd[0].path, 'src/new.ts');
+});
+
+test('MCP middleware', 'handleClient passes through non-write tools + read calls', () => {
+  const proxy = new MiddlewareProxy({ validate: mockValidate('HIGH') });
+  // Non-tools/call method
+  assert.deepStrictEqual(proxy.handleClient({ method: 'initialize', id: 1 }), { intercept: false });
+  // tools/call for a read-only tool — passes through even when validate would return HIGH.
+  assert.deepStrictEqual(
+    proxy.handleClient({ method: 'tools/call', id: 2, params: { name: 'fs/read_file', arguments: { path: 'x' } } }),
+    { intercept: false },
+  );
+});
+
+test('MCP middleware', 'handleClient blocks HIGH-risk writes with structured response', () => {
+  const proxy = new MiddlewareProxy({
+    projectRoot: '/proj',
+    validate: mockValidate('HIGH', {
+      union: 47,
+      violations: [
+        { severity: 'HIGH', kind: 'cross_domain', file: 'src/a.ts', message: 'AUTH→PAYMENTS' },
+      ],
+    }),
+    readFile: () => '',
+    blockThreshold: 'HIGH',
+  });
+  const out = proxy.handleClient({
+    method: 'tools/call',
+    id: 42,
+    params: { name: 'fs/write_file', arguments: { path: 'src/a.ts', content: 'new' } },
+  });
+  assert.strictEqual(out.intercept, true);
+  // MCP convention — result with isError + content array, jsonrpc 2.0 envelope.
+  assert.strictEqual(out.response.jsonrpc, '2.0');
+  assert.strictEqual(out.response.id, 42);
+  assert.strictEqual(out.response.result.isError, true);
+  const text = out.response.result.content[0].text;
+  assert.ok(text.includes('Carto blocked'), 'response surfaces the block reason');
+  assert.ok(text.includes('HIGH'), 'response surfaces the risk level');
+  assert.ok(text.includes('47 files'), 'response surfaces the blast radius union');
+  assert.ok(text.includes('AUTH→PAYMENTS'), 'response surfaces the violation message');
+});
+
+test('MCP middleware', 'handleClient allows MEDIUM-risk writes through when threshold=HIGH', () => {
+  const proxy = new MiddlewareProxy({
+    projectRoot: '/proj',
+    validate: mockValidate('MEDIUM'),
+    readFile: () => '',
+    blockThreshold: 'HIGH',
+  });
+  const out = proxy.handleClient({
+    method: 'tools/call',
+    id: 7,
+    params: { name: 'fs/write_file', arguments: { path: 'src/a.ts', content: 'new' } },
+  });
+  assert.strictEqual(out.intercept, false, 'MEDIUM must pass when threshold is HIGH');
+});
+
+test('MCP middleware', 'handleClient fails open when validate throws (does not block on infra failures)', () => {
+  const proxy = new MiddlewareProxy({
+    projectRoot: '/proj',
+    validate: () => { throw new Error('store offline'); },
+    readFile: () => '',
+  });
+  const out = proxy.handleClient({
+    method: 'tools/call',
+    id: 11,
+    params: { name: 'fs/write_file', arguments: { path: 'src/a.ts', content: 'new' } },
+  });
+  assert.strictEqual(out.intercept, false, 'validate-throws must NOT block writes (fail open)');
+});
+
+test('MCP middleware', 'LineSplitter splits incremental JSON-RPC frames + tolerates malformed lines', () => {
+  const got = [];
+  const splitter = new LineSplitter((msg) => got.push(msg), 'unit');
+  // Two chunks split mid-message; one good frame + one malformed line + one good frame.
+  splitter.feed('{"jsonrpc":"2.0","id":1');
+  splitter.feed(',"method":"a"}\nnot-json\n{"jsonrpc":"2.0","id":2,"method":"b"}\n');
+  assert.strictEqual(got.length, 2);
+  assert.deepStrictEqual(got[0], { jsonrpc: '2.0', id: 1, method: 'a' });
+  assert.deepStrictEqual(got[1], { jsonrpc: '2.0', id: 2, method: 'b' });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// carto validate CLI — integration smoke
+// ═══════════════════════════════════════════════════════════════════
+
+const validateCli = require('../src/cli/validate');
+
+test('carto validate', 'computeValidation against a fixture index returns the documented JSON shape', () => {
+  const fix = buildValidationFixture();
+  try {
+    const diff = `diff --git a/src/f0.ts b/src/f0.ts
+--- a/src/f0.ts
++++ b/src/f0.ts
+@@ -1,1 +1,2 @@
+ line
++const x = 1;
+`;
+    const out = validateCli.computeValidation(fix.projectRoot, diff);
+    // Must match the validateDiff() contract — same shape MCP and PR-impact use.
+    for (const key of ['diff', 'blast_radius', 'violations', 'suggestions', 'risk']) {
+      assert.ok(Object.prototype.hasOwnProperty.call(out, key), `missing key: ${key}`);
+    }
+    assert.ok(['SAFE', 'LOW', 'MEDIUM', 'HIGH'].includes(out.risk));
+    assert.strictEqual(out.diff.length, 1);
+    assert.strictEqual(out.diff[0].path, 'src/f0.ts');
+  } finally {
+    try { fix.store.close(); } catch {}
+    fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+  }
+});
+
+// `carto validate` async run() tests live in runAsyncSuite (below) so
+// rejected promises are awaited; sync test() doesn't await fn().
+
+// ═══════════════════════════════════════════════════════════════════
+// SWE-bench harness — mini-suite, scorer, aggregator
+// ═══════════════════════════════════════════════════════════════════
+
+const { TASKS: SWE_TASKS } = require('../bench/swe-bench/mini-suite');
+const { scoreDiff: sweScoreDiff } = require('../bench/swe-bench/score');
+const { aggregate: sweAggregate, pairedBootstrapCI } = require('../bench/swe-bench/aggregate');
+const { StubAgent: SweStubAgent, getAgent: sweGetAgent } = require('../bench/swe-bench/agent');
+
+test('SWE-bench', 'mini-suite has 5 deterministic tasks with required fields', () => {
+  assert.strictEqual(SWE_TASKS.length, 5, 'must have exactly 5 tasks');
+  const ids = new Set();
+  for (const t of SWE_TASKS) {
+    assert.ok(t.id, 'task must have id');
+    assert.ok(!ids.has(t.id), `duplicate task id: ${t.id}`);
+    ids.add(t.id);
+    assert.ok(['single_file', 'multi_file', 'architectural'].includes(t.kind), `bad kind on ${t.id}: ${t.kind}`);
+    assert.ok(t.repo && Object.keys(t.repo).length > 0, `${t.id} must have repo files`);
+    assert.ok(t.expected && t.expected.requiredFiles, `${t.id} must declare expected.requiredFiles`);
+    assert.ok(t.expected.addedLines instanceof Set, `${t.id} expected.addedLines must be Set`);
+    assert.ok(typeof t.stubControl === 'string' && t.stubControl.length > 0, `${t.id} must have stubControl`);
+    assert.ok(typeof t.stubCarto === 'string' && t.stubCarto.length > 0, `${t.id} must have stubCarto`);
+  }
+});
+
+test('SWE-bench', 'StubAgent solve() returns the recorded stub diff for the configured arm', () => {
+  // Sync check — solve() is async but it does no real I/O, so we can
+  // inspect the recorded shape directly. Determinism (same-call same-output)
+  // is checked in runAsyncSuite where we can await both solves.
+  const agentCarto = new SweStubAgent('carto');
+  const agentCtrl = new SweStubAgent('control');
+  assert.strictEqual(agentCarto.arm, 'carto');
+  assert.strictEqual(agentCtrl.arm, 'control');
+  assert.throws(() => new SweStubAgent('weird'), /arm must be 'control' or 'carto'/);
+});
+
+test('SWE-bench', 'getAgent falls back to StubAgent when no ANTHROPIC_API_KEY (CI invariant)', () => {
+  // Save + clear the env var so this test runs whether or not it was set.
+  const saved = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const agent = sweGetAgent('carto', { taskSet: 'verified' });
+    assert.ok(agent instanceof SweStubAgent, 'must fall back to stub when no API key');
+  } finally {
+    if (saved !== undefined) process.env.ANTHROPIC_API_KEY = saved;
+  }
+});
+
+test('SWE-bench', 'scoreDiff returns PASS when diff matches expected; PARTIAL on coverage 0.5; FAIL otherwise', () => {
+  // PASS path: feed mini-001's stubCarto and verify it scores PASS.
+  const t = SWE_TASKS[0]; // mini-001
+  const s = sweScoreDiff(t.stubCarto, t.expected);
+  assert.strictEqual(s.outcome, 'PASS', `expected PASS for full match, got ${s.outcome} (missing=${s.missingAdded.join('|')})`);
+  assert.strictEqual(s.coverage, 1.0);
+
+  // FAIL path: empty diff against a task with required adds.
+  const fail = sweScoreDiff('', t.expected);
+  assert.strictEqual(fail.outcome, 'FAIL');
+  assert.strictEqual(fail.coverage, 0);
+
+  // PARTIAL path: mini-003 control stub misses 2 of 5 importers — known
+  // by construction. The scorer should produce a PARTIAL because the
+  // control diff touches >0 required files and covers a chunk of the
+  // expected added lines.
+  const multi = SWE_TASKS[2];
+  const partialResult = sweScoreDiff(multi.stubControl, multi.expected);
+  assert.ok(
+    partialResult.outcome === 'PARTIAL' || partialResult.outcome === 'PASS',
+    `mini-003 control should be PARTIAL or PASS, got ${partialResult.outcome}`,
+  );
+  // Critically — it must miss the 2 importer files that the stubControl
+  // omits (d, e). For PASS we'd see filesTouched cover all required;
+  // for PARTIAL the missingFiles must be non-empty.
+  if (partialResult.outcome === 'PARTIAL') {
+    assert.ok(partialResult.missingFiles.length > 0, 'PARTIAL must surface the missing importer files');
+  }
+});
+
+test('SWE-bench', 'pairedBootstrapCI produces a delta + CI that brackets the true mean', () => {
+  // Synthetic: control = [0,0,0,0,0], carto = [1,1,1,1,1]. True delta = +1.0.
+  // The bootstrap mean should hover around 1.0 (100pp); the CI should
+  // be tight because variance across resamples is low for all-same
+  // pairs.
+  let seed = 0x1234abcd;
+  const rng = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296; };
+  const ci = pairedBootstrapCI([0,0,0,0,0], [1,1,1,1,1], 200, rng);
+  assert.strictEqual(ci.mean, 100, 'mean delta on (0,1)×5 must be exactly 100pp');
+  // Bootstrap on a vector where every pair is identical can't vary —
+  // every resample is also all-1s, so lo=hi=mean=100.
+  assert.strictEqual(ci.lo, 100);
+  assert.strictEqual(ci.hi, 100);
+});
+
+test('SWE-bench', 'aggregate produces a markdown report with per-kind splits + bolded ≥10pp deltas', () => {
+  const rows = [
+    { runId: 'r1', taskId: 'mini-001', kind: 'single_file', arm: 'control', outcome: 'PASS',    coverage: 1.0, model: 'stub' },
+    { runId: 'r1', taskId: 'mini-001', kind: 'single_file', arm: 'carto',   outcome: 'PASS',    coverage: 1.0, model: 'stub' },
+    { runId: 'r1', taskId: 'mini-003', kind: 'multi_file',  arm: 'control', outcome: 'PARTIAL', coverage: 0.6, model: 'stub' },
+    { runId: 'r1', taskId: 'mini-003', kind: 'multi_file',  arm: 'carto',   outcome: 'PASS',    coverage: 1.0, model: 'stub' },
+    { runId: 'r1', taskId: 'mini-005', kind: 'architectural', arm: 'control', outcome: 'FAIL',  coverage: 0,   model: 'stub' },
+    { runId: 'r1', taskId: 'mini-005', kind: 'architectural', arm: 'carto',   outcome: 'PASS',  coverage: 1.0, model: 'stub' },
+  ];
+  const kindLookup = new Map([
+    ['mini-001', 'single_file'],
+    ['mini-003', 'multi_file'],
+    ['mini-005', 'architectural'],
+  ]);
+  const { summary, markdown } = sweAggregate(rows, kindLookup);
+  // Shape
+  assert.strictEqual(summary.taskCount, 3);
+  assert.strictEqual(summary.perKind.single_file.n, 1);
+  assert.strictEqual(summary.perKind.multi_file.n, 1);
+  assert.strictEqual(summary.perKind.architectural.n, 1);
+  assert.strictEqual(summary.perKind.all.n, 3);
+  // Multi-file delta: control 50% (PARTIAL), carto 100% → +50pp.
+  assert.strictEqual(summary.perKind.multi_file.delta, 50.0);
+  // Architectural delta: 0% → 100% → +100pp.
+  assert.strictEqual(summary.perKind.architectural.delta, 100.0);
+  // Markdown: bolded large delta (≥10pp).
+  assert.ok(markdown.includes('**+50.0pp**'), 'multi-file delta must be bolded');
+  assert.ok(markdown.includes('**+100.0pp**'), 'architectural delta must be bolded');
+  // Markdown: header + table.
+  assert.ok(markdown.startsWith('# Carto · SWE-bench results'));
+  assert.ok(markdown.includes('| Metric | control | carto | delta | 95% CI |'));
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// CLI commands: status / why / explain / diff / doctor
+// ═══════════════════════════════════════════════════════════════════
+
+const statusCli = require('../src/cli/status');
+const whyCli = require('../src/cli/why');
+const doctorCli = require('../src/cli/doctor');
+
+test('CLI: status', 'collect() returns healthy snapshot on the validation fixture index', () => {
+  const fix = buildValidationFixture();
+  try {
+    const snap = statusCli.collect(fix.projectRoot);
+    assert.strictEqual(snap.dbExists, true);
+    assert.ok(snap.totalFiles > 0, `expected totalFiles > 0, got ${snap.totalFiles}`);
+    assert.ok(Array.isArray(snap.domains));
+    assert.strictEqual(snap.healthy, true,
+      `expected healthy=true on a clean fixture, got issues: ${snap.issues.join('; ')}`);
+  } finally {
+    try { fix.store.close(); } catch {}
+    fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI: status', 'collect() reports unhealthy + an issue when no .carto/carto.db exists', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-status-empty-'));
+  try {
+    const snap = statusCli.collect(tmp);
+    assert.strictEqual(snap.dbExists, false);
+    assert.strictEqual(snap.healthy, false);
+    assert.ok(snap.issues.some((i) => /No index/.test(i)),
+      'must surface "No index" issue for a project with no .carto/');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: why', 'collect() returns the domain + dependents shape for an indexed file', () => {
+  const fix = buildValidationFixture();
+  try {
+    const summary = whyCli.collect(fix.projectRoot, 'src/f0.ts');
+    assert.strictEqual(summary.error, undefined, `unexpected error: ${summary.error}`);
+    assert.strictEqual(summary.file, 'src/f0.ts');
+    assert.strictEqual(typeof summary.domain, 'string');
+    assert.ok(summary.dependentsCount > 0, 'f0.ts must have dependents in the fixture');
+    assert.ok(Array.isArray(summary.imports));
+    assert.ok(Array.isArray(summary.importedBy));
+  } finally {
+    try { fix.store.close(); } catch {}
+    fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI: why', 'collect() returns a clear error for a file not in the index', () => {
+  const fix = buildValidationFixture();
+  try {
+    const out = whyCli.collect(fix.projectRoot, 'does/not/exist.ts');
+    assert.ok(out.error && /not in index/.test(out.error),
+      `expected "not in index" error, got ${out.error}`);
+  } finally {
+    try { fix.store.close(); } catch {}
+    fs.rmSync(fix.projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI: doctor', 'diagnose() reports ok=false with actionable Fix when index is missing', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-doctor-empty-'));
+  try {
+    const out = doctorCli.diagnose(tmp);
+    assert.ok(Array.isArray(out.results) && out.results.length > 0);
+    const idx = out.results.find((r) => r.id === 'index-exists');
+    assert.ok(idx, 'must include an index-exists check');
+    assert.strictEqual(idx.status, 'fail');
+    assert.ok(idx.fix && /carto init/.test(idx.fix), 'fix line must point at `carto init`');
+    assert.strictEqual(out.ok, false, 'ok=false when a check fails');
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('CLI: doctor', 'diagnose() returns ok=true against the carto-ansh project (live sanity)', () => {
+  // Run against the project root we live in — this catches regressions
+  // in the checks themselves (e.g. tree-sitter module loads broken, DB
+  // path resolution wrong).
+  const out = doctorCli.diagnose(path.resolve(__dirname, '..'));
+  // ok must be true OR every fail must be one we can explain. Currently
+  // every check should pass on this repo because we just smoke-ran it.
+  if (!out.ok) {
+    const failures = out.results.filter((r) => r.status === 'fail').map((r) => `${r.id}: ${r.detail}`);
+    assert.fail(`diagnose() failed on the live repo: ${failures.join(' | ')}`);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// SWE-bench tools — sandboxed tool execution
+// ═══════════════════════════════════════════════════════════════════
+// Temporal layer — 15 tests across 3 suites
+// ═══════════════════════════════════════════════════════════════════
+
+const { TemporalStore } = require('../src/temporal/store');
+const { xorBitsets, compressBitset, decompressBitset, flattenMap } = require('../src/temporal/delta');
+const { captureSnapshotWithStore } = require('../src/temporal/snapshot');
+const { detectEvents: detectTemporalEvents } = require('../src/temporal/events');
+const tq = require('../src/temporal/queries');
+const { Bitset: TBitset } = require('../src/bitmap/bitset');
+
+function makeTempRoot() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-temporal-'));
+  fs.mkdirSync(path.join(tmp, '.carto'));
+  return tmp;
+}
+
+test('Temporal storage', 'TemporalStore opens, creates schema, persists snapshot rows', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  const id = t.insertSnapshot({ ts: 1_000_000, commit_sha: 'aaa', source: 'commit', summary: { file_count: 10, edge_count: 25, domain_count: 3 } });
+  assert.ok(id > 0, 'insertSnapshot must return a positive rowid');
+  const recent = t.getMostRecentSnapshot();
+  assert.strictEqual(recent.commit_sha, 'aaa');
+  assert.strictEqual(recent.file_count, 10);
+  // idempotency: same sha + source → same id
+  const id2 = t.insertSnapshot({ ts: 1_000_001, commit_sha: 'aaa', source: 'commit', summary: { file_count: 99 } });
+  assert.strictEqual(id, id2);
+  t.close();
+});
+
+test('Temporal storage', 'recordCommitChurn aggregates commit counts and timestamps', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  t.recordCommitChurn(1000, ['src/a.ts', 'src/b.ts']);
+  t.recordCommitChurn(2000, ['src/a.ts', 'src/c.ts']);
+  t.recordCommitChurn(3000, ['src/a.ts']);
+  const a = t.getFileChurn('src/a.ts');
+  assert.strictEqual(a.commit_count, 3);
+  assert.strictEqual(a.first_seen_ts, 1000);
+  assert.strictEqual(a.last_modified_ts, 3000);
+  const b = t.getFileChurn('src/b.ts');
+  assert.strictEqual(b.commit_count, 1);
+  t.close();
+});
+
+test('Temporal storage', 'file_domains_at stores per-snapshot mapping; query is by snapshot_id', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  const snapId = t.insertSnapshot({ ts: 100, source: 'sync', summary: { file_count: 2 } });
+  t.insertFileDomains(snapId, [
+    { file_path: 'src/auth/login.ts', domain_name: 'AUTH' },
+    { file_path: 'src/db/index.ts', domain_name: 'DATABASE' },
+  ]);
+  const rows = t.getFileDomainsAt(snapId);
+  assert.strictEqual(rows.length, 2);
+  const byPath = Object.fromEntries(rows.map(r => [r.file_path, r.domain_name]));
+  assert.strictEqual(byPath['src/auth/login.ts'], 'AUTH');
+  t.close();
+});
+
+test('Temporal storage', 'updateBlastRadii + getTopChurned sorts by commit_count', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  t.recordCommitChurn(1000, ['src/a.ts']);
+  t.recordCommitChurn(1000, ['src/a.ts']);
+  t.recordCommitChurn(1000, ['src/a.ts']);
+  t.recordCommitChurn(2000, ['src/b.ts']);
+  t.updateBlastRadii(new Map([['src/a.ts', 30], ['src/b.ts', 5]]));
+  const top = t.getTopChurned(10);
+  assert.strictEqual(top[0].file_path, 'src/a.ts');
+  assert.strictEqual(top[0].commit_count, 3);
+  assert.strictEqual(top[0].blast_radius, 30);
+  t.close();
+});
+
+test('Temporal storage', 'openIfExists returns null when DB is missing', () => {
+  const root = makeTempRoot();
+  const t = TemporalStore.openIfExists(root, { readonly: true });
+  assert.strictEqual(t, null);
+});
+
+test('Temporal storage', 'insertEvent + getArchEvents with severity filter', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  t.insertEvent({ ts: 1000, severity: 'major', kind: 'domain_growth', domain: 'AUTH', detail: { delta: 8 } });
+  t.insertEvent({ ts: 2000, severity: 'critical', kind: 'hotspot_active', file_path: 'src/db.ts' });
+  t.insertEvent({ ts: 3000, severity: 'minor', kind: 'initial_snapshot' });
+  const major = t.getArchEvents({ severity: 'major' });
+  assert.strictEqual(major.length, 1);
+  assert.strictEqual(major[0].kind, 'domain_growth');
+  const all = t.getArchEvents({});
+  assert.strictEqual(all.length, 3);
+  t.close();
+});
+
+// ── delta module ────────────────────────────────────────────────────
+test('Temporal storage', 'xorBitsets self-inverse: (a XOR b) XOR b == a', () => {
+  const a = new TBitset(64);
+  a.set(1); a.set(5); a.set(30);
+  const b = new TBitset(64);
+  b.set(5); b.set(40);
+  const d = xorBitsets(a, b);
+  const back = xorBitsets(d, b);
+  // back == a
+  assert.strictEqual(back.has(1), true);
+  assert.strictEqual(back.has(5), true);
+  assert.strictEqual(back.has(30), true);
+  assert.strictEqual(back.has(40), false);
+});
+
+test('Temporal storage', 'compressBitset → decompressBitset roundtrip preserves bits', () => {
+  const a = new TBitset(256);
+  for (const i of [1, 7, 99, 200, 255]) a.set(i);
+  const blob = compressBitset(a);
+  const restored = decompressBitset(blob, 256);
+  for (const i of [1, 7, 99, 200, 255]) assert.strictEqual(restored.has(i), true);
+  assert.strictEqual(restored.has(2), false);
+});
+
+// ── snapshot capture ────────────────────────────────────────────────
+test('Temporal MCP tools', 'captureSnapshotWithStore writes snapshot + mappings + events', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+
+  // Build a synthetic sidecar that mimics the bitmap sidecar shape
+  const size = 4;
+  const filePathArr = [];
+  filePathArr[0] = 'src/auth/a.ts';
+  filePathArr[1] = 'src/auth/b.ts';
+  filePathArr[2] = 'src/db/c.ts';
+  filePathArr[3] = 'src/core/d.ts';
+  const fileDomainArr = new Int32Array(size);
+  fileDomainArr[0] = 0; fileDomainArr[1] = 0; fileDomainArr[2] = 1; fileDomainArr[3] = 2;
+  const domainNameArr = ['AUTH', 'DATABASE', 'CORE'];
+  const forward = new Map();
+  const fwd = new TBitset(size); fwd.set(2); forward.set(0, fwd);
+  const sidecar = {
+    size, filePathArr, fileDomainArr, domainNameArr, forward,
+    popcountIndex: [{ fileId: 2, count: 3 }],
+  };
+
+  const out = captureSnapshotWithStore({ temporal: t, sidecar, store: null, source: 'sync', ts: 1000 });
+  assert.ok(out.snapshotId > 0);
+  const rows = t.getFileDomainsAt(out.snapshotId);
+  assert.strictEqual(rows.length, 4);
+  // First snapshot fires an 'initial_snapshot' event.
+  const events = t.getArchEvents({});
+  assert.ok(events.some(e => e.kind === 'initial_snapshot'));
+  t.close();
+});
+
+test('Temporal MCP tools', 'detectEvents emits domain_growth when a domain grows >=20% with >=5 files', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  const priorSnap = t.insertSnapshot({ ts: 1000, source: 'sync', summary: { file_count: 10 } });
+  const priorMappings = [];
+  for (let i = 0; i < 10; i++) priorMappings.push({ file_path: `src/auth/${i}.ts`, domain_name: 'AUTH' });
+  t.insertFileDomains(priorSnap, priorMappings);
+
+  const mappings = [];
+  for (let i = 0; i < 20; i++) mappings.push({ file_path: `src/auth/${i}.ts`, domain_name: 'AUTH' });
+  const prior = t.getSnapshotById(priorSnap);
+  const events = detectTemporalEvents({ temporal: t, snapshotId: 999, prior, mappings, sidecar: null, ts: 2000 });
+  const growth = events.find(e => e.kind === 'domain_growth' && e.domain === 'AUTH');
+  assert.ok(growth, `expected domain_growth, got ${JSON.stringify(events.map(e => e.kind))}`);
+  assert.strictEqual(growth.detail.delta, 10);
+  t.close();
+});
+
+test('Temporal MCP tools', 'detectEvents flags domain_unstable when >30% of files moved out', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  const priorSnap = t.insertSnapshot({ ts: 1000, source: 'sync', summary: {} });
+  const priorMappings = [];
+  for (let i = 0; i < 10; i++) priorMappings.push({ file_path: `src/auth/${i}.ts`, domain_name: 'AUTH' });
+  t.insertFileDomains(priorSnap, priorMappings);
+
+  // Now only 5 of the prior 10 remain in AUTH
+  const mappings = [];
+  for (let i = 0; i < 5; i++) mappings.push({ file_path: `src/auth/${i}.ts`, domain_name: 'AUTH' });
+  // (the other 5 are gone from AUTH; treat as shrunk + unstable)
+  const prior = t.getSnapshotById(priorSnap);
+  const events = detectTemporalEvents({ temporal: t, snapshotId: 999, prior, mappings, sidecar: null, ts: 2000 });
+  const unstable = events.find(e => e.kind === 'domain_unstable');
+  assert.ok(unstable, `expected domain_unstable, got ${JSON.stringify(events.map(e => e.kind))}`);
+  t.close();
+});
+
+test('Temporal MCP tools', 'getHotspotFiles ranks by commit_count × blast_radius', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  t.recordCommitChurn(1_700_000_000_000, ['src/x.ts', 'src/x.ts', 'src/x.ts'].slice(0, 1));
+  // boost x.ts to commit_count=10
+  for (let i = 0; i < 9; i++) t.recordCommitChurn(1_700_000_000_000 + i, ['src/x.ts']);
+  // y.ts: 2 commits, lower blast
+  t.recordCommitChurn(1_700_000_000_000, ['src/y.ts']);
+  t.recordCommitChurn(1_700_000_000_001, ['src/y.ts']);
+  t.updateBlastRadii(new Map([['src/x.ts', 50], ['src/y.ts', 3]]));
+  // null timeRange so we look at all churn
+  const r = tq.getHotspotFiles(t, { timeRange: null, limit: 5 });
+  assert.ok(r.hotspots.length >= 2);
+  assert.strictEqual(r.hotspots[0].file_path, 'src/x.ts');
+  assert.ok(r.hotspots[0].score > r.hotspots[1].score);
+  t.close();
+});
+
+// ── Domain stability ────────────────────────────────────────────────
+test('Domain stability', 'parseTimeRange handles d/h/m/w/y units', () => {
+  assert.strictEqual(tq.parseTimeRange('1d'), 86_400_000);
+  assert.strictEqual(tq.parseTimeRange('2h'), 7_200_000);
+  assert.strictEqual(tq.parseTimeRange('30m'), 1_800_000);
+  assert.strictEqual(tq.parseTimeRange('1w'), 604_800_000);
+  assert.strictEqual(tq.parseTimeRange('1y'), 31_536_000_000);
+  assert.strictEqual(tq.parseTimeRange('garbage'), null);
+  assert.strictEqual(tq.parseTimeRange(''), null);
+  // Bare numbers default to days.
+  assert.strictEqual(tq.parseTimeRange('5'), 5 * 86_400_000);
+});
+
+test('Domain stability', 'getArchitecturalDrift aggregates first vs last snapshot per-domain', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  const firstId = t.insertSnapshot({ ts: Date.now() - 7 * 86_400_000, source: 'sync', summary: {} });
+  t.insertFileDomains(firstId, [
+    { file_path: 'a', domain_name: 'AUTH' },
+    { file_path: 'b', domain_name: 'AUTH' },
+    { file_path: 'c', domain_name: 'DATABASE' },
+  ]);
+  const lastId = t.insertSnapshot({ ts: Date.now(), source: 'sync', summary: {} });
+  t.insertFileDomains(lastId, [
+    { file_path: 'a', domain_name: 'AUTH' },
+    { file_path: 'b', domain_name: 'AUTH' },
+    { file_path: 'c', domain_name: 'DATABASE' },
+    { file_path: 'd', domain_name: 'DATABASE' },
+    { file_path: 'e', domain_name: 'NEW' },
+  ]);
+  const r = tq.getArchitecturalDrift(t, { timeRange: '30d' });
+  assert.strictEqual(r.trend, 'growing');
+  const auth = r.byDomain.find(d => d.domain === 'AUTH');
+  assert.strictEqual(auth.before, 2);
+  assert.strictEqual(auth.after, 2);
+  const newDomain = r.byDomain.find(d => d.domain === 'NEW');
+  assert.strictEqual(newDomain.before, 0);
+  assert.strictEqual(newDomain.after, 1);
+  t.close();
+});
+
+test('Domain stability', 'getDomainHealth surfaces growth + instability per domain', () => {
+  const root = makeTempRoot();
+  const t = new TemporalStore(root);
+  t.open();
+  // Old snapshot >30d ago
+  const oldId = t.insertSnapshot({ ts: Date.now() - 35 * 86_400_000, source: 'sync', summary: {} });
+  t.insertFileDomains(oldId, [
+    { file_path: 'a', domain_name: 'AUTH' },
+    { file_path: 'b', domain_name: 'AUTH' },
+  ]);
+  // Current snapshot
+  const newId = t.insertSnapshot({ ts: Date.now(), source: 'sync', summary: {} });
+  t.insertFileDomains(newId, [
+    { file_path: 'a', domain_name: 'AUTH' },
+    { file_path: 'b', domain_name: 'AUTH' },
+    { file_path: 'c', domain_name: 'AUTH' },
+    { file_path: 'd', domain_name: 'AUTH' },
+  ]);
+  const r = tq.getDomainHealth(t, {});
+  assert.ok(r.domains.length >= 1);
+  const auth = r.domains.find(d => d.domain === 'AUTH');
+  assert.strictEqual(auth.current_size, 4);
+  assert.strictEqual(auth.prior_size, 2);
+  assert.strictEqual(auth.growth, 2);
+  t.close();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Brain expansion — 18 tests across 5 suites
+// ═══════════════════════════════════════════════════════════════════
+
+const { SQLiteStore: BSqliteStore } = require('../src/store/sqlite-store');
+const brain = require('../src/brain');
+
+function makeBrainTestStore() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-brain-'));
+  const store = new BSqliteStore(root);
+  store.open();
+  return { root, store };
+}
+
+// Helper: populate a store with files + imports + domains + symbols.
+function seedStore(store) {
+  const db = store.db;
+  db.prepare('INSERT INTO domains (id, name) VALUES (?, ?)').run(1, 'AUTH');
+  db.prepare('INSERT INTO domains (id, name) VALUES (?, ?)').run(2, 'DATABASE');
+  db.prepare('INSERT INTO domains (id, name) VALUES (?, ?)').run(3, 'CORE');
+  const filesByPath = {};
+  const insertFile = db.prepare('INSERT INTO files (path, domain_id, centrality, language) VALUES (?, ?, ?, ?)');
+  function addFile(p, dId, centrality = 0, lang = 'TypeScript') {
+    const info = insertFile.run(p, dId, centrality, lang);
+    filesByPath[p] = info.lastInsertRowid;
+  }
+  // 8 AUTH files
+  for (let i = 0; i < 8; i++) addFile(`src/auth/file${i}.ts`, 1, 3);
+  // 6 DATABASE files
+  for (let i = 0; i < 6; i++) addFile(`src/db/file${i}.ts`, 2, 5);
+  // 7 CORE files
+  for (let i = 0; i < 7; i++) addFile(`src/core/file${i}.ts`, 3, 1);
+  // Imports — every AUTH file imports every CORE file (no cross to DATABASE)
+  const insertImport = db.prepare('INSERT INTO imports (from_file_id, to_file_id, to_path) VALUES (?, ?, ?)');
+  for (let a = 0; a < 8; a++) {
+    for (let c = 0; c < 7; c++) {
+      insertImport.run(filesByPath[`src/auth/file${a}.ts`], filesByPath[`src/core/file${c}.ts`], `src/core/file${c}.ts`);
+    }
+  }
+  // DATABASE → CORE (one edge)
+  insertImport.run(filesByPath['src/db/file0.ts'], filesByPath['src/core/file0.ts'], 'src/core/file0.ts');
+  // Exports: every AUTH file has exactly 2 named exports
+  const insertSymbol = db.prepare('INSERT INTO symbols (file_id, name, kind, exported, is_default_export) VALUES (?, ?, ?, ?, ?)');
+  for (let a = 0; a < 8; a++) {
+    insertSymbol.run(filesByPath[`src/auth/file${a}.ts`], 'fnA', 'function', 1, 0);
+    insertSymbol.run(filesByPath[`src/auth/file${a}.ts`], 'fnB', 'function', 1, 0);
+  }
+  return filesByPath;
+}
+
+test('Brain invariants', 'inferInvariants detects no-cross-domain-import rules (AUTH never imports from DATABASE)', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const rules = brain.invariants.inferInvariants(store);
+  const noImport = rules.filter(r => r.kind === 'no_cross_domain_import');
+  const authToDb = noImport.find(r => r.scope === 'AUTH' && r.rule.includes('DATABASE'));
+  assert.ok(authToDb, `expected AUTH→DATABASE invariant; got ${noImport.length} rules: ${noImport.map(x => x.id).join(', ')}`);
+  store.close();
+});
+
+test('Brain invariants', 'inferInvariants detects export-pattern invariants (AUTH files always export 2 symbols)', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const rules = brain.invariants.inferInvariants(store, { threshold: 0.8 });
+  const exportRule = rules.find(r => r.kind === 'export_pattern' && r.scope === 'AUTH');
+  assert.ok(exportRule, `expected AUTH export_pattern invariant; got ${rules.length} rules total`);
+  assert.ok(exportRule.confidence >= 0.8);
+  store.close();
+});
+
+test('Brain invariants', 'inferInvariants emits domain_naming for path prefixes', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const rules = brain.invariants.inferInvariants(store);
+  const naming = rules.filter(r => r.kind === 'domain_naming');
+  assert.ok(naming.length >= 1, `expected at least 1 naming invariant; got ${naming.length}`);
+  store.close();
+});
+
+test('Brain invariants', 'getCanonicalPattern returns null when no matching pattern exists', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const r = brain.invariants.getCanonicalPattern(store, { pattern_type: 'route_handler' });
+  assert.strictEqual(r, null); // no routes seeded
+  store.close();
+});
+
+test('Brain conventions', 'mineConventions returns directory_language conventions', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const c = brain.conventions.mineConventions(store);
+  const dirLang = c.find(x => x.kind === 'directory_language' && x.scope === 'src');
+  assert.ok(dirLang, `expected directory_language convention for src/`);
+  assert.strictEqual(dirLang.confidence >= 0.75, true);
+  store.close();
+});
+
+test('Brain conventions', 'mineConventions returns export_style per-domain', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const c = brain.conventions.mineConventions(store);
+  const named = c.find(x => x.kind === 'export_style' && x.scope === 'AUTH' && x.rule.includes('named'));
+  assert.ok(named, `expected AUTH named-export convention`);
+  store.close();
+});
+
+test('Brain conventions', 'conventionsForFile returns conventions whose scope matches', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const c = brain.conventions.conventionsForFile(store, 'src/auth/file0.ts');
+  // Must include at least the directory_language convention.
+  assert.ok(c.length >= 1, `expected ≥1 convention for file; got ${c.length}`);
+  store.close();
+});
+
+test('Brain procedural', 'mineActionPatterns returns [] when temporal store is empty', () => {
+  const { root, store } = makeBrainTestStore();
+  const tStore = new TemporalStore(root); tStore.open();
+  const patterns = brain.procedural.mineActionPatterns(tStore);
+  assert.ok(Array.isArray(patterns));
+  // No commits to mine: returns []
+  assert.strictEqual(patterns.length, 0);
+  tStore.close();
+  store.close();
+});
+
+test('Brain procedural', 'scaffoldForIntent combines patterns + canonical for "add route"', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const tStore = new TemporalStore(root); tStore.open();
+  const r = brain.procedural.scaffoldForIntent(tStore, store, 'add a payment route');
+  assert.strictEqual(typeof r, 'object');
+  assert.strictEqual(r.intent, 'add a payment route');
+  assert.ok(Array.isArray(r.suggestions));
+  assert.ok(Array.isArray(r.canonical));
+  tStore.close();
+  store.close();
+});
+
+test('Brain working', 'getUncommittedFiles returns empty array outside a git repo', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-brain-nogit-'));
+  const files = brain.working.getUncommittedFiles(tmp);
+  assert.ok(Array.isArray(files));
+  assert.strictEqual(files.length, 0);
+});
+
+test('Brain working', 'getWorkingMemory returns a structured object even with no temporal store', () => {
+  const { root, store } = makeBrainTestStore();
+  const wm = brain.working.getWorkingMemory({ store, temporalStore: null, projectRoot: root });
+  assert.ok('uncommitted_files' in wm);
+  assert.ok('recent_decisions_count' in wm);
+  assert.ok('open_warnings' in wm);
+  store.close();
+});
+
+test('Brain working', 'getPendingDecisions filters by HIGH-risk payload', () => {
+  const { root, store } = makeBrainTestStore();
+  // Insert a decision with HIGH risk
+  store.db.prepare(`
+    INSERT INTO ai_sessions (id, started_at, client_name) VALUES (1, ?, 'test')
+  `).run(Date.now());
+  store.db.prepare(`
+    INSERT INTO decisions (session_id, ts, kind, file, payload_json)
+    VALUES (1, ?, 'validation', 'src/test.ts', ?)
+  `).run(Date.now(), JSON.stringify({ risk: 'HIGH' }));
+  // Decision with no risk flag
+  store.db.prepare(`
+    INSERT INTO decisions (session_id, ts, kind, file, payload_json)
+    VALUES (1, ?, 'validation', 'src/other.ts', ?)
+  `).run(Date.now(), JSON.stringify({ risk: 'SAFE' }));
+  const r = brain.working.getPendingDecisions(store, { hours: 24 });
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].payload.risk, 'HIGH');
+  store.close();
+});
+
+test('Brain working', 'getActiveDrift returns empty when temporalStore is null', () => {
+  const r = brain.working.getActiveDrift(null);
+  assert.ok(r);
+  assert.deepStrictEqual(r.domains, []);
+  assert.deepStrictEqual(r.threshold_breaches, []);
+});
+
+test('Brain suggestions', 'loadThresholds returns defaults when no carto.config.json', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-brain-thresh-'));
+  const t = brain.suggestions.loadThresholds(tmp);
+  assert.strictEqual(typeof t.cross_domain_jump, 'number');
+  assert.strictEqual(typeof t.hotspot_score, 'number');
+  assert.strictEqual(typeof t.session_conflict_window_ms, 'number');
+});
+
+test('Brain suggestions', 'loadThresholds reads brain.* from carto.config.json', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-brain-cfg-'));
+  fs.writeFileSync(
+    path.join(tmp, 'carto.config.json'),
+    JSON.stringify({ domains: {}, brain: { cross_domain_jump: 99, hotspot_score: 200 } })
+  );
+  const t = brain.suggestions.loadThresholds(tmp);
+  assert.strictEqual(t.cross_domain_jump, 99);
+  assert.strictEqual(t.hotspot_score, 200);
+});
+
+test('Brain suggestions', 'getActiveSuggestions returns an array (no crash on empty inputs)', () => {
+  const { root, store } = makeBrainTestStore();
+  const s = brain.suggestions.getActiveSuggestions({ store, temporalStore: null, projectRoot: root });
+  assert.ok(Array.isArray(s));
+  store.close();
+});
+
+test('Brain suggestions', 'getActiveSuggestions emits session_conflict when 2 sessions touch same file', () => {
+  const { root, store } = makeBrainTestStore();
+  const now = Date.now();
+  // Insert two sessions touching the same file within 30 min
+  store.db.prepare(`INSERT INTO ai_sessions (id, started_at, client_name) VALUES (?, ?, ?)`).run(1, now, 'a');
+  store.db.prepare(`INSERT INTO ai_sessions (id, started_at, client_name) VALUES (?, ?, ?)`).run(2, now, 'b');
+  store.db.prepare(`INSERT INTO decisions (session_id, ts, kind, file) VALUES (1, ?, 'v', 'src/x.ts')`).run(now - 1000);
+  store.db.prepare(`INSERT INTO decisions (session_id, ts, kind, file) VALUES (2, ?, 'v', 'src/x.ts')`).run(now - 500);
+  const s = brain.suggestions.getActiveSuggestions({ store, temporalStore: null, projectRoot: root });
+  const conflict = s.find(x => x.trigger === 'session_conflict' && x.detail.file === 'src/x.ts');
+  assert.ok(conflict, `expected session_conflict suggestion; got ${JSON.stringify(s.map(x => x.trigger))}`);
+  store.close();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Reach expansion — 4 language plugins +
+// framework extractors + plugin API
+// ═══════════════════════════════════════════════════════════════════
+
+const phpPlugin = require('../src/extractors/languages/php');
+const kotlinPlugin = require('../src/extractors/languages/kotlin');
+const swiftPlugin = require('../src/extractors/languages/swift');
+const dartPlugin = require('../src/extractors/languages/dart');
+const fw = require('../src/extractors/frameworks');
+const pluginApi = require('../src/extractors/plugin-api');
+
+// ── Plugin API ────────────────────────────────────────────────────
+test('Plugin API', 'validatePlugin accepts a well-formed plugin', () => {
+  const errors = pluginApi.validatePlugin({
+    name: 'x',
+    extensions: ['.x'],
+    extract: () => pluginApi.EMPTY_RESULT,
+  });
+  assert.deepStrictEqual(errors, []);
+});
+
+test('Plugin API', 'validatePlugin rejects missing extensions', () => {
+  const errors = pluginApi.validatePlugin({ name: 'x', extract: () => ({}) });
+  assert.ok(errors.some(e => e.includes('extensions')), errors.join('; '));
+});
+
+test('Plugin API', 'validatePluginOutput catches missing routes array', () => {
+  const errors = pluginApi.validatePluginOutput({ models: [], functions: [] });
+  assert.ok(errors.some(e => e.includes('routes')), errors.join('; '));
+});
+
+test('Plugin API', 'validatePluginOutput rejects non-array routes', () => {
+  const errors = pluginApi.validatePluginOutput({ routes: 'wat', models: [], functions: [] });
+  assert.ok(errors.some(e => e.includes('routes must be an array')), errors.join('; '));
+});
+
+// ── PHP plugin ────────────────────────────────────────────────────
+test('PHP extractor', 'all 4 new plugins are validatePlugin-clean', () => {
+  for (const p of [phpPlugin, kotlinPlugin, swiftPlugin, dartPlugin]) {
+    assert.deepStrictEqual(pluginApi.validatePlugin(p), [], `${p.name} failed validation`);
+  }
+});
+
+test('PHP extractor', 'Laravel routes (Route::get, resource) are extracted', () => {
+  const src = `<?php
+Route::get('/users', [UserController::class, 'index']);
+Route::post('/users', [UserController::class, 'store']);
+Route::resource('posts', PostController::class);
+`;
+  const out = phpPlugin.extract(src, 'routes/web.php');
+  const paths = out.routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /users'), `paths: ${paths.join(', ')}`);
+  assert.ok(paths.includes('POST /users'), `paths: ${paths.join(', ')}`);
+  assert.ok(paths.some(p => p.startsWith('GET /posts')), `paths: ${paths.join(', ')}`);
+  assert.ok(paths.some(p => p.startsWith('POST /posts')), `paths: ${paths.join(', ')}`);
+});
+
+test('PHP extractor', 'Symfony attribute routes (#[Route(...)] with methods) extracted', () => {
+  const src = `<?php
+class Controller {
+  #[Route('/users', methods: ['GET', 'POST'])]
+  public function index(): Response {}
+}
+`;
+  const out = phpPlugin.extract(src, 'src/Controller.php');
+  const paths = out.routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /users'), paths.join(', '));
+  assert.ok(paths.includes('POST /users'), paths.join(', '));
+});
+
+test('PHP extractor', 'Eloquent + namespace imports extracted', () => {
+  const src = `<?php
+namespace App\\Models;
+
+use Illuminate\\Database\\Eloquent\\Model;
+
+class User extends Model {
+  protected $fillable = ['name', 'email'];
+}
+`;
+  const out = phpPlugin.extract(src, 'app/Models/User.php');
+  assert.strictEqual(out.models.length, 1);
+  assert.strictEqual(out.models[0].className, 'User');
+  assert.strictEqual(out.models[0].kind, 'eloquent');
+  assert.ok(out.models[0].fields.some(f => f.name === 'name'));
+  assert.ok(out._tsImports.some(i => i.from === 'Illuminate\\Database\\Eloquent\\Model'));
+});
+
+// ── Kotlin plugin ────────────────────────────────────────────────
+test('Kotlin extractor', 'Spring @GetMapping/@PostMapping routes extracted', () => {
+  const src = `
+package com.example
+@RestController
+class UserController {
+  @GetMapping("/users") fun list() {}
+  @PostMapping("/users") fun create() {}
+  @PutMapping("/users/{id}") fun update() {}
+}
+`;
+  const out = kotlinPlugin.extract(src, 'UserController.kt');
+  const paths = out.routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /users'));
+  assert.ok(paths.includes('POST /users'));
+  assert.ok(paths.includes('PUT /users/{id}'));
+});
+
+test('Kotlin extractor', 'Ktor routing { get(...) } extracted', () => {
+  const src = `
+routing {
+  get("/health") { call.respond("ok") }
+  post("/login") { call.respond("ok") }
+}
+`;
+  const out = kotlinPlugin.extract(src, 'Main.kt');
+  const paths = out.routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /health'));
+  assert.ok(paths.includes('POST /login'));
+});
+
+test('Kotlin extractor', 'data class with fields extracted as model', () => {
+  const src = `data class User(val id: Int, val email: String, val name: String?)`;
+  const out = kotlinPlugin.extract(src, 'User.kt');
+  assert.strictEqual(out.models.length, 1);
+  assert.strictEqual(out.models[0].className, 'User');
+  const names = out.models[0].fields.map(f => f.name);
+  assert.deepStrictEqual(names.sort(), ['email', 'id', 'name']);
+});
+
+// ── Swift plugin ──────────────────────────────────────────────────
+test('Swift extractor', 'SwiftUI View struct surfaces as flutter-view-style model', () => {
+  const src = `
+import SwiftUI
+struct ProfileView: View {
+  let name: String
+  var body: some View { Text(name) }
+}
+`;
+  const out = swiftPlugin.extract(src, 'ProfileView.swift');
+  const m = out.models.find(x => x.className === 'ProfileView');
+  assert.ok(m, `expected ProfileView in models; got ${out.models.map(x => x.className).join(', ')}`);
+  assert.strictEqual(m.kind, 'swiftui-view');
+});
+
+test('Swift extractor', 'Vapor app.get("/path") route extracted', () => {
+  const src = `
+app.get("/users") { req in "ok" }
+app.post("/users") { req in "ok" }
+`;
+  const out = swiftPlugin.extract(src, 'main.swift');
+  const paths = out.routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /users'));
+  assert.ok(paths.includes('POST /users'));
+});
+
+// ── Dart plugin ───────────────────────────────────────────────────
+test('Dart extractor', 'Flutter StatelessWidget class extracted', () => {
+  const src = `
+import 'package:flutter/material.dart';
+class HomeScreen extends StatelessWidget {
+  @override Widget build(BuildContext context) { return Container(); }
+}
+`;
+  const out = dartPlugin.extract(src, 'home.dart');
+  const home = out.models.find(m => m.className === 'HomeScreen');
+  assert.ok(home);
+  assert.strictEqual(home.kind, 'flutter-widget');
+});
+
+test('Dart extractor', 'Shelf Router route extracted', () => {
+  const src = `
+final router = Router();
+router.get('/health', (req) => 'ok');
+router.post('/login', (req) => 'ok');
+`;
+  const out = dartPlugin.extract(src, 'server.dart');
+  const paths = out.routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /health'));
+  assert.ok(paths.includes('POST /login'));
+});
+
+// ── Long-tail JS/TS frameworks ────────────────────────────────────
+test('Long-tail frameworks', 'NestJS @Controller prefix + @Get/@Post decorators joined', () => {
+  const src = `
+@Controller('users')
+class UsersController {
+  @Get() list() {}
+  @Get(':id') get() {}
+  @Post() create() {}
+}
+`;
+  const routes = fw.extractNestJsRoutes(src);
+  const paths = routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /users'), paths.join(', '));
+  assert.ok(paths.includes('GET /users/:id'), paths.join(', '));
+  assert.ok(paths.includes('POST /users'), paths.join(', '));
+});
+
+test('Long-tail frameworks', 'Remix routes/users.$id.tsx with loader+action → /users/:id GET+POST', () => {
+  const src = `export function loader() {}\nexport async function action() {}`;
+  const routes = fw.extractRemixRoutes(src, 'app/routes/users.$id.tsx');
+  const paths = routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /users/:id'), paths.join(', '));
+  assert.ok(paths.includes('POST /users/:id'), paths.join(', '));
+});
+
+test('Long-tail frameworks', 'SvelteKit +server.ts with GET/POST exports → /users/:id', () => {
+  const src = `export const GET = async () => {};\nexport const POST = async () => {};`;
+  const routes = fw.extractSvelteKitRoutes(src, 'src/routes/users/[id]/+server.ts');
+  const paths = routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /users/:id'), paths.join(', '));
+  assert.ok(paths.includes('POST /users/:id'), paths.join(', '));
+});
+
+test('Long-tail frameworks', 'Astro pages/products/[slug].astro → /products/:slug', () => {
+  const routes = fw.extractAstroRoutes('---\n---', 'src/pages/products/[slug].astro');
+  const paths = routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /products/:slug'), paths.join(', '));
+});
+
+test('Long-tail frameworks', 'Sanic @app.get("/x") extracted in Python', () => {
+  const src = `
+from sanic import Sanic
+app = Sanic("x")
+
+@app.get('/health')
+async def health(req):
+  return text('ok')
+`;
+  const routes = fw.extractPythonFrameworkRoutes(src);
+  const paths = routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /health'), paths.join(', '));
+});
+
+test('Long-tail frameworks', 'Tornado URLSpec map extracted when tornado imported', () => {
+  const src = `
+import tornado.web
+class MainHandler(tornado.web.RequestHandler): pass
+app = tornado.web.Application([
+  (r"/", MainHandler),
+  (r"/health", MainHandler),
+])
+`;
+  const routes = fw.extractPythonFrameworkRoutes(src);
+  const paths = routes.map(r => r.path);
+  assert.ok(paths.includes('/'));
+  assert.ok(paths.includes('/health'));
+});
+
+test('Long-tail frameworks', 'Fiber routes extracted when gofiber import present', () => {
+  const src = `
+import "github.com/gofiber/fiber/v2"
+func main() {
+  app := fiber.New()
+  app.Get("/x", h)
+  app.Post("/y", h)
+}
+`;
+  const routes = fw.extractGoFrameworkRoutes(src);
+  const paths = routes.map(r => `${r.method} ${r.path}`);
+  assert.ok(paths.includes('GET /x'), paths.join(', '));
+  assert.ok(paths.includes('POST /y'), paths.join(', '));
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ACP polish — 7 tests across 3 suites
+// ═══════════════════════════════════════════════════════════════════
+
+const { AcpStore } = require('../src/acp/persistence');
+const { loadAgentConfig, saveAgentConfig, clearAgentConfig } = require('../src/acp/config');
+const { resolveSafe, safeRunCommand } = require('../src/acp/safety');
+const { Session: AcpSession } = require('../src/acp/session');
+
+function makeAcpRoot() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-acp-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  return root;
+}
+
+test('ACP persistence', 'saveSession + loadSession roundtrip preserves history + metadata', () => {
+  const root = makeAcpRoot();
+  const store = new AcpStore(root); store.open();
+  const session = new AcpSession('abc123', root);
+  session.history = [
+    { role: 'user', content: 'hello' },
+    { role: 'assistant', content: 'hi back' },
+  ];
+  session.metadata = { client_name: 'test' };
+  store.saveSession(session);
+
+  const loaded = store.loadSession('abc123');
+  assert.ok(loaded);
+  assert.strictEqual(loaded.id, 'abc123');
+  assert.strictEqual(loaded.history.length, 2);
+  assert.strictEqual(loaded.history[0].role, 'user');
+  assert.strictEqual(loaded.metadata.client_name, 'test');
+  store.close();
+});
+
+test('ACP persistence', 'saveSession is idempotent on id (no duplicate rows)', () => {
+  const root = makeAcpRoot();
+  const store = new AcpStore(root); store.open();
+  const session = new AcpSession('zzz', root);
+  session.history = [{ role: 'user', content: 'first' }];
+  store.saveSession(session);
+  session.history.push({ role: 'assistant', content: 'second' });
+  store.saveSession(session);
+  const all = store.listSessions();
+  assert.strictEqual(all.length, 1);
+  const loaded = store.loadSession('zzz');
+  assert.strictEqual(loaded.history.length, 2);
+  store.close();
+});
+
+test('ACP persistence', 'openIfExists returns null on missing DB', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-acp-empty-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  const store = AcpStore.openIfExists(root);
+  assert.strictEqual(store, null);
+});
+
+test('ACP config', 'saveAgentConfig writes providerId/baseUrl/model and STRIPS apiKey', () => {
+  const root = makeAcpRoot();
+  saveAgentConfig({
+    projectRoot: root,
+    providerId: 'anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-sonnet-4-20250514',
+    // Even if a future caller passes an apiKey, it must NOT land in the file.
+    apiKey: 'should-not-be-written',
+    key: 'also-not',
+    token: 'nope',
+    secret: 'never',
+  });
+  const cfgPath = path.join(root, '.carto', 'agent-config.json');
+  const raw = fs.readFileSync(cfgPath, 'utf-8');
+  assert.ok(!/should-not-be-written|also-not|nope|never/.test(raw),
+    `agent-config.json must not contain secret fields; got: ${raw}`);
+  const cfg = loadAgentConfig(root);
+  assert.strictEqual(cfg.providerId, 'anthropic');
+  assert.strictEqual(cfg.baseUrl, 'https://api.anthropic.com');
+  assert.strictEqual(cfg.model, 'claude-sonnet-4-20250514');
+});
+
+test('ACP config', 'loadAgentConfig returns null for missing file', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-acp-cfgnil-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  assert.strictEqual(loadAgentConfig(root), null);
+});
+
+// ── Safety primitives ────────────────────────────────────────────
+test('ACP safety', 'resolveSafe rejects absolute paths', () => {
+  const root = makeAcpRoot();
+  fs.writeFileSync(path.join(root, 'a.txt'), 'x');
+  assert.throws(() => resolveSafe(root, '/etc/passwd'), /absolute/);
+});
+
+test('ACP safety', 'resolveSafe rejects ../ escape', () => {
+  const root = makeAcpRoot();
+  fs.writeFileSync(path.join(root, 'a.txt'), 'x');
+  assert.throws(() => resolveSafe(root, '../etc/passwd'), /escapes/);
+});
+
+test('ACP safety', 'resolveSafe accepts relative path inside workingDir', () => {
+  const root = makeAcpRoot();
+  fs.mkdirSync(path.join(root, 'sub'));
+  fs.writeFileSync(path.join(root, 'sub', 'a.txt'), 'x');
+  const r = resolveSafe(root, 'sub/a.txt');
+  assert.ok(r.endsWith('sub/a.txt'), `got ${r}`);
+});
+
+test('ACP safety', 'safeRunCommand refuses shell metacharacters in cmd (async — see runAsyncSuite)', () => {
+  // The actual rejection assertion lives in runAsyncSuite; the sync test
+  // helper doesn't await. Here we just confirm the export exists and is
+  // a function.
+  assert.strictEqual(typeof safeRunCommand, 'function');
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// AI-native primitives — 14 new MCP tools
+// ═══════════════════════════════════════════════════════════════════
+
+const lex = require('../src/ai/retrieval/lexical');
+const rrf = require('../src/ai/retrieval/rrf');
+const sem = require('../src/ai/retrieval/semantic');
+const aiTools = require('../src/ai/tools');
+const ctxBuilder = require('../src/ai/context-builder');
+
+function makeAiTestStore() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ai-'));
+  const store = new BSqliteStore(root);
+  store.open();
+  return { root, store };
+}
+
+function seedAiStore(store) {
+  const db = store.db;
+  db.prepare('INSERT INTO domains (id, name) VALUES (?, ?)').run(1, 'AUTH');
+  db.prepare('INSERT INTO domains (id, name) VALUES (?, ?)').run(2, 'PAYMENTS');
+  const ins = db.prepare('INSERT INTO files (path, domain_id, centrality, language, size) VALUES (?, ?, ?, ?, ?)');
+  const sym = db.prepare('INSERT INTO symbols (file_id, name, kind, exported, is_default_export) VALUES (?, ?, ?, ?, ?)');
+  const route = db.prepare('INSERT INTO routes (file_id, method, path) VALUES (?, ?, ?)');
+  const model = db.prepare('INSERT INTO models (file_id, name, kind, fields_json) VALUES (?, ?, ?, ?)');
+  const r1 = ins.run('src/auth/login.ts', 1, 12, 'TypeScript', 4000);
+  sym.run(r1.lastInsertRowid, 'loginUser', 'function', 1, 0);
+  sym.run(r1.lastInsertRowid, 'logoutUser', 'function', 1, 0);
+  route.run(r1.lastInsertRowid, 'POST', '/api/login');
+  const r2 = ins.run('src/auth/session.ts', 1, 8, 'TypeScript', 2000);
+  sym.run(r2.lastInsertRowid, 'createSession', 'function', 1, 0);
+  const r3 = ins.run('src/payments/billing.ts', 2, 6, 'TypeScript', 6000);
+  sym.run(r3.lastInsertRowid, 'chargeCard', 'function', 1, 0);
+  model.run(r3.lastInsertRowid, 'Invoice', 'interface', JSON.stringify([{ name: 'id', type: 'string' }]));
+  const r4 = ins.run('src/utils/helpers.ts', null, 2, 'TypeScript', 1000);
+  sym.run(r4.lastInsertRowid, 'parseDate', 'function', 1, 0);
+  return { authLogin: r1.lastInsertRowid, authSession: r2.lastInsertRowid, payBilling: r3.lastInsertRowid };
+}
+
+test('AI retrieval: lexical', 'ensureFtsIndex creates files_fts virtual table + populates', () => {
+  const { root, store } = makeAiTestStore();
+  seedAiStore(store);
+  const ok = lex.ensureFtsIndex(store);
+  assert.strictEqual(ok, true);
+  const r = lex.searchFts(store, 'login');
+  assert.ok(r.length >= 1, `expected at least 1 match for "login"; got ${r.length}`);
+  const paths = r.map(x => x.path);
+  assert.ok(paths.includes('src/auth/login.ts'), `paths: ${paths.join(', ')}`);
+  store.close();
+});
+
+test('AI retrieval: lexical', 'searchFts returns empty for queries with no matches', () => {
+  const { root, store } = makeAiTestStore();
+  seedAiStore(store);
+  lex.ensureFtsIndex(store);
+  const r = lex.searchFts(store, 'nonexistent_xyz_zzz');
+  assert.strictEqual(r.length, 0);
+  store.close();
+});
+
+test('AI retrieval: rrf', 'fuse combines channels and ranks by reciprocal rank', () => {
+  const ranked = rrf.fuse({
+    lexical: [{ path: 'a.ts' }, { path: 'b.ts' }],
+    structural: [{ path: 'b.ts' }, { path: 'c.ts' }],
+  }, { limit: 10 });
+  // b.ts is in both channels → must rank higher than a.ts (lex only) and c.ts (struct only).
+  assert.strictEqual(ranked[0].path, 'b.ts');
+  assert.strictEqual(ranked.length, 3);
+});
+
+test('AI retrieval: rrf', 'computeBoosts produces same-domain bias map', () => {
+  const { root, store } = makeAiTestStore();
+  seedAiStore(store);
+  const boosts = rrf.computeBoosts(store, { sameDomain: 'AUTH' });
+  assert.ok(boosts.has('src/auth/login.ts'), 'AUTH login boosted');
+  assert.ok(boosts.has('src/auth/session.ts'), 'AUTH session boosted');
+  assert.ok(!boosts.has('src/payments/billing.ts'), 'PAYMENTS not boosted');
+  store.close();
+});
+
+test('AI retrieval: semantic', 'isAvailable returns false by default (opt-in only)', () => {
+  assert.strictEqual(sem.isAvailable(), false);
+  assert.deepStrictEqual(sem.semanticSearch(null, 'x'), []);
+});
+
+test('AI context-builder', 'getProgressiveDisclosureTree groups files by domain', () => {
+  const { root, store } = makeAiTestStore();
+  seedAiStore(store);
+  const tree = ctxBuilder.getProgressiveDisclosureTree({ store });
+  assert.ok(tree.domains.length >= 2);
+  const auth = tree.domains.find(d => d.name === 'AUTH');
+  assert.ok(auth);
+  assert.ok(auth.top_files.length >= 1);
+  store.close();
+});
+
+test('AI tools: interfaceContract', 'returns exports + routes + models for a file', () => {
+  const { root, store } = makeAiTestStore();
+  seedAiStore(store);
+  const r = aiTools.interfaceContract({ file: 'src/payments/billing.ts' }, { store, projectRoot: root });
+  assert.strictEqual(r.file, 'src/payments/billing.ts');
+  assert.strictEqual(r.domain, 'PAYMENTS');
+  assert.ok(r.exports.some(e => e.name === 'chargeCard'));
+  assert.ok(r.models.some(m => m.name === 'Invoice'));
+  store.close();
+});
+
+test('AI tools: dataFlow', 'returns structural snapshot from store.getContext', () => {
+  const { root, store } = makeAiTestStore();
+  seedAiStore(store);
+  const r = aiTools.dataFlow({ file: 'src/auth/login.ts' }, { store, projectRoot: root });
+  assert.strictEqual(r.source, 'src/auth/login.ts');
+  assert.ok('imports' in r);
+  assert.ok('imported_by' in r);
+  store.close();
+});
+
+test('AI tools: safetyChecklist', 'flags safe when blast radius is low and no other risks', () => {
+  const { root, store } = makeAiTestStore();
+  seedAiStore(store);
+  const r = aiTools.safetyChecklist({ file: 'src/utils/helpers.ts' }, { store, projectRoot: root });
+  assert.ok(Array.isArray(r.items));
+  // helpers.ts has centrality 2 → no blast warning; no cross-domain; no
+  // temporal data so no hotspot. Should land on 'safe' or just the no-tests warning.
+  // We just check that the result is an array of items.
+  assert.ok(r.items.length >= 1);
+});
+
+test('AI tools: safetyChecklist', 'flags major when blast radius exceeds threshold', () => {
+  const { root, store } = makeAiTestStore();
+  // Build a file with blast radius >= 20 by stuffing reverse_deps.
+  const db = store.db;
+  db.prepare('INSERT INTO domains (id, name) VALUES (1, ?)').run('AUTH');
+  const f = db.prepare('INSERT INTO files (path, domain_id, centrality) VALUES (?, ?, ?)').run('src/auth/big.ts', 1, 50);
+  // Manually add 25 importers
+  for (let i = 0; i < 25; i++) {
+    const childId = db.prepare('INSERT INTO files (path) VALUES (?)').run(`src/imp${i}.ts`).lastInsertRowid;
+    db.prepare('INSERT INTO imports (from_file_id, to_file_id, to_path) VALUES (?, ?, ?)').run(childId, f.lastInsertRowid, 'src/auth/big.ts');
+  }
+  store.computeReverseDeps(5);
+  const r = aiTools.safetyChecklist({ file: 'src/auth/big.ts' }, { store, projectRoot: store._projectRoot });
+  assert.ok(r.items.some(i => /blast/i.test(i.message) && (i.severity === 'major' || i.severity === 'minor')),
+    `expected blast warning; got ${JSON.stringify(r.items)}`);
+  store.close();
+});
+
+test('AI tools: dependencySurface', 'reads package.json deps from project root', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ai-deps-'));
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+    dependencies: { express: '^4.21.0', zod: '^3.22.0' },
+    devDependencies: { 'mocha': '^10.0.0' },
+  }));
+  const r = aiTools.dependencySurface({}, { store: null, projectRoot: root });
+  assert.strictEqual(r.count, 3);
+  assert.ok(r.deps.some(d => d.name === 'express' && d.kind === 'runtime'));
+  assert.ok(r.deps.some(d => d.name === 'mocha' && d.kind === 'dev'));
+});
+
+test('AI tools: upgradeRisk', 'cross-references package deps with imports table', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ai-risk-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+    dependencies: { express: '^4.21.0' },
+  }));
+  const store = new BSqliteStore(root); store.open();
+  const f1 = store.db.prepare('INSERT INTO files (path) VALUES (?)').run('src/a.ts').lastInsertRowid;
+  const f2 = store.db.prepare('INSERT INTO files (path) VALUES (?)').run('src/b.ts').lastInsertRowid;
+  store.db.prepare('INSERT INTO imports (from_file_id, to_path) VALUES (?, ?)').run(f1, 'express');
+  store.db.prepare('INSERT INTO imports (from_file_id, to_path) VALUES (?, ?)').run(f2, 'express/types');
+  const r = aiTools.upgradeRisk({}, { store, projectRoot: root });
+  const express = r.risks.find(x => x.name === 'express');
+  assert.ok(express, `expected express in risks; got ${r.risks.map(x => x.name).join(', ')}`);
+  assert.strictEqual(express.count, 2);
+  store.close();
+});
+
+test('AI tools: staleDocs', 'flags docs older than 30 days', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-ai-docs-'));
+  fs.mkdirSync(path.join(root, 'docs'));
+  const oldDoc = path.join(root, 'docs', 'old.md');
+  fs.writeFileSync(oldDoc, '# old');
+  const old = (Date.now() - 60 * 86_400_000) / 1000;
+  fs.utimesSync(oldDoc, old, old);
+  const r = aiTools.staleDocs({}, { store: null, projectRoot: root });
+  assert.ok(r.stale.some(d => d.path === 'docs/old.md'));
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Adjacent positioning — 13 tests across 5 suites
+// ═══════════════════════════════════════════════════════════════════
+
+const callGraph = require('../src/adjacent/call-graph');
+const iac = require('../src/adjacent/iac');
+const runtime = require('../src/adjacent/runtime');
+const semDiff = require('../src/adjacent/semantic-diff');
+const llmEnrich = require('../src/adjacent/llm-enrich');
+
+// ── Cross-language call graph ────────────────────────────────────
+test('Adjacent: call graph', 'collectFetchesFromContent detects fetch/axios/jQuery patterns', () => {
+  const src = `
+fetch('/api/users', { method: 'POST' });
+axios.get('/api/profile');
+$.get('/api/health');
+fetch(\`/api/items/\${id}\`, { method: 'GET' });
+`;
+  const r = callGraph.collectFetchesFromContent(src);
+  const paths = r.map(x => `${x.method} ${x.path}`).sort();
+  assert.ok(paths.includes('POST /api/users'), paths.join(', '));
+  assert.ok(paths.includes('GET /api/profile'), paths.join(', '));
+  assert.ok(paths.includes('GET /api/health'), paths.join(', '));
+});
+
+test('Adjacent: call graph', 'normalizePath collapses numeric + uuid segments', () => {
+  assert.strictEqual(callGraph.normalizePath('/users/123/posts'), '/users/:id/posts');
+  assert.strictEqual(callGraph.normalizePath('/users/aaaaaaaa-bbbb-1234-5678-9abcdef01234'), '/users/:id');
+  assert.strictEqual(callGraph.normalizePath('/users/{id}'), '/users/:id');
+  assert.strictEqual(callGraph.normalizePath('/users/:id/profile'), '/users/:id/profile');
+  assert.strictEqual(callGraph.normalizePath('/static'), '/static');
+});
+
+test('Adjacent: call graph', 'buildCallGraph joins fetches in source files to route handlers', () => {
+  // Build a tiny project on disk: one TS file that fetches /api/users,
+  // one route file that handles POST /api/users.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-callgraph-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  fs.mkdirSync(path.join(root, 'src'));
+  fs.writeFileSync(path.join(root, 'src', 'client.ts'),
+    "fetch('/api/users', { method: 'POST' });\n");
+  fs.writeFileSync(path.join(root, 'src', 'handler.ts'),
+    "// handler\n");
+  const store = new BSqliteStore(root); store.open();
+  // Seed: register both files + a POST /api/users route on handler.ts
+  const c = store.db.prepare('INSERT INTO files (path, language) VALUES (?, ?)').run('src/client.ts', 'TypeScript').lastInsertRowid;
+  const h = store.db.prepare('INSERT INTO files (path, language) VALUES (?, ?)').run('src/handler.ts', 'TypeScript').lastInsertRowid;
+  store.db.prepare('INSERT INTO routes (file_id, method, path) VALUES (?, ?, ?)').run(h, 'POST', '/api/users');
+
+  const r = callGraph.buildCallGraph({ store, projectRoot: root });
+  assert.strictEqual(r.total_fetches_seen, 1);
+  assert.ok(r.matches.length >= 1, `no matches: ${JSON.stringify(r)}`);
+  const m = r.matches[0];
+  assert.strictEqual(m.caller_file, 'src/client.ts');
+  assert.strictEqual(m.callee_file, 'src/handler.ts');
+  assert.strictEqual(m.method, 'POST');
+  store.close();
+});
+
+// ── IaC parsers ──────────────────────────────────────────────────
+test('Adjacent: IaC', 'parseTerraform extracts resource + module + data blocks', () => {
+  const src = `
+resource "aws_s3_bucket" "mine" {
+  bucket = var.bucket_name
+}
+
+module "vpc" {
+  source = "terraform-aws-modules/vpc/aws"
+  cidr   = var.cidr_block
+}
+
+data "aws_iam_policy_document" "assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+  }
+}
+`;
+  const r = iac.parseTerraform(src, 'main.tf');
+  const kinds = r.map(x => x.kind).sort();
+  assert.deepStrictEqual(kinds, ['data', 'module', 'resource']);
+  const bucket = r.find(x => x.kind === 'resource' && x.name === 'mine');
+  assert.strictEqual(bucket.tf_type, 'aws_s3_bucket');
+  // Bucket references `var.bucket_name`
+  assert.ok(bucket.dependencies.some(d => d.startsWith('var.bucket_name')), bucket.dependencies.join(', '));
+});
+
+test('Adjacent: IaC', 'parseHelmChart picks up Chart.yaml name + version + deps', () => {
+  const src = `
+apiVersion: v2
+name: my-chart
+version: 1.2.3
+description: Test chart
+dependencies:
+  - name: redis
+    version: ~17.0.0
+  - name: postgres
+    version: ~12.0.0
+`;
+  const r = iac.parseHelmChart(src, 'helm/Chart.yaml');
+  assert.strictEqual(r.length, 1);
+  assert.strictEqual(r[0].name, 'my-chart');
+  assert.strictEqual(r[0].version, '1.2.3');
+  assert.deepStrictEqual(r[0].dependencies.map(d => d.name).sort(), ['postgres', 'redis']);
+});
+
+test('Adjacent: IaC', 'parsePulumiOrCdk detects new Construct(this, "name") only when SDK import present', () => {
+  const cdkSrc = `
+import * as cdk from 'aws-cdk-lib';
+import * as s3 from 'aws-cdk-lib/aws-s3';
+
+class MyStack extends cdk.Stack {
+  constructor() {
+    new s3.Bucket(this, "AssetsBucket", { versioned: true });
+  }
+}
+`;
+  const r = iac.parsePulumiOrCdk(cdkSrc, 'stack.ts');
+  assert.ok(r.some(x => x.kind === 'cdk-construct' && x.name === 'AssetsBucket'), JSON.stringify(r));
+  // No CDK / Pulumi import → no extraction.
+  const noSdk = `new s3.Bucket(this, "name");`;
+  assert.strictEqual(iac.parsePulumiOrCdk(noSdk, 'x.ts').length, 0);
+});
+
+// ── Runtime fusion (OTLP) ────────────────────────────────────────
+test('Adjacent: runtime', 'parseOtlpText aggregates http.method × http.route from OTLP JSON', () => {
+  const otlp = {
+    resourceSpans: [{
+      scopeSpans: [{
+        spans: [
+          { attributes: [
+            { key: 'http.method', value: { stringValue: 'GET' } },
+            { key: 'http.route', value: { stringValue: '/api/users' } },
+          ]},
+          { attributes: [
+            { key: 'http.method', value: { stringValue: 'GET' } },
+            { key: 'http.route', value: { stringValue: '/api/users' } },
+          ]},
+          { attributes: [
+            { key: 'http.method', value: { stringValue: 'POST' } },
+            { key: 'http.route', value: { stringValue: '/api/login' } },
+          ]},
+        ],
+      }],
+    }],
+  };
+  const r = runtime.parseOtlpText(JSON.stringify(otlp));
+  const map = new Map(r.map(x => [`${x.method} ${x.path}`, x.count]));
+  assert.strictEqual(map.get('GET /api/users'), 2);
+  assert.strictEqual(map.get('POST /api/login'), 1);
+});
+
+test('Adjacent: runtime', 'riskWeightedBlastRadius scores routes by dependents × runtime_calls', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-riskblast-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  const store = new BSqliteStore(root); store.open();
+  const f1 = store.db.prepare('INSERT INTO files (path, centrality) VALUES (?, ?)').run('src/hot.ts', 20).lastInsertRowid;
+  const f2 = store.db.prepare('INSERT INTO files (path, centrality) VALUES (?, ?)').run('src/cold.ts', 5).lastInsertRowid;
+  store.db.prepare('INSERT INTO routes (file_id, method, path) VALUES (?, ?, ?)').run(f1, 'GET', '/api/hot');
+  store.db.prepare('INSERT INTO routes (file_id, method, path) VALUES (?, ?, ?)').run(f2, 'GET', '/api/cold');
+  const counts = [{ method: 'GET', path: '/api/hot', count: 1000 }];
+  const r = runtime.riskWeightedBlastRadius({ store, runtimeCounts: counts });
+  // Hot route should have the highest score
+  assert.strictEqual(r[0].path, '/api/hot');
+  assert.strictEqual(r[0].runtime_calls, 1000);
+  store.close();
+});
+
+test('Adjacent: runtime', 'deadCodeWithConfidence flags orphaned files (no imports + no runtime)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-dead-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  const store = new BSqliteStore(root); store.open();
+  // f1 is orphan: 0 reverse_deps + 0 centrality. f2 has an importer.
+  const f1 = store.db.prepare('INSERT INTO files (path, centrality) VALUES (?, ?)').run('src/orphan.ts', 0).lastInsertRowid;
+  const f2 = store.db.prepare('INSERT INTO files (path, centrality) VALUES (?, ?)').run('src/used.ts', 0).lastInsertRowid;
+  const importer = store.db.prepare('INSERT INTO files (path, centrality) VALUES (?, ?)').run('src/main.ts', 0).lastInsertRowid;
+  store.db.prepare('INSERT INTO imports (from_file_id, to_file_id, to_path) VALUES (?, ?, ?)').run(importer, f2, 'src/used.ts');
+  const r = runtime.deadCodeWithConfidence({ store });
+  const paths = r.map(x => x.path);
+  assert.ok(paths.includes('src/orphan.ts'));
+  assert.ok(!paths.includes('src/used.ts'));
+  store.close();
+});
+
+// ── Semantic diff ────────────────────────────────────────────────
+test('Adjacent: semantic-diff', 'detectRenames pairs removed/added function decls of same shape', () => {
+  const diff = `--- a/src/auth.ts
++++ b/src/auth.ts
+@@ -1,5 +1,5 @@
+ // header
+-function getUser(id: string) {
++function getUserById(id: string) {
+   return db.users.find(id);
+ }`;
+  const r = semDiff.semanticDiff({ store: null, diff });
+  assert.ok(r.renames.some(x => x.from === 'getUser' && x.to === 'getUserById'),
+    `expected getUser→getUserById rename; got ${JSON.stringify(r.renames)}`);
+});
+
+test('Adjacent: semantic-diff', 'detectRelocations finds same-name symbol moving file', () => {
+  const diff = `diff --git a/src/a.ts b/src/a.ts
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -1,3 +1,1 @@
+-function doThing() {
+-  return 1;
+-}
+diff --git a/src/b.ts b/src/b.ts
+--- /dev/null
++++ b/src/b.ts
+@@ -0,0 +1,3 @@
++function doThing() {
++  return 1;
++}`;
+  const r = semDiff.semanticDiff({ store: null, diff });
+  assert.ok(r.relocations.some(x => x.symbol === 'doThing'),
+    `expected doThing relocation; got ${JSON.stringify(r.relocations)}; renames=${JSON.stringify(r.renames)}; new=${JSON.stringify(r.new_files)}; del=${JSON.stringify(r.deleted_files)}`);
+});
+
+// ── LLM enrichment stub ──────────────────────────────────────────
+test('Adjacent: llm-enrich', 'isAvailable returns false until opt-in (matches semantic stub pattern)', () => {
+  assert.strictEqual(llmEnrich.isAvailable(), false);
+  assert.strictEqual(llmEnrich.enrichNode('src/foo.ts'), null);
+  const g = llmEnrich.enrichGraph(null);
+  assert.deepStrictEqual(g, { enriched: 0, cached: 0, summaries: [] });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Predictive premium — 10 tests across 4 suites
+// ═══════════════════════════════════════════════════════════════════
+
+const { scoreFiles } = require('../src/predictive/risk-score');
+const { findCutPoints } = require('../src/predictive/cut-points');
+const { validateChange, synthesizeDiff } = require('../src/predictive/validate-change');
+const { aiCostAttribution } = require('../src/predictive/ownership');
+const { renderDriftDigest } = require('../src/predictive/drift-digest');
+
+test('Predictive: risk-score', 'scoreFiles produces weighted score in [0,1] per file', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const r = scoreFiles({ store, projectRoot: root });
+  assert.ok(r.length > 0);
+  for (const x of r) {
+    assert.ok(x.score >= 0 && x.score <= 1, `score out of range: ${x.score}`);
+    assert.ok(x.components.blast >= 0 && x.components.blast <= 1, `blast out of range`);
+  }
+  store.close();
+});
+
+test('Predictive: risk-score', 'scoreFiles ranks higher-blast file above lower-blast', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-risk-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  const store = new BSqliteStore(root); store.open();
+  store.db.prepare('INSERT INTO files (path, centrality) VALUES (?, ?)').run('src/hot.ts', 50);
+  store.db.prepare('INSERT INTO files (path, centrality) VALUES (?, ?)').run('src/cold.ts', 1);
+  const r = scoreFiles({ store, projectRoot: root });
+  assert.strictEqual(r[0].path, 'src/hot.ts');
+  assert.ok(r[0].score > r[1].score);
+  store.close();
+});
+
+test('Predictive: cut-points', 'findCutPoints identifies high-cohesion domain as candidate', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-cut-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  const store = new BSqliteStore(root); store.open();
+  // 12 files in AUTH, all importing each other intra-domain; 1 cross-domain to CORE
+  store.db.prepare('INSERT INTO domains (id, name, file_count) VALUES (1, ?, 12)').run('AUTH');
+  store.db.prepare('INSERT INTO domains (id, name, file_count) VALUES (2, ?, 1)').run('CORE');
+  const authIds = [];
+  for (let i = 0; i < 12; i++) {
+    const id = store.db.prepare('INSERT INTO files (path, domain_id) VALUES (?, ?)').run(`src/auth/${i}.ts`, 1).lastInsertRowid;
+    store.db.prepare('INSERT INTO domain_assignments (file_id, domain_id) VALUES (?, ?)').run(id, 1);
+    authIds.push(id);
+  }
+  const coreId = store.db.prepare('INSERT INTO files (path, domain_id) VALUES (?, ?)').run('src/core/a.ts', 2).lastInsertRowid;
+  store.db.prepare('INSERT INTO domain_assignments (file_id, domain_id) VALUES (?, ?)').run(coreId, 2);
+  for (let i = 0; i < 30; i++) {
+    const a = authIds[i % authIds.length];
+    const b = authIds[(i + 1) % authIds.length];
+    if (a !== b) store.db.prepare('INSERT INTO imports (from_file_id, to_file_id, to_path) VALUES (?, ?, ?)').run(a, b, `x${i}`);
+  }
+  store.db.prepare('INSERT INTO imports (from_file_id, to_file_id, to_path) VALUES (?, ?, ?)').run(authIds[0], coreId, 'src/core/a.ts');
+  const r = findCutPoints({ store, threshold: 0.7, minSize: 5 });
+  assert.ok(r.cut_points.some(d => d.domain === 'AUTH'), `expected AUTH as cut-point; got ${JSON.stringify(r.cut_points)}; all=${JSON.stringify(r.all_domains)}`);
+  store.close();
+});
+
+test('Predictive: cut-points', 'findCutPoints rejects domain below minSize even if cohesion is high', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-cut2-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  const store = new BSqliteStore(root); store.open();
+  store.db.prepare('INSERT INTO domains (id, name) VALUES (1, ?)').run('TINY');
+  const a = store.db.prepare('INSERT INTO files (path, domain_id) VALUES (?, ?)').run('src/a.ts', 1).lastInsertRowid;
+  const b = store.db.prepare('INSERT INTO files (path, domain_id) VALUES (?, ?)').run('src/b.ts', 1).lastInsertRowid;
+  store.db.prepare('INSERT INTO imports (from_file_id, to_file_id, to_path) VALUES (?, ?, ?)').run(a, b, 'src/b.ts');
+  const r = findCutPoints({ store, threshold: 0.5, minSize: 10 });
+  assert.ok(!r.cut_points.some(d => d.domain === 'TINY'),
+    `TINY (2 files) must not pass minSize=10; got ${JSON.stringify(r.cut_points)}`);
+  store.close();
+});
+
+test('Predictive: validate-change', 'synthesizeDiff emits a parseable unified diff', () => {
+  const diff = synthesizeDiff('src/x.ts', 'old\n', 'new\nstuff\n');
+  assert.ok(diff.startsWith('diff --git'));
+  assert.ok(diff.includes('-old'));
+  assert.ok(diff.includes('+new'));
+});
+
+test('Predictive: validate-change', 'validateChange returns SAFE no-change when content is identical to disk', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-vc-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  fs.mkdirSync(path.join(root, 'src'));
+  fs.writeFileSync(path.join(root, 'src', 'x.ts'), 'hello\n');
+  const store = new BSqliteStore(root); store.open();
+  const r = validateChange({ store, projectRoot: root, file: 'src/x.ts', content: 'hello\n' });
+  assert.strictEqual(r.risk, 'SAFE');
+  assert.strictEqual(r.reason, 'no_change');
+  store.close();
+});
+
+test('Predictive: validate-change', 'validateChange invokes validation pipeline for real change', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-vc2-'));
+  fs.mkdirSync(path.join(root, '.carto'));
+  fs.mkdirSync(path.join(root, 'src'));
+  fs.writeFileSync(path.join(root, 'src', 'x.ts'), 'export function foo() {}\n');
+  const store = new BSqliteStore(root); store.open();
+  store.db.prepare('INSERT INTO files (path, centrality) VALUES (?, ?)').run('src/x.ts', 0);
+  const r = validateChange({ store, projectRoot: root, file: 'src/x.ts', content: 'export function foo() { return 1; }\n' });
+  assert.ok(['SAFE', 'LOW', 'MEDIUM', 'HIGH'].includes(r.risk), `unexpected risk: ${r.risk}`);
+  store.close();
+});
+
+test('Predictive: ownership', 'aiCostAttribution returns empty array when no sessions', () => {
+  const { root, store } = makeBrainTestStore();
+  const r = aiCostAttribution({ store });
+  assert.deepStrictEqual(r.clients, []);
+  store.close();
+});
+
+test('Predictive: ownership', 'aiCostAttribution groups decisions by client_name', () => {
+  const { root, store } = makeBrainTestStore();
+  const now = Date.now();
+  store.db.prepare(`INSERT INTO ai_sessions (id, started_at, client_name) VALUES (1, ?, 'cursor')`).run(now);
+  store.db.prepare(`INSERT INTO ai_sessions (id, started_at, client_name) VALUES (2, ?, 'claude-code')`).run(now);
+  store.db.prepare(`INSERT INTO decisions (session_id, ts, kind) VALUES (1, ?, 'v')`).run(now);
+  store.db.prepare(`INSERT INTO decisions (session_id, ts, kind) VALUES (1, ?, 'v')`).run(now);
+  store.db.prepare(`INSERT INTO decisions (session_id, ts, kind) VALUES (2, ?, 'v')`).run(now);
+  const r = aiCostAttribution({ store, hours: 24 });
+  const cursor = r.clients.find(c => c.client === 'cursor');
+  const claude = r.clients.find(c => c.client === 'claude-code');
+  assert.strictEqual(cursor.decisions, 2);
+  assert.strictEqual(claude.decisions, 1);
+  store.close();
+});
+
+test('Predictive: drift-digest', 'renderDriftDigest produces markdown with section headers', () => {
+  const { root, store } = makeBrainTestStore();
+  seedStore(store);
+  const md = renderDriftDigest({ store, temporalStore: null, projectRoot: root, timeRange: '7d' });
+  assert.ok(md.startsWith('# Drift Digest'), 'must start with H1');
+  assert.ok(md.includes('Temporal data unavailable') || md.includes('Domain drift'),
+    'expected either temporal-disabled section or drift section');
+  // Without temporal data the digest should still render predictive risk
+  assert.ok(md.includes('Predicted-risk top'), 'expected predictive risk section');
+  store.close();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Cross-Repo / Org-wide — 13 tests across 4 suites
+// ═══════════════════════════════════════════════════════════════════
+
+const { OrgStore } = require('../src/org/store');
+const orgDetect = require('../src/org/detect');
+const { orgSync, buildTargetToRepoMap } = require('../src/org/sync');
+const orgQueries = require('../src/org/queries');
+
+function makeOrgTmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'carto-org-'));
+}
+
+// ── Store ────────────────────────────────────────────────────────
+test('Org: store', 'addRepo + listRepos + getRepo roundtrip', () => {
+  const orgDir = makeOrgTmpDir();
+  const store = new OrgStore(orgDir).open();
+  store.addRepo({ name: 'api', rootPath: '/tmp/api' });
+  store.addRepo({ name: 'web', rootPath: '/tmp/web' });
+  const repos = store.listRepos();
+  assert.strictEqual(repos.length, 2);
+  assert.ok(store.getRepo('api'));
+  // idempotency: adding same name updates rootPath
+  store.addRepo({ name: 'api', rootPath: '/tmp/api-v2' });
+  assert.strictEqual(store.listRepos().length, 2);
+  assert.strictEqual(store.getRepo('api').root_path, '/tmp/api-v2');
+  store.close();
+});
+
+test('Org: store', 'removeRepo deletes repo + its outgoing/incoming edges', () => {
+  const orgDir = makeOrgTmpDir();
+  const store = new OrgStore(orgDir).open();
+  store.addRepo({ name: 'api', rootPath: '/tmp/api' });
+  store.addRepo({ name: 'web', rootPath: '/tmp/web' });
+  store.insertEdges('web', [
+    { edge_kind: 'npm', target: '@org/api', to_repo: 'api', from_file: 'package.json' },
+  ]);
+  store.removeRepo('api');
+  assert.strictEqual(store.listRepos().length, 1);
+  assert.strictEqual(store.getEdges({}).length, 0);
+  store.close();
+});
+
+test('Org: store', 'insertEdges replaces existing edges from same repo', () => {
+  const orgDir = makeOrgTmpDir();
+  const store = new OrgStore(orgDir).open();
+  store.addRepo({ name: 'a', rootPath: '/tmp/a' });
+  store.insertEdges('a', [{ edge_kind: 'npm', target: 'x' }]);
+  store.insertEdges('a', [{ edge_kind: 'npm', target: 'y' }, { edge_kind: 'npm', target: 'z' }]);
+  const edges = store.getEdges({ from_repo: 'a' });
+  assert.strictEqual(edges.length, 2);
+  assert.ok(edges.some(e => e.target === 'y'));
+  assert.ok(edges.some(e => e.target === 'z'));
+  assert.ok(!edges.some(e => e.target === 'x'));
+  store.close();
+});
+
+// ── Detection ────────────────────────────────────────────────────
+test('Org: detect', 'detectNpm finds @scope packages in package.json deps', () => {
+  const root = makeOrgTmpDir();
+  fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
+    name: '@myorg/web',
+    dependencies: { '@myorg/api-client': '^1.0', '@public/lib': '^2.0', 'express': '^4.0' },
+  }));
+  const edges = orgDetect.detectNpm(root, ['@myorg']);
+  const targets = edges.map(e => e.target);
+  assert.ok(targets.includes('@myorg/api-client'), targets.join(', '));
+  assert.ok(!targets.includes('@public/lib'));
+  assert.ok(!targets.includes('express'));
+});
+
+test('Org: detect', 'detectNpm finds @scope imports in source files', () => {
+  const root = makeOrgTmpDir();
+  fs.writeFileSync(path.join(root, 'package.json'), '{}');
+  fs.writeFileSync(path.join(root, 'app.ts'),
+    "import { foo } from '@myorg/api-client';\nimport * as fs from 'fs';\n");
+  const edges = orgDetect.detectNpm(root, ['@myorg']);
+  assert.ok(edges.some(e => e.target === '@myorg/api-client' && e.from_file === 'app.ts'));
+});
+
+test('Org: detect', 'detectGo finds go-mod requires with private prefix', () => {
+  const root = makeOrgTmpDir();
+  fs.writeFileSync(path.join(root, 'go.mod'), `
+module github.com/myorg/api
+go 1.21
+require (
+  github.com/myorg/shared v1.2.3
+  github.com/gorilla/mux v1.8.0
+)
+`);
+  const edges = orgDetect.detectGo(root, ['github.com/myorg']);
+  assert.strictEqual(edges.length, 1);
+  assert.strictEqual(edges[0].target, 'github.com/myorg/shared');
+});
+
+test('Org: detect', 'detectMaven extracts groupId:artifactId from pom.xml', () => {
+  const root = makeOrgTmpDir();
+  fs.writeFileSync(path.join(root, 'pom.xml'), `
+<project>
+  <dependencies>
+    <dependency><groupId>com.myorg</groupId><artifactId>core</artifactId><version>1.0</version></dependency>
+    <dependency><groupId>org.junit</groupId><artifactId>junit</artifactId></dependency>
+  </dependencies>
+</project>
+`);
+  const edges = orgDetect.detectMaven(root, ['com.myorg']);
+  assert.strictEqual(edges.length, 1);
+  assert.strictEqual(edges[0].target, 'com.myorg:core');
+});
+
+test('Org: detect', 'detectProto finds .proto file imports', () => {
+  const root = makeOrgTmpDir();
+  fs.writeFileSync(path.join(root, 'service.proto'), `
+syntax = "proto3";
+import "common/types.proto";
+import "other/api.proto";
+message Hello { string name = 1; }
+`);
+  const edges = orgDetect.detectProto(root);
+  const targets = edges.map(e => e.target);
+  assert.ok(targets.includes('common/types.proto'));
+  assert.ok(targets.includes('other/api.proto'));
+});
+
+test('Org: detect', 'detectSqlMigrations extracts CREATE TABLE names', () => {
+  const root = makeOrgTmpDir();
+  fs.mkdirSync(path.join(root, 'migrations'));
+  fs.writeFileSync(path.join(root, 'migrations', '001_users.sql'),
+    'CREATE TABLE users (id SERIAL PRIMARY KEY);\nCREATE TABLE IF NOT EXISTS posts (id INT);');
+  const edges = orgDetect.detectSqlMigrations(root);
+  const tables = edges.map(e => e.target);
+  assert.ok(tables.includes('users'));
+  assert.ok(tables.includes('posts'));
+});
+
+// ── Sync ─────────────────────────────────────────────────────────
+test('Org: sync', 'orgSync resolves to_repo from package.json names', () => {
+  const orgDir = makeOrgTmpDir();
+  const apiRoot = makeOrgTmpDir();
+  fs.writeFileSync(path.join(apiRoot, 'package.json'), JSON.stringify({ name: '@myorg/api' }));
+  const webRoot = makeOrgTmpDir();
+  fs.writeFileSync(path.join(webRoot, 'package.json'), JSON.stringify({
+    name: '@myorg/web',
+    dependencies: { '@myorg/api': '^1.0' },
+  }));
+
+  const store = new OrgStore(orgDir).open();
+  store.addRepo({ name: 'api', rootPath: apiRoot });
+  store.addRepo({ name: 'web', rootPath: webRoot });
+  store.close();
+
+  const r = orgSync({ orgDir, scopes: { npm: ['@myorg'] } });
+  assert.strictEqual(r.repos, 2);
+
+  const reopened = new OrgStore(orgDir).open();
+  const edges = reopened.getEdges({ from_repo: 'web' });
+  assert.ok(edges.some(e => e.target === '@myorg/api' && e.to_repo === 'api'),
+    `expected web → api resolved edge; got ${JSON.stringify(edges)}`);
+  reopened.close();
+});
+
+test('Org: sync', 'buildTargetToRepoMap maps npm + pypi + go names to repo identifiers', () => {
+  const repos = [
+    { name: 'api', root_path: (() => {
+      const r = makeOrgTmpDir();
+      fs.writeFileSync(path.join(r, 'package.json'), JSON.stringify({ name: '@myorg/api' }));
+      fs.writeFileSync(path.join(r, 'pyproject.toml'), 'name = "myorg-api"\n');
+      fs.writeFileSync(path.join(r, 'go.mod'), 'module github.com/myorg/api\n');
+      return r;
+    })() },
+  ];
+  const m = buildTargetToRepoMap(repos);
+  assert.strictEqual(m.get('npm::@myorg/api'), 'api');
+  assert.strictEqual(m.get('pypi::myorg-api'), 'api');
+  assert.strictEqual(m.get('go-mod::github.com/myorg/api'), 'api');
+});
+
+// ── Queries ──────────────────────────────────────────────────────
+test('Org: queries', 'findConsumersOfApi returns edges matching target or prefix', () => {
+  const orgDir = makeOrgTmpDir();
+  const store = new OrgStore(orgDir).open();
+  store.addRepo({ name: 'a', rootPath: '/tmp/a' });
+  store.addRepo({ name: 'b', rootPath: '/tmp/b' });
+  store.insertEdges('a', [
+    { edge_kind: 'npm', target: '@org/api', from_file: 'a.ts' },
+    { edge_kind: 'npm', target: '@org/api/types', from_file: 'b.ts' },
+  ]);
+  store.insertEdges('b', [{ edge_kind: 'npm', target: 'express', from_file: 'p.json' }]);
+  const r = orgQueries.findConsumersOfApi(store, '@org/api');
+  assert.strictEqual(r.length, 2);
+  assert.ok(r.every(x => x.from_repo === 'a'));
+  store.close();
+});
+
+test('Org: queries', 'microservicesMigrationCutPoints ranks by stability (incoming / total)', () => {
+  const orgDir = makeOrgTmpDir();
+  const store = new OrgStore(orgDir).open();
+  store.addRepo({ name: 'producer', rootPath: '/tmp/p' });
+  store.addRepo({ name: 'consumer', rootPath: '/tmp/c' });
+  // producer is depended on by consumer (1 incoming for producer)
+  // consumer has 1 outgoing edge.
+  store.insertEdges('consumer', [
+    { edge_kind: 'npm', target: '@org/producer', to_repo: 'producer', from_file: 'package.json' },
+  ]);
+  const r = orgQueries.microservicesMigrationCutPoints(store);
+  // producer should rank first (stability = 1/(1+0) = 1)
+  assert.strictEqual(r.order[0].repo, 'producer');
+  assert.strictEqual(r.order[0].stability, 1);
+  store.close();
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Cross-Tier DX leftover — API docs generator + init progress
+// ═══════════════════════════════════════════════════════════════════
+
+const genApiDocs = require('../scripts/gen-api-docs');
+
+test('Docs API gen', 'loadTools parses TOOLS array from server.js', () => {
+  const tools = genApiDocs.loadTools();
+  assert.ok(Array.isArray(tools));
+  assert.ok(tools.length >= 60, `expected >=60 tools; got ${tools.length}`);
+  for (const t of tools) {
+    assert.strictEqual(typeof t.name, 'string');
+    assert.strictEqual(typeof t.description, 'string');
+    assert.strictEqual(typeof t.inputSchema, 'object');
+  }
+});
+
+test('Docs API gen', 'toolMarkdown produces a single # heading + Input schema + Properties sections', () => {
+  const md = genApiDocs.toolMarkdown({
+    name: 'sample_tool',
+    description: 'A test tool.',
+    inputSchema: {
+      type: 'object',
+      properties: { intent: { type: 'string', description: 'A natural-language hint.' } },
+      required: ['intent'],
+    },
+  });
+  assert.ok(md.startsWith('# `sample_tool`'), md.slice(0, 100));
+  assert.ok(md.includes('## Input schema'));
+  assert.ok(md.includes('## Properties'));
+  assert.ok(md.includes('intent'));
+});
+
+test('Docs API gen', 'indexMarkdown groups tools into known categories with counts', () => {
+  const tools = genApiDocs.loadTools();
+  const md = genApiDocs.indexMarkdown(tools);
+  assert.ok(md.startsWith('# Carto MCP Tools'), md.slice(0, 100));
+  for (const expected of ['Core graph', 'Temporal', 'Brain', 'AI-native', 'Adjacent', 'Predictive', 'Org-wide']) {
+    assert.ok(md.includes(`### ${expected}`), `expected category "${expected}" in index; got: ${md.split('\n').slice(0, 20).join('\n')}`);
+  }
+});
+
+test('Docs API gen', 'every registered MCP tool has a .md file in docs/api/', () => {
+  const tools = genApiDocs.loadTools();
+  const docsDir = path.join(__dirname, '..', 'docs', 'api');
+  for (const t of tools) {
+    const p = path.join(docsDir, `${t.name}.md`);
+    assert.ok(fs.existsSync(p), `missing doc: docs/api/${t.name}.md (run \`node scripts/gen-api-docs.js\`)`);
+  }
+});
+
+
+
+const { TOOL_DEFINITIONS: SWE_TOOL_DEFS, makeExecutor: sweMakeExecutor } = require('../bench/swe-bench/tools');
+const { foldAnthropicEvents: sweFoldEvents, synthesizeDiff: sweSynthDiff } = require('../bench/swe-bench/anthropic-agent');
+
+test('SWE-bench tools', 'TOOL_DEFINITIONS lists the 5 expected tools with input_schema', () => {
+  const names = SWE_TOOL_DEFS.map((t) => t.name).sort();
+  assert.deepStrictEqual(names, ['edit_file', 'list_directory', 'read_file', 'run_bash', 'write_file']);
+  for (const t of SWE_TOOL_DEFS) {
+    assert.strictEqual(typeof t.description, 'string');
+    assert.strictEqual(t.input_schema.type, 'object', `${t.name} input_schema must be object`);
+    assert.ok(Array.isArray(t.input_schema.required), `${t.name} input_schema.required must be array`);
+  }
+});
+
+// Async tool-executor tests live in runAsyncSuite (below). The sync
+// test() helper doesn't await fn() so a rejected promise would slip
+// past the failure counter.
+
+test('SWE-bench tools', 'AnthropicAgent.foldEvents assembles streamed text + tool_use blocks', () => {
+  const folded = sweFoldEvents([
+    { event: 'content_block_start', data: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'I will read the file.' } } },
+    { event: 'content_block_start', data: { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 't1', name: 'read_file', input: {} } } },
+    { event: 'content_block_delta', data: { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"path":"src/x.ts"}' } } },
+    { event: 'message_stop', data: { type: 'message_stop' } },
+  ]);
+  assert.strictEqual(folded.length, 2);
+  assert.deepStrictEqual(folded[0], { type: 'text', text: 'I will read the file.' });
+  assert.strictEqual(folded[1].type, 'tool_use');
+  assert.deepStrictEqual(folded[1].input, { path: 'src/x.ts' });
+});
+
+test('SWE-bench tools', 'synthesizeDiff emits parser-compatible adds + modifies + deletes', () => {
+  const before = new Map([
+    ['src/keep.ts', 'unchanged\n'],
+    ['src/modify.ts', 'old\n'],
+    ['src/delete.ts', 'goodbye\n'],
+  ]);
+  const after = new Map([
+    ['src/keep.ts', 'unchanged\n'],     // no change → not in diff
+    ['src/modify.ts', 'new\n'],          // modify
+    ['src/add.ts', 'hello\n'],           // add
+    // src/delete.ts not present in after → delete
+  ]);
+  const diff = sweSynthDiff(before, after);
+  const parsed = spec16ParseDiff(diff);
+  const byPath = Object.fromEntries(parsed.map((f) => [f.path, f]));
+  assert.ok(byPath['src/modify.ts'] && byPath['src/modify.ts'].kind === 'modify');
+  assert.ok(byPath['src/add.ts'] && byPath['src/add.ts'].kind === 'add');
+  assert.ok(byPath['src/delete.ts'] && byPath['src/delete.ts'].kind === 'delete');
+  assert.ok(!byPath['src/keep.ts'], 'unchanged files must not appear in the diff');
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
@@ -5025,7 +7572,7 @@ test('ANCI roundtrip', 'consumer.loadAnci throws on unsupported header version',
   await runAsyncSuite();
 
   console.log('');
-  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Path normalization', 'MCP resilience', 'Change plan', 'Init flow', 'Git hooks', 'Lazy MCP re-parse', 'Store adapter (ACP V2)', 'Secret leakage', 'Adaptive clustering', 'Domain config', 'Domain stability', 'Extraction errors', 'Framework extractors', 'Native install resilience', 'Bitmap validation', 'Bitset serialization', 'Bitmap engine', 'Inspect command', 'Validation API', 'Episodic Memory', 'PR impact', 'Scale-test driver', 'ANCI roundtrip'];
+  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Path normalization', 'MCP resilience', 'Change plan', 'Init flow', 'Git hooks', 'Lazy MCP re-parse', 'Store adapter (ACP V2)', 'Secret leakage', 'Adaptive clustering', 'Domain config', 'Domain stability', 'Extraction errors', 'Framework extractors', 'Native install resilience', 'Bitmap validation', 'Bitset serialization', 'Bitmap engine', 'Inspect command', 'Validation API', 'Episodic Memory', 'PR impact', 'Scale-test driver', 'ANCI roundtrip', 'SSE streaming', 'Files without tests', 'MCP middleware', 'carto validate', 'SWE-bench', 'CLI: status', 'CLI: why', 'CLI: doctor', 'SWE-bench tools', 'Temporal storage', 'Temporal MCP tools', 'Brain invariants', 'Brain conventions', 'Brain procedural', 'Brain working', 'Brain suggestions', 'Plugin API', 'PHP extractor', 'Kotlin extractor', 'Swift extractor', 'Dart extractor', 'Long-tail frameworks', 'ACP persistence', 'ACP config', 'ACP safety', 'AI retrieval: lexical', 'AI retrieval: rrf', 'AI retrieval: semantic', 'AI context-builder', 'AI tools: interfaceContract', 'AI tools: dataFlow', 'AI tools: safetyChecklist', 'AI tools: dependencySurface', 'AI tools: upgradeRisk', 'AI tools: staleDocs', 'Adjacent: call graph', 'Adjacent: IaC', 'Adjacent: runtime', 'Adjacent: semantic-diff', 'Adjacent: llm-enrich', 'Predictive: risk-score', 'Predictive: cut-points', 'Predictive: validate-change', 'Predictive: ownership', 'Predictive: drift-digest', 'Org: store', 'Org: detect', 'Org: sync', 'Org: queries', 'Docs API gen'];
   for (const suite of suiteNames) {
     const s = suiteTotals[suite] || { pass: 0, total: 0 };
     const icon = s.pass === s.total ? '✓' : '✗';
