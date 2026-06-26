@@ -6,7 +6,11 @@ const fs = require('fs');
 const { SQLiteStore } = require('../store/sqlite-store');
 const { checkForUpdate } = require('./update-check');
 
-async function run(projectRoot) {
+async function run(projectRoot, opts = {}) {
+  // Parse `--temporal` from argv if not explicitly passed in opts.
+  const wantTemporal = opts.temporal || (Array.isArray(opts.argv)
+    ? opts.argv.includes('--temporal')
+    : process.argv.slice(2).includes('--temporal'));
   checkForUpdate(); // fire and forget
   const dbPath = path.join(projectRoot, '.carto', 'carto.db');
 
@@ -167,6 +171,48 @@ async function run(projectRoot) {
   console.log('─────────────────────────────────────────────────────────\n');
   console.log(hasIssues ? '  ⚠️  Issues found above.' : '  ✅ All clear.');
   console.log('');
+
+  // ── Temporal layer (opt-in via --temporal) ───────────────────────────────
+  if (wantTemporal) {
+    try {
+      const { TemporalStore } = require('../temporal/store');
+      const temporal = TemporalStore.openIfExists(projectRoot, { readonly: true });
+      if (!temporal) {
+        console.log('  ℹ️  --temporal: no temporal database. Run `carto temporal init`.\n');
+      } else {
+        try {
+          const q = require('../temporal/queries');
+          const drift = q.getArchitecturalDrift(temporal, { timeRange: '30d' });
+          const hotspots = q.getHotspotFiles(temporal, { timeRange: '90d', limit: 5 });
+          const events = q.getArchEvents(temporal, { timeRange: '30d', limit: 10 });
+
+          console.log('  📈 Temporal (last 30d)');
+          console.log(`     Trend: ${drift.trend}`);
+          if (drift.byDomain && drift.byDomain.length > 0) {
+            const top = drift.byDomain.slice(0, 5);
+            for (const d of top) {
+              const arrow = d.delta > 0 ? `+${d.delta}` : `${d.delta}`;
+              console.log(`     ${d.domain.padEnd(16)} ${String(d.before).padStart(4)} → ${String(d.after).padStart(4)} (${arrow})`);
+            }
+          }
+          if (hotspots.hotspots && hotspots.hotspots.length > 0) {
+            console.log('  🔥 Hotspots (top 5):');
+            for (const h of hotspots.hotspots) {
+              console.log(`     ${String(h.commit_count).padStart(3)} commits · blast ${String(h.blast_radius).padStart(3)} — ${h.file_path}`);
+            }
+          }
+          if (events.events && events.events.length > 0) {
+            console.log(`  ⚠️  ${events.events.length} architectural event${events.events.length === 1 ? '' : 's'} (last 30d)`);
+          }
+          console.log('');
+        } finally {
+          temporal.close();
+        }
+      }
+    } catch (err) {
+      console.log(`  ⚠️  --temporal: ${err.message}\n`);
+    }
+  }
 
   store.close();
 }
