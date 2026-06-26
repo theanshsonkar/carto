@@ -4,12 +4,15 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { StoreAdapter } = require('../store/store-adapter');
+const { AcpStore } = require('./persistence');
 
 class Session {
   constructor(id, workingDir) {
     this.id = id;
     this.workingDir = workingDir;
     this.history = [];
+    this.metadata = null;
+    this.createdAt = Date.now();
     this.abortController = null;
     this.carto = null;
     this._indexed = false;
@@ -45,6 +48,22 @@ class Session {
 class SessionManager {
   constructor() {
     this._sessions = new Map();
+    // Lazy-open AcpStores per workingDir so we don't pay startup cost
+    // when persistence isn't actually used.
+    this._stores = new Map();
+  }
+
+  _storeFor(workingDir) {
+    if (!workingDir) return null;
+    if (this._stores.has(workingDir)) return this._stores.get(workingDir);
+    try {
+      const store = new AcpStore(workingDir).open();
+      this._stores.set(workingDir, store);
+      return store;
+    } catch {
+      this._stores.set(workingDir, null);
+      return null;
+    }
   }
 
   create(workingDir) {
@@ -55,6 +74,47 @@ class SessionManager {
     return session;
   }
 
+  /**
+   * persist(session) — write session history + metadata to disk. Called
+   * after each prompt completion so an editor restart never loses
+   * conversation context.
+   */
+  persist(session) {
+    if (!session || !session.workingDir) return;
+    const store = this._storeFor(session.workingDir);
+    if (!store) return;
+    try { store.saveSession(session); } catch {}
+  }
+
+  /**
+   * resume(id, workingDir) — load a session from disk into memory. Used
+   * by `loadSession` ACP method (when capability is enabled) or by a
+   * client passing a known session id at startup.
+   */
+  resume(id, workingDir) {
+    if (!id || !workingDir) return null;
+    const store = this._storeFor(workingDir);
+    if (!store) return null;
+    const row = store.loadSession(id);
+    if (!row) return null;
+    const session = new Session(id, row.workingDir);
+    session.history = row.history || [];
+    session.metadata = row.metadata || null;
+    session.createdAt = row.createdAt || Date.now();
+    this._sessions.set(id, session);
+    return session;
+  }
+
+  /**
+   * list({ workingDir }) — list persisted sessions for a working directory.
+   */
+  list(workingDir) {
+    if (!workingDir) return [];
+    const store = this._storeFor(workingDir);
+    if (!store) return [];
+    try { return store.listSessions(); } catch { return []; }
+  }
+
   get(id) {
     return this._sessions.get(id) || null;
   }
@@ -63,6 +123,19 @@ class SessionManager {
     const s = this._sessions.get(id);
     if (s && s.carto) s.carto.close();
     this._sessions.delete(id);
+  }
+
+  closeAll() {
+    for (const s of this._sessions.values()) {
+      if (s && s.carto) {
+        try { s.carto.close(); } catch {}
+      }
+    }
+    this._sessions.clear();
+    for (const store of this._stores.values()) {
+      if (store) { try { store.close(); } catch {} }
+    }
+    this._stores.clear();
   }
 }
 

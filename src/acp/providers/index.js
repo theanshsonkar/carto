@@ -36,10 +36,15 @@ class ProviderRegistry {
 
   /**
    * set(params) — Configures the active provider.
-   * params: { providerId, apiKey, baseUrl?, model? }
+   * params: { providerId, apiKey, baseUrl?, model?, projectRoot? }
+   *
+   * If `projectRoot` is provided, the last-used provider config
+   * (providerId + baseUrl + model — never apiKey) is persisted to
+   * `.carto/agent-config.json` so the next agent run picks up the same
+   * provider without the user reconfiguring it.
    */
   set(params) {
-    const { providerId, apiKey, baseUrl, model } = params;
+    const { providerId, apiKey, baseUrl, model, projectRoot } = params;
     const providerDef = SUPPORTED_PROVIDERS.find(p => p.id === providerId);
     if (!providerDef) throw new Error(`Unknown provider: ${providerId}`);
 
@@ -53,6 +58,14 @@ class ProviderRegistry {
     } else {
       // All others use OpenAI-compatible API
       this._active = new OpenAIProvider(apiKey, resolvedUrl, resolvedModel);
+    }
+
+    // Persist last-used config (no apiKey) for the next agent run.
+    if (projectRoot) {
+      try {
+        const { saveAgentConfig } = require('./config');
+        saveAgentConfig({ projectRoot, providerId, baseUrl: resolvedUrl, model: resolvedModel });
+      } catch {}
     }
   }
 
