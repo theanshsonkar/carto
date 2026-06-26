@@ -28,6 +28,10 @@ bench/
 # Dev tools
 .kiro/
 .claude/
+
+# Dogfood MCP wiring (only useful when you clone this repo)
+.mcp.json
+.vscode/
 .github/
 .npmrc
 .DS_Store
