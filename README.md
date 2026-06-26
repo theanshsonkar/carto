@@ -5,9 +5,9 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![npm downloads](https://img.shields.io/npm/dm/carto-md)](https://www.npmjs.com/package/carto-md)
 
-**The structural intelligence layer for AI coding tools.**
+**Carto gives your AI tools a brain for your codebase.** One that remembers decisions across chats, tracks how the code evolves, and flags risky edits before they ship.
 
-Your AI coding tool sees files. Carto sees architecture — domains, blast radius, import graph, routes. Every AI tool you use stops guessing about your codebase and starts knowing it.
+> *"Touch that file and 22 things could break. That's exactly what you want to know before refactoring."* — Claude Code, on supabase
 
 ```bash
 npm install -g carto-md
@@ -15,552 +15,329 @@ cd your-project
 carto init
 ```
 
-That's it. Carto auto-wires itself into every AI tool you have installed. Restart your AI tool and it now knows your codebase architecturally.
+That's it. Carto auto-wires into every AI tool installed on your machine. Restart it. Your AI now knows your codebase — and keeps a memory of every decision it makes inside it.
 
-**Works with:** Cursor · Claude Code · Codex · Kiro · Claude Desktop · Windsurf · VS Code Copilot · JetBrains · Zed
+**Works with:** Cursor · Claude Code · Codex · Kiro · Claude Desktop · Windsurf · VS Code Copilot · Zed · JetBrains
 
-> Carto also publishes [**ANCI**](#anci--the-open-spec-for-codebases-describing-themselves-to-ai) — the open file format for any codebase to describe its architecture to AI tools. Carto is the reference implementation; the spec is open and any tool can consume it. [§ ANCI ↓](#anci--the-open-spec-for-codebases-describing-themselves-to-ai)
+Six weeks later, a new chat can ask "did we agree on snake_case here?" and get the actual prior verdict back. Nothing is re-decided.
+
+## What Carto actually does
+
+```
+─────────────────────────────────────────────────────────────────────
+carto init    reads your repo, builds the map (imports, routes,
+              models, domains, blast radius), wires every AI tool
+              on your machine. one minute, done.
+
+every chat    your AI gets the 6–12 files it actually needs.
+              every diff it proposes runs validate_diff first —
+              risky ones blocked before they hit your screen.
+              carto also pushes nudges back: "coupling jumped in
+              AUTH", "two sessions are editing this file."
+
+brain         invariants and conventions are mined from your
+              import graph. action patterns ("when a route is
+              added, auth/middleware is touched 89% of the time")
+              are mined from your git history. nobody writes
+              these rules.
+
+timeline      every commit takes a snapshot. drift, churn, and
+              architectural events accumulate. your AI can read
+              the whole story at any time: "AUTH grew 18 files
+              and lost stability when payments/billing.ts moved
+              out." carto gets smarter the longer the repo lives.
+
+predicts      every file is scored: P(causes the next bug).
+              the score blends blast radius × churn × past
+              interventions × test coverage. high-risk files
+              surface on every PR, before the PR is opened.
+
+always        one SQLite file on your disk. no network, no
+              telemetry, no cloud.
+─────────────────────────────────────────────────────────────────────
+```
 
 ---
 
-## Use it with your AI tool
+<details>
+<summary>Manual MCP wiring (if your tool wasn't auto-detected)</summary>
 
-`carto init` auto-wires the MCP server into every AI tool it detects. If yours wasn't detected, here's the manual config — **one block, copy-paste, done.**
-
-### Cursor
-
-`carto init` writes this for you. Manual: `~/.cursor/mcp.json`
+### Cursor — `~/.cursor/mcp.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
 
-### Claude Code (CLI)
-
-`carto init` writes `<project>/.mcp.json` for you when Claude Code is detected (`claude` binary on PATH or `~/.claude/` exists). Manual:
+### Claude Code — `<project>/.mcp.json`
 ```bash
 claude mcp add carto -- carto serve
 ```
-Or create `.mcp.json` at the project root:
-```json
-{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"] } } }
-```
 
-### Codex (CLI)
-
-`carto init` writes `~/.codex/config.toml` for you when Codex is detected (`codex` binary on PATH or `~/.codex/` exists). Manual:
-```bash
-codex mcp add carto -- carto serve
-```
-Or edit `~/.codex/config.toml`:
+### Codex — `~/.codex/config.toml`
 ```toml
 [mcp_servers.carto]
 command = "carto"
 args = ["serve"]
-cwd = "/your/project"
-enabled = true
 ```
 
-### Kiro
-
-`carto init` writes this for you. Manual: `~/.kiro/settings/mcp.json`
+### Kiro — `~/.kiro/settings/mcp.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
 
 ### Claude Desktop
-
-`carto init` writes this for you (cross-platform). Manual paths:
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- Linux: `~/.config/Claude/claude_desktop_config.json` (community Linux builds)
+- Linux: `~/.config/Claude/claude_desktop_config.json`
 
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
 
-### VS Code Copilot
-
-`carto init` writes `<project>/.vscode/mcp.json` for you when the `code` binary is on PATH. Manual: `.vscode/mcp.json` in your project root, or Command Palette → `MCP: Add Server`. Note: VS Code uses `servers` (not `mcpServers`) and requires `"type": "stdio"`.
+### VS Code Copilot — `.vscode/mcp.json`
 ```json
 { "servers": { "carto": { "type": "stdio", "command": "carto", "args": ["serve"] } } }
 ```
 
-### Windsurf
-
-`carto init` writes this for you when Windsurf is detected. Manual: `~/.codeium/windsurf/mcp_config.json`
+### Windsurf — `~/.codeium/windsurf/mcp_config.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
 
-### Zed / JetBrains / VS Code (full agent mode)
-
-Carto also runs as a full **ACP agent** — not just a passive MCP server, but an active coding agent with architectural awareness. See [ACP Agent](#acp-agent-zed--jetbrains--vs-code) below.
+</details>
 
 ---
 
-## What changes for your AI
+## What's actually different
 
-Without carto, your AI greps text and guesses. With carto, it queries structural facts:
+Most code indexers build a snapshot. Cursor's index, Sourcegraph's graph, GitHub's search — they all tell your AI what's in the repo *right now*. That's table stakes.
 
-> *"Add rate limiting to /api/users"*
+Carto does that too — and then layers five kinds of memory on top:
 
-**Without carto:** AI grep-searches your codebase, finds 12 files mentioning "users", picks 3 at random, hopes for the best.
+- **Episodic** — every diff it validated, every decision it made. Six weeks later, your AI can ask `did_we_discuss_this("snake_case naming")` and get back the prior verdict.
+- **Temporal** — snapshots, churn, deltas. *"AUTH grew 18 files this quarter and lost stability when `payments/billing.ts` moved out."*
+- **Semantic** — invariants and conventions mined from the import graph itself, not declared by humans.
+- **Procedural** — patterns mined from git history. *"When a route gets added, the auth middleware is touched 89% of the time."*
+- **Working** — one call that returns what's open, what's drifting, what warnings are unresolved. Read at the start of every session.
 
-**With carto:** AI calls `get_change_plan("add rate limiting to /api/users")` and gets back:
-- The exact route handler file
-- All 7 files that import it (blast radius)
-- The AUTH domain it lives in
-- Similar middleware patterns already in the codebase
-- Cross-domain dependencies that could break
+Your AI tool sees files. Carto sees architecture *and history*. Every chat starts where the last one left off.
 
-Your AI's response goes from "here's a guess" to "here's the right change with the architectural context."
+---
 
-### Catching bad changes before save
+## What it looks like in practice
 
-The harder problem isn't finding the right file — it's stopping a confident-sounding AI from writing a refactor that breaks the rest of the repo. Carto exposes a diff-shaped query the AI can call before the user accepts a change:
+### Stopping a bad refactor before you see the diff
 
-> *AI proposes a 12-line patch to `packages/pg-meta/src/pg-format/index.ts`. Before showing the diff, it calls `validate_diff(patch)`.*
+The AI is about to propose a 12-line patch. Before showing it to you, it calls `validate_diff`:
 
 ```
-# Diff Validation
+Risk: 🔴 HIGH
+Files changed: 1
+Union blast radius: 83 transitive dependents
 
-**Risk:** 🔴 HIGH
-**Files changed:** 1
-**Union blast radius:** 83 transitive dependents
-
-## Violations (1)
-
-| Severity | Kind        | File                                   | Detail                                                          |
-|----------|-------------|----------------------------------------|-----------------------------------------------------------------|
-| HIGH     | high_blast  | `packages/pg-meta/src/pg-format/index.ts` | Modifying this file affects 83 transitive dependents (>50). |
+Violations
+HIGH · high_blast · packages/pg-meta/src/pg-format/index.ts
+       83 transitive dependents (threshold: 50)
 ```
 
-The AI sees this *before* it proposes the diff. It revises its plan, splits the change, or asks the user. The bad refactor never makes it to the screen. Sub-millisecond on a 7,000-file repo — see the **Benchmarks** section below.
+The AI sees this *before* the diff hits your screen. It revises, splits the change, or asks. Sub-millisecond on a 7,000-file repo.
 
-Every `validate_diff` call is also written to a local SQLite log, so a session that runs five hours later can ask `did_we_discuss_this("snake_case naming")` and get back the prior decision. The AI stops re-deciding settled questions.
+### Packing context that actually fits
 
-### In the wild
+You ask: *"add rate limiting to /api/users."* The AI calls `get_minimal_context_for_intent` with a 4,000-token budget. Carto runs hybrid retrieval (structural + lexical + semantic), fuses the channels with RRF, boosts files in the same domain and recent churn, and returns the smallest file set that covers the intent — usually 6–12 files instead of the usual 40+.
+
+### Remembering decisions across sessions
+
+Every `validate_diff` call writes a row into `.carto/carto.db`. Five hours later, a different chat asks `did_we_discuss_this("snake_case naming")` and gets back the prior decision verbatim. Your AI stops re-deciding settled questions.
+
+### Spotting the bug before the bug
+
+`get_predictive_risk` returns a 0–1 score per file: P(this file causes the next incident). It combines blast radius, commit churn, cross-domain coupling, prior intervention history, and test coverage. High-risk files surface in `carto check` and on every PR.
+
+---
+
+## In the wild
 
 ![Claude Code reviewing the supabase repo through carto's MCP server](docs/screenshots/claude-code-supabase.png)
 
-*Claude Code analyzing the [supabase](https://github.com/supabase/supabase) repo via carto. Real session, no editing — 5,974 files indexed in ~780ms, 86 routes, 4,839 import edges, 7 domains. The agent's own verdict at the bottom: "useful, especially for a large codebase like supabase. The blast radius + cross-domain tools are the most valuable."*
+Claude Code analyzing the [supabase](https://github.com/supabase/supabase) repo via carto. Real session, no editing — 5,974 files indexed in ~780ms, 86 routes, 4,839 import edges, 7 domains.
+
+---
+
+## How fast
+
+Measured on real open-source repos, fresh runs on Apple M-series, 8 CPUs, 8 GB RAM.
+
+| Repo | Files | First index | Re-index | DB size |
+|---|--:|--:|--:|--:|
+| [cal.com](https://github.com/calcom/cal.com) | 4,352 | 3.9s | 805ms | 3.1 MB |
+| [supabase/supabase](https://github.com/supabase/supabase) | 6,358 | 5.9s | 967ms | 4.8 MB |
+| [vercel/next.js](https://github.com/vercel/next.js) | 6,193 | 6.9s | 978ms | 15.1 MB |
+| [microsoft/vscode](https://github.com/microsoft/vscode) | 7,567 | 8.6s | 1.1s | 14.3 MB |
+
+**Query latency** on vscode (7,567 files):
+
+- `validate_diff` — p50 **84 µs**, p99 **489 µs** (budget was 5 ms / 15 ms)
+- `get_blast_radius` — p50 **2.7 µs**, **10.7×** faster than the SQLite path
+- `get_high_impact_files` — p50 **750 ns**, **559×** faster
+- `simulate_change_impact` — p50 **19.3 µs**, multi-file blast radius via bitmap OR-aggregation
+
+Bitmap-backed reverse dependency graph. Median speedup across five core tools on vscode: **10.7×**. Synthetic stress at 50K files holds `blast_radius` p50 at **22 µs**. Full table in [`docs/scale.md`](docs/scale.md). Reproducible via `npm run bench:bitmap -- --repo <path>`.
+
+---
+
+## Tools your AI can call
+
+About 75 tools, grouped by what they're for:
+
+| Group | Tools |
+|---|---|
+| **Structure** | `get_change_plan` · `get_blast_radius` · `simulate_change_impact` · `validate_diff` · `get_context` · `get_routes` · `get_models` · `get_cross_domain` · `get_high_impact_files` |
+| **Episodic memory** | `did_we_discuss_this` · `get_decision_log` · `get_session_context` · `get_pending_decisions` · `get_intervention_history` |
+| **Temporal** | `get_architectural_drift` · `get_domain_evolution` · `get_hotspot_files` · `get_arch_events` · `get_temporal_context` · `get_change_velocity` · `get_complexity_trend` |
+| **Brain** | `get_invariants` · `get_conventions` · `get_canonical_pattern` · `get_action_patterns` · `get_working_memory` · `get_active_suggestions` · `scaffold_for_intent` |
+| **Predictive** | `get_predictive_risk` · `get_safety_checklist` · `get_drift_digest` · `get_test_coverage_map` |
+| **Retrieval** | `get_minimal_context_for_intent` · `get_progressive_disclosure_tree` |
+| **Org / multi-repo** | `get_org_architecture` · `get_service_dependency_graph` · `get_cross_repo_blast_radius` · `find_consumers_of_api` · `get_service_boundary_violations` |
+| **Adjacent** | `get_cross_language_call_graph` · `get_iac_resources` · `ingest_otlp_traces` · `get_risk_weighted_blast_radius` · `get_dead_code_with_confidence` · `get_semantic_diff` |
+
+Full reference at [`docs/api/`](docs/api/). You don't need to memorize any of these — your AI picks the right one mid-task.
+
+---
+
+## Multi-repo
+
+Register a group of repos under one org. Carto builds a service graph across them — npm, pypi, go-mod, maven edges all resolved.
+
+```bash
+carto org init
+carto org add ../service-a ../service-b ../service-c
+carto org sync
+```
+
+Then ask: *"if I rename `User.email` in service-a, who notices?"* — one `get_cross_repo_blast_radius` call away.
+
+---
+
+## MCP middleware
+
+Carto can sit in front of *any* MCP server and block bad writes before they reach the model:
+
+```bash
+carto mcp-middleware --block-on HIGH -- claude-code
+```
+
+Every `tools/call` that writes to disk is intercepted. Carto synthesizes a unified diff, runs `validate_diff`, and rejects HIGH-risk writes with the violation reasons surfaced back to the AI. Works with any stdio-based MCP server.
 
 ---
 
 ## Languages and frameworks
 
-### Import graph + symbols (any repo)
+<details>
+<summary>Import graph + symbols (any repo)</summary>
 
 | Language | Extensions |
-|----------|-----------|
+|---|---|
 | JavaScript / TypeScript | `.js` `.jsx` `.ts` `.tsx` `.mjs` `.cjs` |
 | Python | `.py` |
 | Go | `.go` |
 | Rust | `.rs` |
-| Java | `.java` |
-| C / C++ | `.cpp` `.cc` `.cxx` `.h` `.hpp` |
+| Java / Kotlin | `.java` `.kt` |
+| C / C++ | `.cpp` `.cc` `.h` `.hpp` |
 | C# | `.cs` |
 | Ruby | `.rb` |
+| PHP | `.php` |
+| Swift | `.swift` |
+| Dart | `.dart` |
 | R | `.r` `.R` |
 | Prisma schema | `.prisma` |
 | HTML | `.html` (for `fetch()` discovery) |
 
-### Route extraction (framework-aware)
+TypeScript path aliases from `tsconfig.json` / `jsconfig.json` are resolved into the import graph. `@/components/Button` lands on the real file.
 
-| Framework | Language |
-|-----------|---------|
-| Express, Next.js (App + Pages), tRPC, React Router | TypeScript / JavaScript |
-| FastAPI, Flask, Django | Python |
-| Gin, Echo, Chi, net/http | Go |
-| Actix-web, Axum, Rocket | Rust |
-| Spring MVC / Boot, JAX-RS | Java |
-| ASP.NET Core | C# |
-| Rails, Sinatra | Ruby |
+</details>
 
-### Model extraction
+<details>
+<summary>Route + model extraction</summary>
 
-| ORM / Schema | Language |
-|-------------|---------|
-| Prisma, Zod, Drizzle, TypeScript interfaces | TypeScript / JavaScript |
-| Pydantic, SQLAlchemy | Python |
-| Go structs | Go |
-| Rust structs | Rust |
-| JPA `@Entity`, Java records | Java |
-| EF Core, C# records | C# |
-| ActiveRecord | Ruby |
+**Routes:** Express, Next.js (App + Pages), tRPC, React Router, FastAPI, Flask, Django, Gin, Echo, Chi, net/http, Actix-web, Axum, Rocket, Spring MVC, JAX-RS, ASP.NET Core, Rails, Sinatra.
 
-### TypeScript path aliases
+**Models:** Prisma, Zod, Drizzle, TS interfaces, Pydantic, SQLAlchemy, Go structs, Rust structs, JPA, EF Core, ActiveRecord.
 
-Reads `tsconfig.json` / `jsconfig.json` `paths` config. `@/components/Button` resolves to the actual file in the import graph — blast radius works correctly for Next.js and Vite projects.
+</details>
 
 ---
 
-## ACP Agent (Zed / JetBrains / VS Code)
+## CLI
 
-Beyond MCP, Carto runs as a full **ACP agent** — an active coding agent with built-in architectural awareness.
+| Command | What it does |
+|---|---|
+| `carto init` | Index, generate AGENTS.md, install git hooks, wire MCP into every AI tool found |
+| `carto sync` | Re-index changed files (auto-runs on commit / checkout / merge / rebase) |
+| `carto serve` | Start the MCP server (your AI tool runs this) |
+| `carto agent` | ACP agent mode for Zed / JetBrains |
+| `carto impact <file>` | Blast radius of one file |
+| `carto pr-impact` | Diff-shaped impact report between two refs |
+| `carto check` | Domain health, cross-domain violations, drift |
+| `carto status` | One-screen project health |
+| `carto doctor` | 9-check setup diagnostic |
+| `carto why <file>` | 3-line file summary |
+| `carto explain <intent>` | Natural-language intent → architectural plan |
+| `carto inspect` | Index paths, sizes, freshness (read-only) |
 
-```
-User: "Add rate limiting to /api/users"
-  ↓
-Carto auto-queries its own SQLite:
-  - Blast radius of relevant files
-  - Domain context (AUTH)
-  - Similar patterns in codebase
-  ↓
-Builds rich prompt with structural context
-  ↓
-Sends to LLM (your API key) → streams answer + diffs back to editor
-```
+---
 
-### Setup in Zed
+## ACP agent (Zed / JetBrains / VS Code)
 
-`~/.config/zed/settings.json`:
+Carto also runs as a full ACP agent — not just a passive MCP server. It pulls its own context, streams tokens, applies diffs.
+
 ```json
-{
-  "agent_servers": {
-    "Carto": { "command": "carto", "args": ["agent"] }
-  }
-}
+{ "agent_servers": { "Carto": { "command": "carto", "args": ["agent"] } } }
 ```
 
-### Bring Your Own Key
-
-Carto supports any LLM provider — configure in your editor:
-
-| Provider | Models |
-|----------|--------|
-| Anthropic | Claude Sonnet 4, Haiku |
-| OpenAI | GPT-4o, GPT-4o-mini, o1, o3 |
-| Google Gemini | Gemini 2.5 Pro, 2.5 Flash |
-| Ollama | Any local model (free) |
-| OpenRouter | Any model via single API |
-| Groq | Ultra-fast inference |
-| Together AI | Open-source models |
-| Azure OpenAI | Enterprise deployments |
+Bring your own key: Anthropic, OpenAI, Gemini, Groq, Ollama, OpenRouter, Together, Azure.
 
 ---
 
-## GitHub Action — PR impact reports
+## GitHub Action
 
-Drop carto onto every PR your repo gets. Posts a sticky comment on each pull request with the diff's blast radius, cross-domain violations, affected routes, and a risk badge.
+Drop Carto onto every PR. Sticky comment with blast radius, cross-domain violations, affected routes, risk badge.
 
-`.github/workflows/carto.yml`:
 ```yaml
-name: Carto Impact Report
-
-on:
-  pull_request:
-    branches: [main]
-
-permissions:
-  contents: read
-  pull-requests: write
-
-jobs:
-  carto:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: theanshsonkar/carto@v2.0.9
+- uses: theanshsonkar/carto@v2.0.9
 ```
 
-That's the whole config. The action handles `npm install`, builds (or restores from cache) the `.carto/` index, runs `carto pr-impact`, and posts the comment via `GITHUB_TOKEN`.
-
-### Inputs
-
-| Input | Default | What it does |
-|-------|---------|--------------|
-| `carto-version` | `latest` | The `carto-md` npm version to install. Pin in production for reproducibility. |
-| `base` | auto (`origin/$GITHUB_BASE_REF`) | Git ref the PR branched from. |
-| `head` | auto (`$GITHUB_SHA`) | Git ref of the PR head. |
-| `fail-on` | _(empty)_ | Fail the workflow when risk meets/exceeds this severity. One of `HIGH`, `MEDIUM`, `LOW`. Empty = comment-only. |
-| `comment-mode` | `sticky` | `sticky` updates the existing carto comment in place. `new` posts a new comment every push. `none` skips posting (renders to stdout). |
-| `node-version` | `20` | Node.js version on the runner. |
-
-### Outputs
-
-| Output | Description |
-|--------|-------------|
-| `risk` | Rolled-up risk: `SAFE` \| `LOW` \| `MEDIUM` \| `HIGH`. Lets downstream steps gate behavior on Carto's verdict. |
-| `comment-url` | URL of the posted/updated PR comment. |
-
-### What the comment looks like
-
-```markdown
-## 🗺️ Carto Impact Report
-
-This PR touches AUTH and DATABASE domains.
-
-| Metric | Value |
-|--------|-------|
-| Risk | 🔴 HIGH |
-| Blast radius (union) | 23 files |
-| Files changed | 6 |
-| Cross-domain violations introduced | 2 |
-| High-impact file changed | src/auth/session.ts (8 direct dependents) |
-
-<details>
-<summary>Affected routes (4)</summary>
-
-- POST /auth/login — risk: HIGH
-- GET /auth/me — risk: HIGH
-- POST /auth/register — risk: MEDIUM
-- POST /api/users — risk: LOW
-
-</details>
-
-<details>
-<summary>Cross-domain violations (2)</summary>
-
-- auth/login.ts now imports from payments/billing.ts (AUTH→PAYMENTS)
-- database/user-repo.ts now imports from auth/jwt.ts (DATABASE→AUTH)
-
-</details>
-```
-
-### Standalone CLI use
-
-The action is a thin wrapper around `carto pr-impact`. Use it locally, in custom CI, or in pre-commit hooks:
-
-```bash
-carto pr-impact --base origin/main --head HEAD              # markdown to stdout
-carto pr-impact --base origin/main --head HEAD --format json
-carto pr-impact --base origin/main --head HEAD --fail-on HIGH  # exit 2 on HIGH risk
-```
+`fail-on: HIGH | MEDIUM | LOW` gates the workflow on Carto's verdict. Full config in [`docs/guides/ci-integration.md`](docs/guides/ci-integration.md).
 
 ---
 
-## ANCI — the open spec for codebases describing themselves to AI
+## ANCI — the open format for codebases describing themselves to AI
 
-Every AI coding tool today re-discovers a codebase's architecture from scratch on every session. Cursor builds its own embedding index. Cline builds its own. Continue builds its own. Same parsing, every tool, every session.
+Every AI tool today re-indexes from scratch on every session. Cursor builds its own. Cline builds its own. Continue builds its own. Same parsing, every tool, every time.
 
-**ANCI** (Architecturally Normalized Code Index) is the file format that fixes this. Two files at `.carto/anci.{yaml,bin}` that describe the codebase's architecture in a form any AI tool can read without indexing it itself. OpenAPI did this for REST APIs. ANCI does it for codebases.
+**ANCI** (Architecturally Normalized Code Index) fixes that. Two files at `.carto/anci.{yaml,bin}` that describe a codebase's architecture in a form any AI tool can read without doing its own indexing. OpenAPI did this for REST APIs. ANCI does it for codebases.
 
-`carto sync` writes both files automatically. The header is grep-able YAML; the body is a compact binary import graph. Spec lives in [`docs/anci/v0.1-DRAFT.md`](docs/anci/v0.1-DRAFT.md). Carto is the reference implementation.
-
-```bash
-carto anci publish              # re-emit anci.{yaml,bin} from the index
-carto anci show                 # human-readable summary
-carto anci validate ./.carto    # validate a published pair
-```
-
-Any tool can consume an ANCI pair without depending on Carto:
+`carto sync` writes both files automatically. Spec at [`docs/anci/v0.1-DRAFT.md`](docs/anci/v0.1-DRAFT.md). Carto is the reference implementation; any tool can consume an ANCI pair:
 
 ```js
 const { loadAnci } = require('carto-md/src/anci/consumer');
-
 const reader = loadAnci('./.carto');
-console.log(reader.domains);                          // [{ name: 'AUTH', file_count: 42 }, ...]
-console.log(reader.getHighImpactFiles(5));            // top 5 by transitive dependents
-console.log(reader.blastRadius('src/auth/session.ts'));// { count, hops, files: [...] }
-console.log(reader.simulateChangeImpact([             // multi-file change blast radius
-  'src/auth/session.ts',
-  'src/db/connection.ts',
-]));
+
+reader.domains;                            // [{ name: 'AUTH', file_count: 42 }, ...]
+reader.getHighImpactFiles(5);              // top 5 by transitive dependents
+reader.blastRadius('src/auth/session.ts'); // { count, hops, files: [...] }
 ```
 
-> **Status:** v0.1.0-DRAFT — wire format may change up to v1.0. The reference implementation lives in this repo at `src/anci/`.
-
----
-
-
-
-Once carto is wired in, your AI tool can call any of these mid-task. You don't need to memorize them — your AI will pick the right ones.
-
-| Tool | What it returns |
-|------|----------------|
-| `get_architecture()` | 500-word project overview: domains, entry points, stack, key patterns. **Use this first.** |
-| `get_change_plan(intent)` | Given "add rate limiting to /api/users" → files to touch, domains affected, blast radius, similar patterns |
-| `get_blast_radius(file)` | All files affected by changing a given file, with hop distance |
-| `simulate_change_impact(files)` | Union of all files transitively affected by changing **multiple** files at once. Powered by the bitmap engine — sub-millisecond on 7K-file repos. |
-| `validate_diff(diff)` | Given a unified diff: violations (cross-domain imports, high-blast files), blast radius per file, risk level (SAFE/LOW/MEDIUM/HIGH), suggestions. Each call is recorded in the **episodic memory** log so other tools can ask "did we discuss this?". Sub-15ms p99. |
-| `get_context(file)` | Everything about a file: domain, blast radius, neighbors, routes, models |
-| `get_file_summary(file)` | What a file does, its role, key deps and dependents |
-| `get_similar_patterns(file)` | Files with same domain, route shape, or shared deps — find conventions before writing new code |
-| `get_routes()` | All API endpoints with file mapping |
-| `get_structure()` | Import graph, entry points, high-impact files, tech stack |
-| `get_domain(name)` | All routes, models, functions for a domain. Lazily regenerated when stale. |
-| `get_neighbors(file, hops)` | Import graph neighbors: nodes and edges |
-| `get_cross_domain()` | Import edges that cross domain boundaries |
-| `search_routes(query)` | Search API routes by path or method |
-| `get_models(domain?)` | All data models, optionally filtered by domain |
-| `get_high_impact_files(n)` | Top N files by blast radius |
-| `get_env_vars(domain?)` | All env vars with domain mapping |
-| `get_domains_list()` | All detected domains with file, route, model counts |
-| `get_recent_decisions(time_range, kind?)` | Recent validation decisions and architectural choices the AI has made in this project |
-| `get_session_context(session_id?)` | Full context for an AI session: every decision and intervention, ordered chronologically |
-| `did_we_discuss_this(topic)` | Substring search over the episodic memory log — avoid re-deciding settled questions |
-| `get_intervention_history(file?)` | Past Carto-issued violations and suggestions, optionally filtered by file |
-
-**Latency:** All bitmap-backed queries return in microseconds on real repos; cross-domain and `simulate_change_impact` settle under 2ms even on a 7.5K-file codebase like vscode. See [Benchmarks](#benchmarks) for the per-tool table.
-
-## Episodic Memory
-
-Carto remembers every diff it validates. The `validate_diff` tool writes one row per call into a local SQLite log (`ai_sessions`/`decisions`/`interventions` tables) — so a session that runs five hours later can still ask `did_we_discuss_this("snake_case naming")` and get back the prior decision. The log lives next to the index in `.carto/carto.db` — never sent over the network, never shared between projects.
-
----
-
-## Domain detection
-
-Carto uses **Leiden+CPM graph clustering** — files that import each other heavily cluster together. Domain names are inferred from path tokens, with keyword hints for well-known patterns (AUTH, PAYMENTS, DATABASE, etc.).
-
-**Adaptive strategy:** Repos under 100 files use keyword-only clustering (avoids over-fragmentation). Larger repos with dense import graphs get graph-based clustering with a gamma that scales continuously with repo size.
-
-Works on any repo — not just SaaS apps. vscode gets AUTH/EVENTS/DATABASE. zed (Rust) gets DATABASE/AUTH/EVENTS. A game engine would get RENDERER/PHYSICS/AUDIO.
-
-Custom domains via `carto.config.json`:
-```json
-{
-  "domains": {
-    "EDITOR": ["editor", "monaco", "text"],
-    "WORKBENCH": ["workbench", "layout", "panel"]
-  }
-}
-```
-
-Full schema with anchor pinning (forces files into a domain regardless of clustering):
-```json
-{
-  "domains": {
-    "AUTH": {
-      "keywords": ["auth", "login", "session"],
-      "anchor": ["src/auth/session.ts", "src/auth/middleware.ts"]
-    }
-  }
-}
-```
-
-**Stability tracking:** Carto tracks domain assignments across syncs. If >5% of files change domain, `carto check` flags it as unstable. Two consecutive syncs with no code changes always produce 0% drift.
-
----
-
-## CLI commands
-
-| Command | What it does |
-|---------|-------------|
-| `carto init` | Detect project, index codebase, generate AGENTS.md, install git hooks (pre-commit, post-checkout, post-merge, post-rewrite), auto-wire MCP into every AI tool found |
-| `carto sync` | Full re-index (skips unchanged files via mtime+size cache). Called automatically by git hooks on commit/checkout/merge/rebase. |
-| `carto serve` | Start MCP server (called by your AI tool — usually you don't run this directly). On every file-aware query the server mtime+size-checks the file and re-parses inline if stale. |
-| `carto watch` | **Optional.** Live re-index on every file save. Not required — git hooks + lazy MCP re-parse keep the index fresh by default. Use only for AI-heavy workflows that write 50+ files between commits. |
-| `carto agent` | Start ACP agent mode (for Zed / JetBrains / VS Code) |
-| `carto impact <file>` | Blast radius: risk level, affected files, routes at risk |
-| `carto pr-impact` | Diff-shaped impact report between two git refs. Markdown (default) or JSON. Used by the [GitHub Action](#github-action--pr-impact-reports); works locally too. `--fail-on HIGH\|MEDIUM\|LOW` exits non-zero on threshold trip. |
-| `carto check` | Cross-domain violations, high-risk uncommitted changes, domain health |
-| `carto inspect` | Read-only diagnostic: index paths, sizes, freshness, bitmap sidecar shape, top-impact files, schema version, sync timestamps. `--json` for piping into `jq`. Never triggers a rebuild. |
-| `carto remove` | Remove AGENTS.md and .carto/ from project |
-
----
-
-## Benchmarks
-
-Measured on real open-source repos. Apple M-series, 8 CPUs, 8GB RAM. SHAs pinned in `~/carto-test-repos`. Reproducible via `~/carto-test-repos/run-bench.sh`.
-
-### Indexing speed
-
-| Repo | Language | Indexed Files | First Run | Second Run | DB Size | Import Edges |
-|------|----------|---------------|-----------|------------|---------|--------------|
-| [prisma/prisma](https://github.com/prisma/prisma) | TypeScript | 961 | **1.0s** | **350ms** | 1.1 MB | 1,387 |
-| [supabase/supabase](https://github.com/supabase/supabase) | TypeScript | 6,330 | **5.4s** | **1.2s** | 4.8 MB | 5,189 |
-| [microsoft/vscode](https://github.com/microsoft/vscode) | TypeScript | 7,567 | **8.0s** | **935ms** | 14.3 MB | 13,335 |
-| [zed-industries/zed](https://github.com/zed-industries/zed) | Rust | 1,752 | **2.9s** | **468ms** | 4.8 MB | 2,110 |
-
-**Indexed Files** counts what Carto actually parses — `.ts/.js/.py/.go/.rs/...` after excluding `node_modules`, build output, and per-file test patterns (`*.test.*` / `*.spec.*` / `*.stories.*` for JS/TS, `test_*.py` / `*_test.py` for Python, `test_*` / `*_test.r` for R). The on-disk file count of the repo is larger.
-
-**Second Run** = `carto sync` after no changes. mtime+size checked before reading content — if nothing changed, nothing is re-parsed.
-
-### MCP query latency (bitmap engine vs SQLite)
-
-Carto's MCP query path is bitmap-backed on five tools, plus a sixth (`simulate_change_impact`) that's only feasible with bitmap OR-aggregation. Speedups measured against the same data, same DB, same machine — bitmap path vs the equivalent SQLite path.
-
-| Tool | vscode (7,567 files) | Speedup vs SQLite |
-|------|---------------------:|------------------:|
-| `get_blast_radius` | sub-ms | **10.7×** |
-| `get_cross_domain` | 2.1ms | **6.2×** |
-| `get_high_impact_files` | sub-ms | **559×** |
-| `get_similar_patterns` | sub-ms | **73×** |
-| `simulate_change_impact` | sub-ms | **6.5×** (no SQLite equivalent at this latency) |
-
-Median speedup across all five tools on vscode: **10.7×**. Smaller repos with denser graphs hit higher peaks — supabase `get_high_impact_files` clocks well over 100× on its tighter import graph. Reproducible via `npm run bench:bitmap -- --repo <path>`.
-
-### `validate_diff` latency
-
-The new diff-shaped query that lets the AI ask "is this patch safe?" before showing it to the user. Profiled with a representative 20-line diff against 20 random mid-blast-radius files per repo, 1000 calls each.
-
-| Repo | Files | p50 | p99 |
-|------|-------|----:|----:|
-| supabase | 6,259 | **0.082ms** | **0.298ms** |
-| vscode | 7,567 | **0.084ms** | **0.489ms** |
-
-Budget was p50 ≤ 5ms, p99 ≤ 15ms. Both targets are cleared by 30-60×. The bitmap engine handles every blast-radius and cross-domain query in microseconds; what's left is diff parsing + result aggregation. Reproducible via `node bench/validation-perf/index.js --repo <path>`.
-
-### Scale
-
-Synthetic stress sweep + real-world corpus, dense-fan-out worst case all the way to 50K files. Headline numbers (full table in [`docs/scale.md`](docs/scale.md)):
-
-- Synth 50K files: init 1.1m, `blast_radius` p50 22µs, `simulate_change_impact` p50 50µs, `high_impact_files` p50 750ns. The dense Uint32Array bitset hits 415 MB on disk and 1.35 GB peak RSS at this size — the Tier-2 Roaring upgrade per PEAK §9.6 is the next move.
-- Real-world (vscode, 7,567 files): `blast_radius` p50 2.7µs, `cross_domain` p50 1.23ms, `similar_patterns` p50 834ns, `simulate_change_impact` p50 19µs.
-
-Reproducible via `npm run bench:scale -- --size <N>` (synth) and `node bench/scale-test/real-world.js --repo <path>` (any local clone, including Linux kernel or Chromium).
-
-### Domains detected
-
-| Repo | Domains |
-|------|---------|
-| prisma | CORE · DATABASE · AUTH · EVENTS |
-| supabase | CORE · AUTH · DATABASE · PAYMENTS · NOTIFICATIONS · EVENTS · TRPC |
-| vscode | EXTENSIONS · AUTH · EVENTS · DATABASE · EXTENSION · CLI · CORE |
-| zed (Rust) | CORE · DATABASE · AUTH · EVENTS · PAYMENTS · TRPC · NOTIFICATIONS |
-
-vscode at 7,567 indexed files in around 8 seconds. Rust import graph working on zed (2,110 edges from `mod` declarations and `use crate::` paths).
-
-### Accuracy
-
-12 corpus repos pass `node test/accuracy-corpus.js --samples 100` — full parity between the bitmap path and the SQLite path on `blastRadius`, `crossDomain`, `highImpactFiles`, and `simulateChangeImpact`. The bitmap layer is a speedup, never a behavior change.
-
----
-
-## How it works
-
-```
-carto init
-  ↓
-Discovers all files (no cap — SQLite handles the volume)
-mtime+size check → skip unchanged files
-tree-sitter parse → imports + symbols (0.05–0.2ms/file)
-Babel deep parse → routes + models (API handler files only)
-Leiden+CPM graph clustering → auto-detects domains
-Computes reverse deps → blast radius for every file
-Writes AGENTS.md + .carto/context/*.md (lazy, on-demand)
-Auto-wires MCP into every AI tool found
-Installs 4 git hooks: pre-commit, post-checkout, post-merge, post-rewrite
-  ↓
-[no daemon, no watcher, no background process]
-  ↓
-─── Freshness mechanism 1: git hooks (90% of cases) ───
-You commit / pull / switch branches / rebase
-  → hook runs `carto sync` quietly in <1s
-  → only changed files re-parsed
-  ↓
-─── Freshness mechanism 2: lazy mtime check (the gap) ───
-You edit files between commits, AI asks "blast radius of db.ts?"
-  → MCP server stats db.ts (mtime+size vs DB row)
-  → if stale, re-parses just that file inline (<50ms)
-  → returns fresh answer
-  ↓
-─── Optional: carto watch (AI-heavy workflows only) ───
-File saved → debounce 50ms → re-parse 1 file → SQLite write → <50ms
-```
+> Status: v0.1.0-DRAFT — wire format may change up to v1.0.
 
 ---
 
 ## What Carto never does
 
-- **Sends your code anywhere.** Local only. SQLite on disk.
+- **Sends your code anywhere.** Local only. SQLite on disk. No telemetry.
 - **Writes secrets into AGENTS.md.** `.cartoignore` blocks `.env` and credential files by default.
-- **Touches your manual notes.** Writes only between `<!-- CARTO:AUTO:START -->` and `<!-- CARTO:AUTO:END -->`.
-- **Forces you to install a C++ toolchain.** Prebuilt native binaries ship for macOS arm64, Linux x64 (glibc + musl/Alpine), and Windows x64. Intel Macs and other platforms transparently fall back to building from source, then to regex-only extraction if that fails.
-- **Costs money.** MIT license. Free forever.
+- **Touches your manual notes.** Only writes between `<!-- CARTO:AUTO -->` markers.
+- **Forces you to install a C++ toolchain.** Prebuilt binaries for macOS arm64, Linux x64 (glibc + musl), Windows x64. Other platforms fall back to source build, then regex-only extraction.
+- **Costs money.** MIT. Free forever.
 
 ---
 
@@ -568,9 +345,9 @@ File saved → debounce 50ms → re-parse 1 file → SQLite write → <50ms
 
 I was building [Emfirge](https://www.emfirge.cloud) — a cloud security agent that maps AWS infrastructure into a graph and simulates the blast radius of every change.
 
-To make the AI inside Emfirge understand infrastructure, I wrote a module called `cartography.py`. It mapped AWS resources, built a graph of how they connected, and wrote it into a structured map. The AI stopped hallucinating. It worked with facts, not guesses.
+The AI inside Emfirge kept hallucinating about resources it had only half-seen. So I wrote a module called `cartography.py` that mapped every account into a structured graph the AI could query directly. The hallucinations stopped. The AI worked with facts.
 
-Carto is the same idea, applied to source code. Same insight: AI agents stop guessing once they can query the architecture.
+Carto is that idea, applied to source code. Same insight: agents stop guessing once they can query the architecture — and they stop forgetting once the architecture remembers them.
 
 ---
 
@@ -580,4 +357,4 @@ MIT. Free forever.
 
 ---
 
-*Your code changes. Carto knows. Every AI you use knows.*
+*Your code changes. Carto knows. Every AI you use knows — and remembers.*
