@@ -31,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }       # full history — pr-impact needs the base ref
-      - uses: theanshsonkar/carto@v2.0.9
+      - uses: theanshsonkar/carto@v2.1.0
 ```
 
 That's the entire config. The action handles npm install, cache restore, sync, pr-impact, and the comment.
@@ -96,7 +96,7 @@ Look at the four signals in order:
 For repos that want a harder gate, set `fail-on` in the workflow:
 
 ```yaml
-- uses: theanshsonkar/carto@v2.0.9
+- uses: theanshsonkar/carto@v2.1.0
   with:
     fail-on: HIGH
 ```

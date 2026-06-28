@@ -97,9 +97,9 @@ If you're upgrading in CI, pin a known-good Carto version:
 
 ```yaml
 # .github/workflows/carto.yml
-- uses: theanshsonkar/carto@v2.0.9
+- uses: theanshsonkar/carto@v2.1.0
   with:
-    carto-version: '2.0.9'    # pin instead of `latest`
+    carto-version: '2.1.0'    # pin instead of `latest`
 ```
 
 This way the action's output (and the PR-comment shape) stays stable across CI runs even when newer Carto versions ship.

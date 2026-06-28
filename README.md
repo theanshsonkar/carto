@@ -303,7 +303,7 @@ Bring your own key: Anthropic, OpenAI, Gemini, Groq, Ollama, OpenRouter, Togethe
 Drop Carto onto every PR. Sticky comment with blast radius, cross-domain violations, affected routes, risk badge.
 
 ```yaml
-- uses: theanshsonkar/carto@v2.0.9
+- uses: theanshsonkar/carto@v2.1.0
 ```
 
 `fail-on: HIGH | MEDIUM | LOW` gates the workflow on Carto's verdict. Full config in [`docs/guides/ci-integration.md`](docs/guides/ci-integration.md).
