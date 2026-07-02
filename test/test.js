@@ -306,7 +306,7 @@ test('Import graph', 'R: library/require records package names, source() resolve
   }
 });
 
-test('Import graph', "import X from 'express' (package, not relative) → not included", () => {
+test('Import graph', "import X from 'express' (bare npm package) → captured as unresolved edge", () => {
   const serverPath = path.join(importTmpDir, 'server.ts');
   fs.writeFileSync(serverPath, "import express from 'express';\nimport cors from 'cors';", 'utf-8');
 
@@ -315,7 +315,14 @@ test('Import graph', "import X from 'express' (package, not relative) → not in
     serverPath,
     importTmpDir
   );
-  assert.strictEqual(imports.length, 0, `Expected no imports but got ${JSON.stringify(imports)}`);
+  // Bare specifiers are now surfaced as-is. Downstream storeExtraction
+  // records them with to_file_id = NULL, resolved = 0 — every existing
+  // graph query (blast radius, neighbors, cross-domain) filters
+  // WHERE to_file_id IS NOT NULL, so they don't pollute graph metrics.
+  // They power rules that need to know "which external packages does
+  // this file depend on?" (auth-provider detection, dep-freshness
+  // checks, etc.).
+  assert.deepStrictEqual(imports.sort(), ['cors', 'express']);
 });
 
 test('Import graph', 'Python: from .b import X resolves to b.py (regression — Bug 1)', () => {
