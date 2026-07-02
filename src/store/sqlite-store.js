@@ -4,11 +4,15 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-// Schema version 3 — adds the Episodic Memory tables
-// (ai_sessions, decisions, interventions). The full _ensureSchema() body
-// is idempotent (CREATE TABLE IF NOT EXISTS), so existing v1/v2 DBs
-// cleanly pick up the new tables on next open.
-const SCHEMA_VERSION = '3';
+// Schema version 4 — adds the `gaps` table (derived view of what
+// the rule engine currently finds). Prior versions:
+//   1 — initial schema
+//   2 — reverse_deps + centrality
+//   3 — episodic memory (ai_sessions, decisions, interventions)
+//   4 — gaps table for the rule engine
+// _ensureSchema() is idempotent (CREATE TABLE IF NOT EXISTS on every
+// table), so older DBs cleanly pick up the new tables on next open.
+const SCHEMA_VERSION = '4';
 
 /**
  * normalizePath(p) — Canonicalize a relative path for storage and query.
@@ -317,6 +321,39 @@ class SQLiteStore {
       CREATE INDEX IF NOT EXISTS idx_interventions_file ON interventions(file);
       CREATE INDEX IF NOT EXISTS idx_interventions_ts ON interventions(ts);
       CREATE INDEX IF NOT EXISTS idx_interventions_session ON interventions(session_id);
+    `);
+
+    // ─── Rule Engine gaps ───────────────────────────────────────────
+    // A gap is a claim, grounded in a Carto fact, that the code
+    // violates a rule ("SHOULD − IS"). The `gaps` table is derived
+    // state — it's completely replaced on every rule-engine run
+    // (`replaceGaps()`). Persistence lets get_gaps be a cheap query
+    // instead of re-running the engine on every MCP call.
+    //
+    //   gap_hash    — sha1(rule_id + file + line). Stable across
+    //                 runs; used to dedup against dismissals.
+    //   dismissed   — 1 if the user marked this gap intentional
+    //                 (via dismiss_gap). Preserved across gap
+    //                 replacements — see replaceGaps() logic.
+    //   reason      — user's dismissal reason, free text.
+    this._db.exec(`
+      CREATE TABLE IF NOT EXISTS gaps (
+        id INTEGER PRIMARY KEY,
+        gap_hash TEXT UNIQUE NOT NULL,
+        rule_id TEXT NOT NULL,
+        file TEXT,
+        line INTEGER,
+        severity TEXT NOT NULL,
+        reversibility TEXT,
+        concept TEXT,
+        evidence TEXT,
+        detected_at INTEGER NOT NULL,
+        dismissed INTEGER DEFAULT 0,
+        reason TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_gaps_rule ON gaps(rule_id);
+      CREATE INDEX IF NOT EXISTS idx_gaps_file ON gaps(file);
+      CREATE INDEX IF NOT EXISTS idx_gaps_dismissed ON gaps(dismissed);
     `);
 
     this.setMeta('schema_version', SCHEMA_VERSION);
