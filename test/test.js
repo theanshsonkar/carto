@@ -7587,6 +7587,365 @@ test('SWE-bench tools', 'synthesizeDiff emits parser-compatible adds + modifies 
 });
 
 // ═══════════════════════════════════════════════════════════════════
+// Rule engine: intent (7 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const rulesIntent = require('../src/rules/intent');
+
+test('Rule engine: intent', 'loadIntent returns null when file does not exist', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-intent-'));
+  assert.strictEqual(rulesIntent.loadIntent(dir), null);
+});
+
+test('Rule engine: intent', 'saveIntent creates .carto/intent.json with defaults', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-intent-'));
+  const written = rulesIntent.saveIntent(dir, { product_type: 'saas-with-auth' });
+  assert.strictEqual(written.product_type, 'saas-with-auth');
+  assert.ok(Array.isArray(written.stack));
+  assert.ok(Array.isArray(written.notes));
+  assert.ok(typeof written.updated_at === 'number');
+  const reread = rulesIntent.loadIntent(dir);
+  assert.strictEqual(reread.product_type, 'saas-with-auth');
+});
+
+test('Rule engine: intent', 'setIntent appends notes rather than overwriting', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-intent-'));
+  rulesIntent.setIntent(dir, { product_type: 'saas-with-auth', note: 'single-user for now' });
+  rulesIntent.setIntent(dir, { note: 'skipping webhooks this quarter' });
+  const cur = rulesIntent.loadIntent(dir);
+  assert.strictEqual(cur.notes.length, 2);
+  assert.strictEqual(cur.notes[0].text, 'single-user for now');
+  assert.strictEqual(cur.notes[1].text, 'skipping webhooks this quarter');
+});
+
+test('Rule engine: intent', 'setIntent stack replaces (not appends)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-intent-'));
+  rulesIntent.setIntent(dir, { stack: ['Next.js'] });
+  rulesIntent.setIntent(dir, { stack: ['Next.js', 'Supabase'] });
+  const cur = rulesIntent.loadIntent(dir);
+  assert.deepStrictEqual(cur.stack, ['Next.js', 'Supabase']);
+});
+
+test('Rule engine: intent', 'autoDetect flags Next.js + Supabase as saas-with-auth', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-intent-'));
+  fs.writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ name: 'demo', dependencies: { next: '14', '@supabase/supabase-js': '2' } }),
+  );
+  const out = rulesIntent.autoDetect(dir);
+  assert.strictEqual(out.product_type, 'saas-with-auth');
+  assert.ok(out.stack.includes('Next.js'));
+  assert.ok(out.stack.includes('Supabase'));
+});
+
+test('Rule engine: intent', 'autoDetect flags Next.js + Clerk as saas-with-auth', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-intent-'));
+  fs.writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ name: 'demo', dependencies: { next: '14', '@clerk/nextjs': '5' } }),
+  );
+  const out = rulesIntent.autoDetect(dir);
+  assert.strictEqual(out.product_type, 'saas-with-auth');
+});
+
+test('Rule engine: intent', 'autoDetect flags plain Express as unsupported', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-intent-'));
+  fs.writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ name: 'demo', dependencies: { express: '4' } }),
+  );
+  const out = rulesIntent.autoDetect(dir);
+  assert.strictEqual(out.product_type, 'unsupported');
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Rule engine: engine core (4 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const rulesEngine = require('../src/rules/engine');
+
+test('Rule engine: engine', 'runEngine returns empty gaps when intent is unsupported', () => {
+  const { SQLiteStore: RE_Store } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-engine-'));
+  const store = new RE_Store(dir);
+  store.open();
+  try {
+    const out = rulesEngine.runEngine({ store, projectRoot: dir, intent: { product_type: 'unsupported' } });
+    assert.strictEqual(out.gaps.length, 0);
+    assert.ok(out.skipped.length > 0, 'all rules should be gated');
+  } finally { store.close(); }
+});
+
+test('Rule engine: engine', 'runEngine handles empty store without crash', () => {
+  const { SQLiteStore: RE_Store } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-engine-'));
+  const store = new RE_Store(dir);
+  store.open();
+  try {
+    const out = rulesEngine.runEngine({ store, projectRoot: dir, intent: { product_type: 'saas-with-auth' } });
+    assert.strictEqual(out.gaps.length, 0);
+  } finally { store.close(); }
+});
+
+test('Rule engine: engine', 'gapHash is deterministic for the same inputs', () => {
+  const a = rulesEngine.gapHash('rule-x', 'src/foo.ts', 12);
+  const b = rulesEngine.gapHash('rule-x', 'src/foo.ts', 12);
+  const c = rulesEngine.gapHash('rule-x', 'src/foo.ts', 13);
+  assert.strictEqual(a, b);
+  assert.notStrictEqual(a, c);
+  assert.strictEqual(a.length, 16);
+});
+
+test('Rule engine: engine', 'normalizeGap drops rows missing file or evidence', () => {
+  const rule = { id: 'x', severity: 'HIGH' };
+  assert.strictEqual(rulesEngine.normalizeGap(null, rule), null);
+  assert.strictEqual(rulesEngine.normalizeGap({ evidence: 'ok' }, rule), null);
+  assert.strictEqual(rulesEngine.normalizeGap({ file: 'a.ts' }, rule), null);
+  const good = rulesEngine.normalizeGap({ file: 'a.ts', evidence: 'ok' }, rule);
+  assert.ok(good && good.gap_hash && good.rule_id === 'x' && good.severity === 'HIGH');
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Rule engine: money-as-float (5 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const moneyRule = require('../src/rules/rules/money-as-float');
+
+function seedModelFixture(store, filePath, modelName, kind, fields) {
+  const fileId = store.upsertFile(filePath, { language: 'ts', hash: 'h', mtime: 1, size: 1 });
+  store.storeExtraction(fileId, {
+    imports: [], symbols: [], routes: [],
+    models: [{ name: modelName, kind, fields }],
+    envVars: [], dbTables: [], errors: [],
+  });
+  return fileId;
+}
+
+test('Rule engine: money-as-float', 'fires on Prisma Order.amount Float', () => {
+  const { SQLiteStore: MS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-money-'));
+  const store = new MS(dir);
+  store.open();
+  try {
+    seedModelFixture(store, 'prisma/schema.prisma', 'Order', 'prisma', [
+      { name: 'id', type: 'String' },
+      { name: 'amount', type: 'Float' },
+      { name: 'status', type: 'String' },
+    ]);
+    const gaps = moneyRule.run({ store });
+    assert.strictEqual(gaps.length, 1);
+    assert.strictEqual(gaps[0].file, 'prisma/schema.prisma');
+    assert.ok(gaps[0].evidence.includes('Order'));
+    assert.ok(gaps[0].evidence.includes('amount'));
+  } finally { store.close(); }
+});
+
+test('Rule engine: money-as-float', 'silent on Decimal type (correct)', () => {
+  const { SQLiteStore: MS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-money-'));
+  const store = new MS(dir);
+  store.open();
+  try {
+    seedModelFixture(store, 'prisma/schema.prisma', 'Order', 'prisma', [
+      { name: 'amount', type: 'Decimal' },
+    ]);
+    assert.deepStrictEqual(moneyRule.run({ store }), []);
+  } finally { store.close(); }
+});
+
+test('Rule engine: money-as-float', 'silent on minor-units integer (amount_cents Int)', () => {
+  const { SQLiteStore: MS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-money-'));
+  const store = new MS(dir);
+  store.open();
+  try {
+    seedModelFixture(store, 'prisma/schema.prisma', 'Order', 'prisma', [
+      { name: 'amount_cents', type: 'Int' },
+    ]);
+    // amount_cents contains 'amount' as a token, so the name matches.
+    // Int is not floating → rule stays silent. This proves both
+    // predicates are required.
+    assert.deepStrictEqual(moneyRule.run({ store }), []);
+  } finally { store.close(); }
+});
+
+test('Rule engine: money-as-float', 'silent on non-money Float field (quantity: Float)', () => {
+  const { SQLiteStore: MS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-money-'));
+  const store = new MS(dir);
+  store.open();
+  try {
+    seedModelFixture(store, 'prisma/schema.prisma', 'Item', 'prisma', [
+      { name: 'quantity', type: 'Float' },
+    ]);
+    assert.deepStrictEqual(moneyRule.run({ store }), []);
+  } finally { store.close(); }
+});
+
+test('Rule engine: money-as-float', 'silent on substring collision (sprinklerCount, enterprise)', () => {
+  const { SQLiteStore: MS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-money-'));
+  const store = new MS(dir);
+  store.open();
+  try {
+    seedModelFixture(store, 'prisma/schema.prisma', 'Widget', 'prisma', [
+      { name: 'sprinklerCount', type: 'Float' },   // 'price' substring collision guard
+      { name: 'enterpriseCode', type: 'Float' },   // 'price'/'reise' substring
+    ]);
+    assert.deepStrictEqual(moneyRule.run({ store }), []);
+  } finally { store.close(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Rule engine: auth-missing (4 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+const authRule = require('../src/rules/rules/auth-missing-on-mutating-route');
+
+function seedRoute(store, filePath, method, routePath) {
+  const fileId = store.upsertFile(filePath, { language: 'ts', hash: 'h', mtime: 1, size: 1 });
+  store.storeExtraction(fileId, {
+    imports: [], symbols: [],
+    routes: [{ method, path: routePath, handler: 'handler', framework: 'nextjs' }],
+    models: [], envVars: [], dbTables: [], errors: [],
+  });
+  return fileId;
+}
+
+test('Rule engine: auth-missing', 'fires on POST route with no auth signal', () => {
+  const { SQLiteStore: AS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-auth-'));
+  const store = new AS(dir);
+  store.open();
+  try {
+    seedRoute(store, 'app/api/trades/route.ts', 'POST', '/api/trades');
+    const gaps = authRule.run({ store });
+    assert.strictEqual(gaps.length, 1);
+    assert.strictEqual(gaps[0].file, 'app/api/trades/route.ts');
+  } finally { store.close(); }
+});
+
+test('Rule engine: auth-missing', 'silent when route imports @supabase/supabase-js', () => {
+  const { SQLiteStore: AS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-auth-'));
+  const store = new AS(dir);
+  store.open();
+  try {
+    const fileId = store.upsertFile('app/api/trades/route.ts', { language: 'ts', hash: 'h', mtime: 1, size: 1 });
+    store.storeExtraction(fileId, {
+      imports: [{ path: '@supabase/supabase-js' }],
+      symbols: [],
+      routes: [{ method: 'POST', path: '/api/trades', handler: 'POST', framework: 'nextjs' }],
+      models: [], envVars: [], dbTables: [], errors: [],
+    });
+    assert.deepStrictEqual(authRule.run({ store }), []);
+  } finally { store.close(); }
+});
+
+test('Rule engine: auth-missing', 'silent when handler exports auth-shaped symbol (getServerSession)', () => {
+  const { SQLiteStore: AS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-auth-'));
+  const store = new AS(dir);
+  store.open();
+  try {
+    const fileId = store.upsertFile('app/api/trades/route.ts', { language: 'ts', hash: 'h', mtime: 1, size: 1 });
+    store.storeExtraction(fileId, {
+      imports: [],
+      symbols: [{ name: 'getServerSession', kind: 'function' }],
+      routes: [{ method: 'POST', path: '/api/trades', handler: 'POST', framework: 'nextjs' }],
+      models: [], envVars: [], dbTables: [], errors: [],
+    });
+    assert.deepStrictEqual(authRule.run({ store }), []);
+  } finally { store.close(); }
+});
+
+test('Rule engine: auth-missing', 'silent when project-root middleware.ts exists', () => {
+  const { SQLiteStore: AS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-auth-'));
+  const store = new AS(dir);
+  store.open();
+  try {
+    // A middleware.ts at the project root suppresses every route's gap.
+    store.upsertFile('middleware.ts', { language: 'ts', hash: 'h', mtime: 1, size: 1 });
+    seedRoute(store, 'app/api/trades/route.ts', 'POST', '/api/trades');
+    assert.deepStrictEqual(authRule.run({ store }), []);
+  } finally { store.close(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Rule engine: gaps store (4 tests)
+// ═══════════════════════════════════════════════════════════════════
+
+test('Rule engine: gaps store', 'replaceGaps upserts by gap_hash and deletes stale rows', () => {
+  const { SQLiteStore: GS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-gaps-'));
+  const store = new GS(dir);
+  store.open();
+  try {
+    const g1 = { gap_hash: 'aaaa', rule_id: 'r', file: 'a.ts', line: null, severity: 'HIGH', evidence: 'x' };
+    const g2 = { gap_hash: 'bbbb', rule_id: 'r', file: 'b.ts', line: null, severity: 'HIGH', evidence: 'y' };
+    store.replaceGaps([g1, g2]);
+    assert.strictEqual(store.getGaps({}).length, 2);
+    // Re-run — only g1 survives.
+    store.replaceGaps([g1]);
+    const surv = store.getGaps({});
+    assert.strictEqual(surv.length, 1);
+    assert.strictEqual(surv[0].gap_hash, 'aaaa');
+  } finally { store.close(); }
+});
+
+test('Rule engine: gaps store', 'dismissGap persists across replaceGaps', () => {
+  const { SQLiteStore: GS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-gaps-'));
+  const store = new GS(dir);
+  store.open();
+  try {
+    const g = { gap_hash: 'zzzz', rule_id: 'r', file: 'a.ts', line: null, severity: 'HIGH', evidence: 'x' };
+    store.replaceGaps([g]);
+    const outcome = store.dismissGap('zzzz', 'intentional');
+    assert.strictEqual(outcome.dismissed, true);
+    assert.strictEqual(outcome.gap.dismissed, 1);
+    assert.strictEqual(outcome.gap.reason, 'intentional');
+    // Re-run rule engine — the gap survives, and dismissal persists.
+    store.replaceGaps([g]);
+    const rows = store.getGaps({ includeDismissed: true });
+    assert.strictEqual(rows.length, 1);
+    assert.strictEqual(rows[0].dismissed, 1);
+    assert.strictEqual(rows[0].reason, 'intentional');
+    // Default get_gaps excludes dismissed → empty.
+    assert.strictEqual(store.getGaps({}).length, 0);
+  } finally { store.close(); }
+});
+
+test('Rule engine: gaps store', 'dismissGap returns { dismissed:false } for unknown hash', () => {
+  const { SQLiteStore: GS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-gaps-'));
+  const store = new GS(dir);
+  store.open();
+  try {
+    const outcome = store.dismissGap('doesnotexist', 'nope');
+    assert.strictEqual(outcome.dismissed, false);
+    assert.strictEqual(outcome.gap, null);
+  } finally { store.close(); }
+});
+
+test('Rule engine: gaps store', 'getGaps ranks HIGH before MEDIUM before LOW', () => {
+  const { SQLiteStore: GS } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-gaps-'));
+  const store = new GS(dir);
+  store.open();
+  try {
+    store.replaceGaps([
+      { gap_hash: 'l', rule_id: 'r', file: 'a.ts', line: null, severity: 'LOW', evidence: 'x' },
+      { gap_hash: 'h', rule_id: 'r', file: 'b.ts', line: null, severity: 'HIGH', evidence: 'y' },
+      { gap_hash: 'm', rule_id: 'r', file: 'c.ts', line: null, severity: 'MEDIUM', evidence: 'z' },
+    ]);
+    const rows = store.getGaps({});
+    assert.deepStrictEqual(rows.map((r) => r.severity), ['HIGH', 'MEDIUM', 'LOW']);
+  } finally { store.close(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
 // Summary
 // ═══════════════════════════════════════════════════════════════════
 
@@ -7594,7 +7953,7 @@ test('SWE-bench tools', 'synthesizeDiff emits parser-compatible adds + modifies 
   await runAsyncSuite();
 
   console.log('');
-  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Path normalization', 'MCP resilience', 'Change plan', 'Init flow', 'Git hooks', 'Lazy MCP re-parse', 'Store adapter (ACP V2)', 'Secret leakage', 'Adaptive clustering', 'Domain config', 'Domain stability', 'Extraction errors', 'Framework extractors', 'Native install resilience', 'Bitmap validation', 'Bitset serialization', 'Bitmap engine', 'Inspect command', 'Validation API', 'Episodic Memory', 'PR impact', 'Scale-test driver', 'ANCI roundtrip', 'SSE streaming', 'Files without tests', 'MCP middleware', 'carto validate', 'SWE-bench', 'CLI: status', 'CLI: why', 'CLI: doctor', 'SWE-bench tools', 'Temporal storage', 'Temporal MCP tools', 'Brain invariants', 'Brain conventions', 'Brain procedural', 'Brain working', 'Brain suggestions', 'Plugin API', 'PHP extractor', 'Kotlin extractor', 'Swift extractor', 'Dart extractor', 'Long-tail frameworks', 'ACP persistence', 'ACP config', 'ACP safety', 'AI retrieval: lexical', 'AI retrieval: rrf', 'AI retrieval: semantic', 'AI context-builder', 'AI tools: interfaceContract', 'AI tools: dataFlow', 'AI tools: safetyChecklist', 'AI tools: dependencySurface', 'AI tools: upgradeRisk', 'AI tools: staleDocs', 'Adjacent: call graph', 'Adjacent: IaC', 'Adjacent: runtime', 'Adjacent: semantic-diff', 'Adjacent: llm-enrich', 'Predictive: risk-score', 'Predictive: cut-points', 'Predictive: validate-change', 'Predictive: ownership', 'Predictive: drift-digest', 'Org: store', 'Org: detect', 'Org: sync', 'Org: queries', 'Docs API gen'];
+  const suiteNames = ['Python extractor', 'Prisma extractor', 'Merger', 'Import graph', 'R extractor', 'File discovery', 'Project Structure', 'Path normalization', 'MCP resilience', 'Change plan', 'Init flow', 'Git hooks', 'Lazy MCP re-parse', 'Store adapter (ACP V2)', 'Secret leakage', 'Adaptive clustering', 'Domain config', 'Domain stability', 'Extraction errors', 'Framework extractors', 'Native install resilience', 'Bitmap validation', 'Bitset serialization', 'Bitmap engine', 'Inspect command', 'Validation API', 'Episodic Memory', 'PR impact', 'Scale-test driver', 'ANCI roundtrip', 'SSE streaming', 'Files without tests', 'MCP middleware', 'carto validate', 'SWE-bench', 'CLI: status', 'CLI: why', 'CLI: doctor', 'SWE-bench tools', 'Temporal storage', 'Temporal MCP tools', 'Brain invariants', 'Brain conventions', 'Brain procedural', 'Brain working', 'Brain suggestions', 'Plugin API', 'PHP extractor', 'Kotlin extractor', 'Swift extractor', 'Dart extractor', 'Long-tail frameworks', 'ACP persistence', 'ACP config', 'ACP safety', 'AI retrieval: lexical', 'AI retrieval: rrf', 'AI retrieval: semantic', 'AI context-builder', 'AI tools: interfaceContract', 'AI tools: dataFlow', 'AI tools: safetyChecklist', 'AI tools: dependencySurface', 'AI tools: upgradeRisk', 'AI tools: staleDocs', 'Adjacent: call graph', 'Adjacent: IaC', 'Adjacent: runtime', 'Adjacent: semantic-diff', 'Adjacent: llm-enrich', 'Predictive: risk-score', 'Predictive: cut-points', 'Predictive: validate-change', 'Predictive: ownership', 'Predictive: drift-digest', 'Org: store', 'Org: detect', 'Org: sync', 'Org: queries', 'Docs API gen', 'Rule engine: intent', 'Rule engine: engine', 'Rule engine: money-as-float', 'Rule engine: auth-missing', 'Rule engine: gaps store'];
   for (const suite of suiteNames) {
     const s = suiteTotals[suite] || { pass: 0, total: 0 };
     const icon = s.pass === s.total ? '✓' : '✗';

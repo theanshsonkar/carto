@@ -2,11 +2,11 @@
 
 Auto-generated from `src/mcp/server.js`. Re-run `node scripts/gen-api-docs.js` after adding tools.
 
-**76 tools** across 8 categories.
+**81 tools** across 8 categories.
 
 ## Categories
 
-### Core graph (16)
+### Core graph (21)
 - [`get_routes`](./get_routes.md)
 - [`get_blast_radius`](./get_blast_radius.md)
 - [`get_structure`](./get_structure.md)
@@ -23,6 +23,11 @@ Auto-generated from `src/mcp/server.js`. Re-run `node scripts/gen-api-docs.js` a
 - [`get_change_plan`](./get_change_plan.md)
 - [`get_similar_patterns`](./get_similar_patterns.md)
 - [`simulate_change_impact`](./simulate_change_impact.md)
+- [`get_gaps`](./get_gaps.md)
+- [`dismiss_gap`](./dismiss_gap.md)
+- [`set_intent`](./set_intent.md)
+- [`get_intent`](./get_intent.md)
+- [`get_file_receipts`](./get_file_receipts.md)
 
 ### Episodic Memory (5)
 - [`validate_diff`](./validate_diff.md)
