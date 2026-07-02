@@ -44,7 +44,7 @@ function extractPrismaModels(content) {
         fields.push({ name: fieldMatch[1], type: fieldMatch[2] });
       }
     }
-    models.push({ className: name, fields });
+    models.push({ className: name, fields, kind: 'prisma' });
   }
 
   return models;
