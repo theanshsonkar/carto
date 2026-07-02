@@ -1186,6 +1186,172 @@ class SQLiteStore {
     ).all();
   }
 
+  // ─── Rule Engine gaps ─────────────────────────────────────────────────
+
+  /**
+   * replaceGaps(newGaps) → { inserted, preserved, removed }
+   *
+   * The rule engine calls this once per run. Semantics:
+   *   - Rows for gaps present in `newGaps` are refreshed (detected_at
+   *     bumped). If the same gap_hash was previously dismissed, the
+   *     `dismissed` + `reason` fields carry over — dismissals persist
+   *     across runs.
+   *   - Rows whose gap_hash is NOT in `newGaps` are deleted. Gaps
+   *     that no longer fire disappear from the table.
+   *
+   * `newGaps` is an array of `{ gap_hash, rule_id, file, line,
+   * severity, reversibility, concept, evidence }`.
+   *
+   * Runs in a single transaction. Requires a writable connection.
+   */
+  replaceGaps(newGaps) {
+    if (!Array.isArray(newGaps)) return { inserted: 0, preserved: 0, removed: 0 };
+    const now = Date.now();
+    let inserted = 0;
+    let preserved = 0;
+    let removed = 0;
+
+    const tx = this._db.transaction(() => {
+      // 1. Snapshot existing dismissals so they survive the rewrite.
+      const priorDismissals = new Map();
+      const priorRows = this._db.prepare(
+        'SELECT gap_hash, dismissed, reason FROM gaps WHERE dismissed = 1'
+      ).all();
+      for (const r of priorRows) priorDismissals.set(r.gap_hash, { dismissed: r.dismissed, reason: r.reason });
+
+      // 2. Collect surviving hashes.
+      const surviving = new Set(newGaps.map((g) => g.gap_hash));
+
+      // 3. Delete rows no longer emitted by the engine.
+      const existing = this._db.prepare('SELECT gap_hash FROM gaps').all();
+      const del = this._db.prepare('DELETE FROM gaps WHERE gap_hash = ?');
+      for (const r of existing) {
+        if (!surviving.has(r.gap_hash)) {
+          del.run(r.gap_hash);
+          removed++;
+        }
+      }
+
+      // 4. Upsert the new set. Preserve dismissed/reason when the row
+      //    was already dismissed.
+      const upsert = this._db.prepare(`
+        INSERT INTO gaps (gap_hash, rule_id, file, line, severity, reversibility, concept, evidence, detected_at, dismissed, reason)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(gap_hash) DO UPDATE SET
+          rule_id = excluded.rule_id,
+          file = excluded.file,
+          line = excluded.line,
+          severity = excluded.severity,
+          reversibility = excluded.reversibility,
+          concept = excluded.concept,
+          evidence = excluded.evidence,
+          detected_at = excluded.detected_at
+      `);
+      for (const g of newGaps) {
+        const wasDismissed = priorDismissals.get(g.gap_hash);
+        const dismissed = wasDismissed ? 1 : 0;
+        const reason = wasDismissed ? wasDismissed.reason : null;
+        const info = upsert.run(
+          g.gap_hash,
+          g.rule_id,
+          g.file ? normalizePath(g.file) : null,
+          g.line != null ? g.line : null,
+          g.severity,
+          g.reversibility || null,
+          g.concept || null,
+          g.evidence || null,
+          now,
+          dismissed,
+          reason
+        );
+        if (info.changes === 1 && info.lastInsertRowid) {
+          if (wasDismissed) preserved++;
+          else inserted++;
+        }
+      }
+    });
+    tx();
+    return { inserted, preserved, removed };
+  }
+
+  /**
+   * getGaps({ includeDismissed = false, rule_id, file, severity }?) → [row, ...]
+   *
+   * Read-only. Returns the current gap set, filtered by the given
+   * predicates. Dismissed gaps are excluded by default — `get_gaps`
+   * surfaces "what still fires and hasn't been intentionally accepted."
+   * Ranked by severity (HIGH > MEDIUM > LOW) then by detected_at DESC.
+   */
+  getGaps(opts = {}) {
+    const where = [];
+    const params = [];
+    if (!opts.includeDismissed) where.push('dismissed = 0');
+    if (opts.rule_id) { where.push('rule_id = ?'); params.push(String(opts.rule_id)); }
+    if (opts.file) { where.push('file = ?'); params.push(normalizePath(opts.file)); }
+    if (opts.severity) { where.push('severity = ?'); params.push(String(opts.severity)); }
+    const clause = where.length > 0 ? 'WHERE ' + where.join(' AND ') : '';
+    return this._db.prepare(`
+      SELECT id, gap_hash, rule_id, file, line, severity, reversibility, concept, evidence, detected_at, dismissed, reason
+      FROM gaps
+      ${clause}
+      ORDER BY
+        CASE severity WHEN 'HIGH' THEN 0 WHEN 'MEDIUM' THEN 1 WHEN 'LOW' THEN 2 ELSE 3 END,
+        detected_at DESC,
+        id DESC
+    `).all(...params);
+  }
+
+  /**
+   * getGapByHash(gap_hash) → row | null
+   */
+  getGapByHash(gap_hash) {
+    if (!gap_hash) return null;
+    return this._db.prepare(
+      'SELECT id, gap_hash, rule_id, file, line, severity, reversibility, concept, evidence, detected_at, dismissed, reason FROM gaps WHERE gap_hash = ?'
+    ).get(String(gap_hash)) || null;
+  }
+
+  /**
+   * dismissGap(gap_hash, reason) → { dismissed: boolean, gap: row | null }
+   *
+   * Marks a gap as intentionally accepted by the user. Idempotent —
+   * re-dismissing the same gap updates the reason and stamps a new
+   * timestamp but doesn't create a second row. Requires a writable
+   * connection. Returns { dismissed: false, gap: null } if the hash
+   * doesn't correspond to a known gap (fresh hashes only enter the
+   * table via replaceGaps).
+   */
+  dismissGap(gap_hash, reason) {
+    if (!gap_hash) return { dismissed: false, gap: null };
+    const gap = this.getGapByHash(gap_hash);
+    if (!gap) return { dismissed: false, gap: null };
+    this._db.prepare(
+      'UPDATE gaps SET dismissed = 1, reason = ? WHERE gap_hash = ?'
+    ).run(reason ? String(reason).slice(0, 2000) : null, String(gap_hash));
+    return { dismissed: true, gap: this.getGapByHash(gap_hash) };
+  }
+
+  /**
+   * countGaps({ includeDismissed = false }?) → { total, bySeverity, byRule }
+   */
+  countGaps(opts = {}) {
+    const clause = opts.includeDismissed ? '' : 'WHERE dismissed = 0';
+    const total = this._db.prepare(`SELECT COUNT(*) as n FROM gaps ${clause}`).get().n;
+    const bySeverity = {};
+    for (const r of this._db.prepare(
+      `SELECT severity, COUNT(*) as n FROM gaps ${clause} GROUP BY severity`
+    ).all()) {
+      bySeverity[r.severity] = r.n;
+    }
+    const byRule = {};
+    for (const r of this._db.prepare(
+      `SELECT rule_id, COUNT(*) as n FROM gaps ${clause} GROUP BY rule_id`
+    ).all()) {
+      byRule[r.rule_id] = r.n;
+    }
+    return { total, bySeverity, byRule };
+  }
+
   // ─── Lifecycle ─────────────────────────────────────────────────────────
 
   close() {
