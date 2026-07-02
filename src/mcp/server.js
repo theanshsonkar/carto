@@ -1407,6 +1407,13 @@ const TOOLS = [
   { name: 'did_we_discuss_this', description: 'Substring search over the episodic memory log (decisions + interventions) for prior discussions of a topic. Use to avoid re-deciding settled questions.', inputSchema: { type: 'object', properties: { topic: { type: 'string', description: 'Topic to search for, e.g. "auth", "snake_case", "blast radius".' } }, required: ['topic'] } },
   { name: 'get_intervention_history', description: 'List interventions (Carto-issued violations and suggestions) optionally filtered by file. Use to see prior warnings on a file before editing it.', inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Optional file filter (relative path from project root).' } }, required: [] } },
 
+  // ─── Rule engine: gap detection ─────────────────────────────────
+  { name: 'get_gaps', description: 'The current gap list for this repo — grounded findings from the rule engine ("SHOULD − IS"). Each gap ties to a file + rule_id + evidence. Ranked HIGH > MEDIUM > LOW. Dismissed gaps are excluded by default. Call this when the user asks "what should I fix?", when you enter a new repo for the first time, or before recommending changes to a file. If the response is empty and the project is unsupported, tell the user the rule engine only ships for Next.js + Supabase SaaS-with-auth today.', inputSchema: { type: 'object', properties: { rule_id: { type: 'string', description: 'Optional rule filter, e.g. "money-as-float".' }, file: { type: 'string', description: 'Optional file filter.' }, severity: { type: 'string', description: 'Optional severity filter: HIGH | MEDIUM | LOW.' }, include_dismissed: { type: 'boolean', description: 'Include gaps the user has already dismissed (default false).' }, refresh: { type: 'boolean', description: 'Re-run the rule engine before returning (default false — uses last cached run).' } }, required: [] } },
+  { name: 'dismiss_gap', description: 'Mark a specific gap as intentional. Writes the dismissal to the gaps table so the same gap does not re-surface on the next run. Idempotent — re-dismissing updates the reason. Only call this when the user explicitly says the gap is intentional; never dismiss on your own judgment.', inputSchema: { type: 'object', properties: { gap_hash: { type: 'string', description: 'The gap_hash from get_gaps output.' }, reason: { type: 'string', description: 'Short explanation of why this gap is intentional. Optional but strongly encouraged.' } }, required: ['gap_hash'] } },
+  { name: 'set_intent', description: 'Capture a user-stated intent about this project — product type, stack, or a scope note ("single-user for now"). Product-type gates every rule in the rule engine, so calling this correctly is how the AI unlocks (or narrows) gap detection. Notes accumulate — this tool never overwrites prior notes, only appends.', inputSchema: { type: 'object', properties: { product_type: { type: 'string', description: 'The product classification, e.g. "saas-with-auth" or "unsupported".' }, stack: { type: 'array', items: { type: 'string' }, description: 'Optional explicit stack list, e.g. ["Next.js", "Supabase"]. Replaces the auto-detected stack.' }, note: { type: 'string', description: 'A single scope statement from the user. Timestamped and appended to the notes array.' } }, required: [] } },
+  { name: 'get_intent', description: 'Return the currently stored intent — product type, stack, notes, updated_at. Use this at the start of a session to know which rules will apply to this project.', inputSchema: { type: 'object', properties: {}, required: [] } },
+  { name: 'get_file_receipts', description: 'For one file, returns receipts — everything Carto knows: change history, blast radius, prior interventions and decisions touching this file, active gaps on this file, cross-domain deps. Read-only. Use before proposing a change to a file to understand what depends on it and what has been said about it before.', inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Relative file path from project root.' } }, required: ['file'] } },
+
   // ─── Temporal layer ─────────────────────────────────────────────
   { name: 'get_architectural_drift', description: 'Per-domain growth/shrink and event count over a time window. Run `carto temporal init` first to backfill from git history.', inputSchema: { type: 'object', properties: { domain: { type: 'string', description: 'Optional domain filter (e.g. AUTH).' }, time_range: { type: 'string', description: 'Window like "30d", "90d", "1y" (default "30d").' } }, required: [] } },
   { name: 'get_domain_evolution', description: 'Time-series of a single domain\'s file count, by snapshot. Use to chart a domain\'s growth over the last quarter.', inputSchema: { type: 'object', properties: { domain: { type: 'string', description: 'Domain name (e.g. AUTH).' }, time_range: { type: 'string', description: 'Window like "30d", "90d" (default "90d").' } }, required: ['domain'] } },
@@ -2200,6 +2207,203 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       lines.push(`| ${when} | ${iv.severity || '—'} | ${iv.kind} | ${iv.file ? `\`${iv.file}\`` : '—'} | ${iv.message || ''} |`);
     }
     if (rows.length > 100) lines.push(`\n_...and ${rows.length - 100} more._`);
+    return text(lines.join('\n'));
+  }
+
+  // ─── Rule engine tool dispatch ────────────────────────────────────
+  // Five tools live here: get_gaps, dismiss_gap, set_intent, get_intent,
+  // get_file_receipts. The engine + intent modules are lazy-required so
+  // that a Carto install with no rules configured pays nothing.
+
+  if (name === 'get_gaps') {
+    const { runEngine } = require('../rules/engine');
+    const { loadIntent } = require('../rules/intent');
+    const intent = loadIntent(projectRoot);
+    if (!intent || intent.product_type === 'unsupported') {
+      return text(
+        `# Gaps\n\n` +
+        `No gaps to show — this project's intent is either unset or ` +
+        `unsupported. The rule engine ships rules for **Next.js + ` +
+        `Supabase SaaS-with-auth** projects only. If that describes ` +
+        `this repo, run \`set_intent { product_type: "saas-with-auth" }\` ` +
+        `to enable rules.`
+      );
+    }
+
+    const refresh = !!(args && args.refresh);
+    if (refresh) {
+      const sidecar = getSidecar();
+      const engineResult = runEngine({ store: s, sidecar, projectRoot, intent });
+      withWriter((writer) => {
+        writer.replaceGaps(engineResult.gaps);
+      });
+    }
+
+    const rows = s.getGaps({
+      includeDismissed: !!(args && args.include_dismissed),
+      rule_id: args && args.rule_id,
+      file: args && args.file,
+      severity: args && args.severity,
+    });
+
+    const counts = s.countGaps({ includeDismissed: !!(args && args.include_dismissed) });
+
+    const lines = [`# Gaps\n`];
+    lines.push(
+      `**${counts.total}** total · ` +
+      `HIGH ${counts.bySeverity.HIGH || 0} · ` +
+      `MEDIUM ${counts.bySeverity.MEDIUM || 0} · ` +
+      `LOW ${counts.bySeverity.LOW || 0}`,
+    );
+    lines.push(`_Intent: ${intent.product_type}${intent.stack && intent.stack.length ? ` (${intent.stack.join(', ')})` : ''}_\n`);
+
+    if (rows.length === 0) {
+      lines.push('_No gaps match the current filter._');
+      if (!refresh) {
+        lines.push('\n_Tip: pass `refresh: true` to re-run the rule engine._');
+      }
+      return text(lines.join('\n'));
+    }
+
+    lines.push('| Severity | Rule | File | Line | Evidence | gap_hash |');
+    lines.push('|----------|------|------|------|----------|----------|');
+    for (const g of rows.slice(0, 100)) {
+      const badge = g.dismissed
+        ? '_dismissed_'
+        : g.severity;
+      lines.push(
+        `| ${badge} | \`${g.rule_id}\` | \`${g.file || '—'}\` | ${g.line || '—'} | ` +
+        `${(g.evidence || '').replace(/\|/g, '\\|')} | \`${g.gap_hash}\` |`,
+      );
+    }
+    if (rows.length > 100) lines.push(`\n_...and ${rows.length - 100} more._`);
+    return text(lines.join('\n'));
+  }
+
+  if (name === 'dismiss_gap') {
+    if (!args || typeof args.gap_hash !== 'string' || args.gap_hash.length === 0) {
+      return text('Missing required argument: gap_hash (from get_gaps output).');
+    }
+    const reason = args && typeof args.reason === 'string' ? args.reason : null;
+    const outcome = withWriter((writer) => writer.dismissGap(args.gap_hash, reason));
+    if (!outcome || !outcome.dismissed) {
+      return text(`No gap with gap_hash \`${args.gap_hash}\`. Run get_gaps to see current hashes.`);
+    }
+    const g = outcome.gap;
+    return text(
+      `# Gap dismissed\n\n` +
+      `- **rule:** \`${g.rule_id}\`\n` +
+      `- **file:** \`${g.file || '—'}\`${g.line ? `:${g.line}` : ''}\n` +
+      `- **reason:** ${reason || '_(none provided)_'}\n\n` +
+      `This gap will not resurface in \`get_gaps\` unless \`include_dismissed: true\` is passed.`,
+    );
+  }
+
+  if (name === 'set_intent') {
+    const { setIntent } = require('../rules/intent');
+    const patch = {};
+    if (args && typeof args.product_type === 'string') patch.product_type = args.product_type;
+    if (args && Array.isArray(args.stack)) patch.stack = args.stack;
+    if (args && typeof args.note === 'string') patch.note = args.note;
+    if (Object.keys(patch).length === 0) {
+      return text('Nothing to set. Pass at least one of: product_type, stack, note.');
+    }
+    const written = setIntent(projectRoot, patch);
+    const lines = ['# Intent updated\n'];
+    lines.push(`- **product_type:** \`${written.product_type}\``);
+    lines.push(`- **stack:** ${written.stack && written.stack.length ? written.stack.map((s) => `\`${s}\``).join(', ') : '_(empty)_'}`);
+    lines.push(`- **notes:** ${written.notes.length}`);
+    lines.push(`- **updated_at:** ${new Date(written.updated_at).toISOString()}`);
+    lines.push(`\n_Written to \`.carto/intent.json\`. Next \`get_gaps\` call will use this._`);
+    return text(lines.join('\n'));
+  }
+
+  if (name === 'get_intent') {
+    const { loadIntent } = require('../rules/intent');
+    const intent = loadIntent(projectRoot);
+    if (!intent) {
+      return text(
+        `# Intent\n\n` +
+        `No intent set. Run \`set_intent\` to configure this project's ` +
+        `product type and stack, or run \`carto init\` — it auto-detects ` +
+        `from \`package.json\`.`,
+      );
+    }
+    const lines = ['# Intent\n'];
+    lines.push(`- **product_type:** \`${intent.product_type || 'unsupported'}\``);
+    lines.push(`- **stack:** ${intent.stack && intent.stack.length ? intent.stack.map((s) => `\`${s}\``).join(', ') : '_(empty)_'}`);
+    lines.push(`- **updated_at:** ${intent.updated_at ? new Date(intent.updated_at).toISOString() : '_(unknown)_'}`);
+    if (intent.notes && intent.notes.length > 0) {
+      lines.push('\n## Notes\n');
+      for (const n of intent.notes.slice(-20)) {
+        lines.push(`- _${new Date(n.ts).toISOString()}_: ${n.text}`);
+      }
+    }
+    return text(lines.join('\n'));
+  }
+
+  if (name === 'get_file_receipts') {
+    if (!args || typeof args.file !== 'string' || args.file.length === 0) {
+      return text('Missing required argument: file.');
+    }
+    const file = args.file;
+    const fileRow = s.getFileByPath(file);
+    if (!fileRow) return text(`File not indexed: \`${file}\`. Run \`carto sync\` if it exists on disk.`);
+
+    const sidecar = getSidecar();
+    const deps = sidecar
+      ? (bitmapTools.blastRadius(sidecar, file) || [])
+      : (s.getBlastRadius(file) || []);
+    const interventions = s.getInterventionsForFile(file);
+    const gaps = s.getGaps({ file });
+    const decisions = typeof s.searchDecisions === 'function' ? s.searchDecisions(file) : [];
+
+    const lines = [`# Receipts: \`${file}\`\n`];
+    lines.push(`**Blast radius:** ${deps.length} transitive dependent${deps.length === 1 ? '' : 's'}`);
+    lines.push(`**Active gaps on this file:** ${gaps.length}`);
+    lines.push(`**Prior interventions:** ${interventions.length}`);
+    lines.push(`**Prior decisions mentioning this file:** ${decisions.length}\n`);
+
+    if (gaps.length > 0) {
+      lines.push('## Active gaps\n');
+      lines.push('| Severity | Rule | Evidence |');
+      lines.push('|----------|------|----------|');
+      for (const g of gaps.slice(0, 20)) {
+        lines.push(`| ${g.severity} | \`${g.rule_id}\` | ${(g.evidence || '').replace(/\|/g, '\\|')} |`);
+      }
+      lines.push('');
+    }
+
+    if (interventions.length > 0) {
+      lines.push('## Prior interventions\n');
+      lines.push('| When | Severity | Kind | Message |');
+      lines.push('|------|----------|------|---------|');
+      for (const iv of interventions.slice(0, 20)) {
+        lines.push(`| ${new Date(iv.ts).toISOString()} | ${iv.severity || '—'} | ${iv.kind} | ${(iv.message || '').replace(/\|/g, '\\|')} |`);
+      }
+      lines.push('');
+    }
+
+    if (deps.length > 0) {
+      lines.push('## Blast radius (first 20)\n');
+      lines.push('| File | Hops |');
+      lines.push('|------|------|');
+      for (const d of deps.slice(0, 20)) {
+        lines.push(`| \`${d.file}\` | ${d.hop_distance} |`);
+      }
+      if (deps.length > 20) lines.push(`\n_...and ${deps.length - 20} more._`);
+      lines.push('');
+    }
+
+    if (decisions.length > 0) {
+      lines.push('## Recent decisions mentioning this file\n');
+      lines.push('| When | Kind |');
+      lines.push('|------|------|');
+      for (const d of decisions.slice(0, 10)) {
+        lines.push(`| ${new Date(d.ts).toISOString()} | ${d.kind} |`);
+      }
+    }
+
     return text(lines.join('\n'));
   }
 
