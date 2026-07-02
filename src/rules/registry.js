@@ -18,4 +18,7 @@
  *      gate.
  */
 
-module.exports = [];
+module.exports = [
+  require('./rules/money-as-float'),
+  require('./rules/auth-missing-on-mutating-route'),
+];
