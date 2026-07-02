@@ -456,7 +456,11 @@ class SQLiteStore {
           'INSERT INTO models (file_id, name, kind, fields_json) VALUES (?,?,?,?)'
         );
         for (const m of data.models) {
-          const name = m.name || m.model || (typeof m === 'string' ? m : null);
+          // Extractors are inconsistent: prisma/zod/interface/etc. emit
+          // `className`, drizzle emits both `name` and `className`,
+          // pydantic emits `className`. Fall through the whole chain so
+          // no extractor's models silently vanish.
+          const name = m.name || m.className || m.model || (typeof m === 'string' ? m : null);
           if (!name) continue; // skip models without a name
           const fields = m.fields ? JSON.stringify(m.fields) : null;
           ins.run(fileId, name, m.kind || m.type || 'unknown', fields);
