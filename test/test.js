@@ -4592,13 +4592,13 @@ test('Validation API', 'p50 latency ≤ 15ms on a 1000-file fixture (100 calls)'
 // Episodic Memory — 6 tests
 // ═══════════════════════════════════════════════════════════════════
 
-test('Episodic Memory', 'Schema v3 migrates a fresh DB with 3 new tables + indexes', () => {
+test('Episodic Memory', 'Schema v4 migrates a fresh DB with the episodic + gaps tables', () => {
   const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-spec16-em-'));
   try {
     const { SQLiteStore } = require('../src/store/sqlite-store');
     const s = new SQLiteStore(projectRoot);
     s.open();
-    assert.strictEqual(s.getMeta('schema_version'), '3', 'schema_version must be 3');
+    assert.strictEqual(s.getMeta('schema_version'), '4', 'schema_version must be 4');
     const tables = s._db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
       .all()
