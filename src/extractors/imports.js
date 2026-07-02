@@ -61,6 +61,14 @@ function extractImports(content, filePath, projectRoot) {
   const resolved = new Set();
 
   for (const imp of rawImports) {
+    // Bare module specifiers (npm packages) — record as-is so
+    // downstream consumers can see which external packages this file
+    // depends on. Stored with to_file_id = NULL, resolved = 0.
+    if (isBareModuleSpecifier(imp)) {
+      resolved.add(imp);
+      continue;
+    }
+
     let resolvedPath;
     if (imp.startsWith('.')) {
       // Relative import
@@ -102,30 +110,47 @@ function extractImports(content, filePath, projectRoot) {
 
 /**
  * Extract import paths from JS/TS content — both relative and aliased.
+ * Also captures bare-module specifiers (npm packages like
+ * `@supabase/supabase-js`, `next-auth`, `react`) so that consumers can
+ * see which external packages a file depends on. Bare specifiers flow
+ * through as raw strings; they never resolve to a project-local file
+ * and are stored with `to_file_id = NULL, resolved = 0`.
  */
 function extractJSImports(content) {
   const imports = [];
 
-  // import ... from 'path' — capture relative and aliased imports
+  // import ... from 'path' — capture every specifier, prefixed OR bare.
   const importPattern = /import\s+(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;
   let match;
   while ((match = importPattern.exec(content)) !== null) {
-    const p = match[1];
-    if (p.startsWith('.') || p.startsWith('@') || p.startsWith('~') || p.startsWith('#')) {
-      imports.push(p);
-    }
+    imports.push(match[1]);
   }
 
-  // require('./path') or require('@/path')
+  // require('...')
   const requirePattern = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
   while ((match = requirePattern.exec(content)) !== null) {
-    const p = match[1];
-    if (p.startsWith('.') || p.startsWith('@') || p.startsWith('~') || p.startsWith('#')) {
-      imports.push(p);
-    }
+    imports.push(match[1]);
   }
 
   return imports;
+}
+
+/**
+ * isBareModuleSpecifier(spec) → boolean
+ *
+ * A "bare" specifier is a package name — not a relative path (`./foo`),
+ * not an absolute path (`/foo`), not a path-alias (`@/foo`, `~/foo`,
+ * `#/foo` where the single-char prefix is followed immediately by `/`).
+ *
+ * Scoped packages (`@supabase/supabase-js`, `@clerk/nextjs`) count as
+ * bare — the alias prefix is `@/` specifically, not `@scope/`.
+ */
+function isBareModuleSpecifier(spec) {
+  if (!spec || typeof spec !== 'string') return false;
+  if (spec.startsWith('.') || spec.startsWith('/')) return false;
+  // Path aliases: single-char sigil directly followed by `/`.
+  if (spec.startsWith('@/') || spec.startsWith('~/') || spec.startsWith('#/')) return false;
+  return true;
 }
 
 // Cache for path alias configs per projectRoot
