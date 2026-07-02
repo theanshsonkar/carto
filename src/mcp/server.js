@@ -2026,6 +2026,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const sidecar = getSidecar();
     const result = validateDiff(s, sidecar, args.diff);
 
+    // Layer in the rule engine's active gaps for any touched file.
+    // The engine's DB view lags the diff (the diff isn't applied to
+    // disk yet), so this catches gaps that ALREADY EXIST on the files
+    // being touched — the "you're editing a file that still has a
+    // known landmine" surface. Rules that would fire only AFTER the
+    // diff lands are caught by the next `carto sync`.
+    let touchedGaps = [];
+    try {
+      const { loadIntent } = require('../rules/intent');
+      const intent = loadIntent(projectRoot);
+      if (intent && intent.product_type !== 'unsupported') {
+        const touched = new Set(result.diff.map((d) => d.path));
+        const all = s.getGaps({});
+        touchedGaps = all.filter((g) => g.file && touched.has(g.file));
+        // Bump risk if any HIGH-severity gap on a touched file.
+        for (const g of touchedGaps) {
+          if (g.severity === 'HIGH' && result.risk !== 'HIGH') result.risk = 'HIGH';
+          else if (g.severity === 'MEDIUM' && result.risk === 'SAFE') result.risk = 'MEDIUM';
+          else if (g.severity === 'MEDIUM' && result.risk === 'LOW') result.risk = 'MEDIUM';
+        }
+      }
+    } catch { /* rules are best-effort — never break validate_diff */ }
+
     // Persist via brief writer connection. Don't fail the
     // user-facing response if the audit log write fails (read-only FS,
     // disk full, schema migration in flight). Per-call `session_id`
@@ -2037,6 +2060,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         sessionId = session.id;
       }
       recordSideEffects(writer, sessionId, args.diff, result);
+      // Also record a decision for each touched gap so
+      // did_we_discuss_this surfaces gap history alongside diff history.
+      for (const g of touchedGaps) {
+        writer.recordDecision({
+          sessionId,
+          kind: `gap:${g.rule_id}`,
+          file: g.file,
+          payload: { gap_hash: g.gap_hash, severity: g.severity, evidence: g.evidence, from: 'validate_diff' },
+        });
+      }
     });
 
     // Render a markdown response. The shape is the visible artifact —
@@ -2073,6 +2106,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       lines.push('');
     } else {
       lines.push('_No violations detected._\n');
+    }
+
+    if (touchedGaps.length > 0) {
+      lines.push(`## Active gaps on touched files (${touchedGaps.length})\n`);
+      lines.push('| Severity | Rule | File | Evidence | gap_hash |');
+      lines.push('|----------|------|------|----------|----------|');
+      for (const g of touchedGaps) {
+        lines.push(
+          `| ${g.severity} | \`${g.rule_id}\` | \`${g.file}\` | ` +
+          `${(g.evidence || '').replace(/\|/g, '\\|')} | \`${g.gap_hash}\` |`,
+        );
+      }
+      lines.push('');
     }
 
     if (result.suggestions.length > 0) {
