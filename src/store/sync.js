@@ -9,14 +9,14 @@ const { detectChangedFiles, hashFile, hashContent } = require('./change-detector
 const { loadLanguagePlugins, getPluginForFile } = require('../extractors/loader');
 const { extractImports } = require('../extractors/imports');
 const { buildStackLine } = require('../extractors/stack');
-const { clusterByDomain, setDomainMap } = require('../agents/domains');
+const { clusterByDomain, setDomainMap, buildFileAssignments } = require('../agents/domains');
 const { clusterByGraph } = require('../agents/leiden');
 const { formatSections, formatDomainFile } = require('../agents/formatter');
 const { mergeIntoAgentsMd } = require('../agents/merger');
 const { scanStructure } = require('../agents/scan-structure');
 const { WorkerPool, POOL_SIZE } = require('../engine/worker-pool');
 const { parseCartoIgnore } = require('../security/ignore');
-const { loadCartoConfig, applyAnchors } = require('./config-loader');
+const { loadCartoConfig, applyAnchors, applyDeclaredGlobs } = require('./config-loader');
 const { buildFromStore: buildBitmap, saveToDisk: saveBitmap } = require('../bitmap/sidecar');
 const { invalidate: invalidateBitmap } = require('../bitmap/index');
 
@@ -102,6 +102,28 @@ function discoverFiles(projectRoot, opts) {
   };
   walk(projectRoot);
   if (onProgress) onProgress(results.length);
+  // CT-4 (reproducibility): sort by the normalized POSIX path before
+  // returning. File ids are assigned in this order on a fresh index
+  // (SQLite autoincrement rowid, and the worker pool's Promise.all
+  // preserves input order), and the ANCI `anci.bin` body — hence its
+  // content_digest — is laid out by file id. `fs.readdirSync` order is
+  // filesystem-dependent and NOT stable across machines, so without this
+  // sort the same repo could hash to a different digest on machine B than
+  // machine A. Sorting makes the digest a true content address of the
+  // repo, independent of enumeration order. This is a pure relabeling of
+  // ids: the import graph, blast radius, and all query results are
+  // invariant to it (verified by the correctness + benchmark suites).
+  //
+  // The comparison uses a code-unit `<`/`>` sort (Array.prototype.sort's
+  // default is locale-INDEPENDENT) on the forward-slash form, so the
+  // order is identical across OSes and locales — never localeCompare,
+  // which is locale-dependent and would reintroduce nondeterminism.
+  const toPosix = (p) => p.replace(/\\/g, '/');
+  results.sort((a, b) => {
+    const na = toPosix(a);
+    const nb = toPosix(b);
+    return na < nb ? -1 : na > nb ? 1 : 0;
+  });
   return results;
 }
 
@@ -356,16 +378,20 @@ async function runSync(config) {
 
     const strategy = selectClusteringStrategy(fileCount, edgeCount);
     let fileAssignments; // Map<filePath, domainName>
+    // Per-file confidence (0..1). Declared config → 1.0; keyword seed → 0.9;
+    // graph/vote inference → lower; CORE fallback → low. Persisted to
+    // domain_assignments.confidence.
+    const confidenceByFile = new Map();
 
     if (strategy.method === 'graph') {
       // Merge default + config keywords for graph naming
       const keywordSeeds = {
         AUTH:          ['auth', 'login', 'session', 'oauth', 'jwt', 'password'],
         PAYMENTS:      ['payment', 'billing', 'stripe', 'invoice', 'subscription'],
-        DATABASE:      ['prisma', 'database', 'db', 'migration', 'schema', 'drizzle'],
-        TRPC:          ['trpc', 'router', 'procedure'],
-        EVENTS:        ['webhook', 'event', 'queue', 'job', 'worker', 'cron'],
-        NOTIFICATIONS: ['email', 'notification', 'mail', 'sms', 'alert'],
+        DATABASE:      ['prisma', 'drizzle', 'migration'],
+        TRPC:          ['trpc', 'procedure'],
+        EVENTS:        ['webhook', 'queue', 'worker', 'cron'],
+        NOTIFICATIONS: ['notification', 'mailer', 'sms'],
       };
       if (cartoConfig) {
         for (const [name, cfg] of Object.entries(cartoConfig.domains)) {
@@ -384,14 +410,33 @@ async function runSync(config) {
       }
       fileAssignments = new Map();
       for (const [fp, domain] of rawAssignments) {
-        fileAssignments.set(fp, (domainCounts.get(domain) || 0) >= strategy.minSize ? domain : 'CORE');
+        const kept = (domainCounts.get(domain) || 0) >= strategy.minSize;
+        const finalDomain = kept && domain !== 'CORE' ? domain : 'CORE';
+        fileAssignments.set(fp, finalDomain);
+        confidenceByFile.set(fp, finalDomain === 'CORE' ? 0.2 : 0.7);
+      }
+      // clusterByGraph only covers files that are nodes in the import graph.
+      // Assign every other indexed file to CORE so the source of truth is
+      // complete (no file silently missing a domain) and consistent with the
+      // keyword path.
+      for (const f of store.getAllFiles()) {
+        if (!fileAssignments.has(f.path)) {
+          fileAssignments.set(f.path, 'CORE');
+          confidenceByFile.set(f.path, 0.2);
+        }
       }
     } else {
-      fileAssignments = runKeywordClustering(store, importGraph);
+      const kw = runKeywordClustering(store, importGraph);
+      fileAssignments = kw.fileAssignments;
+      for (const [fp, c] of kw.confidenceByFile) confidenceByFile.set(fp, c);
     }
 
-    // 10b — Apply anchor pinning from config
-    if (cartoConfig) applyAnchors(fileAssignments, cartoConfig);
+    // 10b — Declared config wins. Globs are the PRIMARY, deterministic source;
+    // anchors are exact-file pins that override everything (most specific).
+    if (cartoConfig) {
+      applyDeclaredGlobs(fileAssignments, cartoConfig, confidenceByFile);
+      applyAnchors(fileAssignments, cartoConfig, confidenceByFile);
+    }
 
     // Reset domain map to defaults after use (avoid polluting subsequent runs)
     if (cartoConfig) setDomainMap(null);
@@ -411,7 +456,7 @@ async function runSync(config) {
       const domainId = store.upsertDomain(domainName, { fileCount: filePaths.length });
       for (const fp of filePaths) {
         const file = store.getFileByPath(fp);
-        if (file) store.assignFileToDomain(file.id, domainId);
+        if (file) store.assignFileToDomain(file.id, domainId, confidenceByFile.get(fp) ?? 1.0);
       }
     }
   }
@@ -598,37 +643,22 @@ function selectClusteringStrategy(fileCount, edgeCount) {
 }
 
 /**
- * runKeywordClustering(store, importGraph) → Map<filePath, domainName>
- * Consolidated keyword-based clustering used for small/sparse repos.
+ * runKeywordClustering(store, importGraph) → { fileAssignments, confidenceByFile }
+ * Consolidated keyword+vote clustering used for small/sparse repos.
+ * Uses buildFileAssignments directly over the full set of indexed files so
+ * files with no imports still get a (CORE) assignment, and threads per-file
+ * confidence back to the caller.
  */
 function runKeywordClustering(store, importGraph) {
-  const routes = store.getRoutes();
-  const models = store.getModels();
-  const envVars = store.getEnvVars();
-  const routesByFile = buildRoutesByFile(store);
-  const functions = {};
-  const allFilesForDomain = store.getAllFiles();
-  for (const f of allFilesForDomain) {
-    const syms = store.db.prepare(
-      'SELECT name FROM symbols WHERE file_id = ? AND kind = ?'
-    ).all(f.id, 'function').map(r => r.name);
-    if (syms.length > 0) functions[f.path] = syms;
+  const allFiles = new Set();
+  for (const f of store.getAllFiles()) allFiles.add(f.path);
+  for (const f of Object.keys(importGraph)) allFiles.add(f);
+  for (const deps of Object.values(importGraph)) {
+    for (const d of deps) allFiles.add(d);
   }
-  const dbTables = store.db.prepare(`
-    SELECT dt.table_name, dt.operation, f.path as file
-    FROM db_tables dt JOIN files f ON dt.file_id = f.id
-  `).all().map(r => ({ table: r.table_name, operation: r.operation, file: r.file }));
-
-  const domainResult = clusterByDomain({
-    routes, models: models.filter(m => m.name).map(m => ({ ...m, className: m.name })),
-    functions, envVars, dbTables, fileMap: [], routesByFile, importGraph
-  });
-
-  const fileAssignments = new Map();
-  for (const [domainName, cluster] of Object.entries(domainResult)) {
-    for (const fp of (cluster.files || [])) fileAssignments.set(fp, domainName);
-  }
-  return fileAssignments;
+  const confidenceByFile = new Map();
+  const fileAssignments = buildFileAssignments([...allFiles], importGraph, confidenceByFile);
+  return { fileAssignments, confidenceByFile };
 }
 
 /**
