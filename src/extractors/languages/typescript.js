@@ -5,6 +5,7 @@ const path = require('path');
 const jsPlugin = require('./javascript');
 const tsParser = require('../tree-sitter-parser');
 const { extractJsFrameworkRoutes } = require('../frameworks');
+const { extractZodSchemas, extractDrizzleTables } = require('../schemas');
 
 const TS_PARSE_OPTIONS = {
   sourceType: 'module',
@@ -35,12 +36,19 @@ module.exports = {
       // file-based routing (Remix / SvelteKit / Astro) — Babel isn't needed
       // for those, the path-shape comes from the filename.
       const fwRoutes = extractJsFrameworkRoutes(content, filename);
+      // Zod schemas and Drizzle tables are content/regex-based (no Babel/AST
+      // needed), and most of them live in NON-API files (validation schema
+      // modules, `*.schema.ts`, model definitions). Running them only on the
+      // API-handler path (the old behavior) made `get_models` return ~0 on
+      // real repos (supabase: 338 `z.object(` invisible). Run them here too.
+      const zodModels = extractZodSchemas(content);
+      const drizzleModels = extractDrizzleTables(content);
       return {
         routes:      fwRoutes,
-        models:      [],
+        models:      [...zodModels, ...drizzleModels],
         functions,
         envVars:     _extractEnvVarsRegex(content),
-        dbTables:    [],
+        dbTables:    drizzleModels.map(m => ({ tableName: m.name, modelName: m.name })),
         fetches:     [],
         storageKeys: [],
         events:      extractEventListeners(content),
@@ -156,53 +164,9 @@ function extractTRPCInputSchema(procedureChain) {
   return null;
 }
 
-// ─── Zod schema extraction ────────────────────────────────────────────────────
-
-function extractZodSchemas(content) {
-  const models = [];
-  // const UserSchema = z.object({ ... }) or export const UserSchema = z.object({...})
-  const pattern = /(?:export\s+)?const\s+(\w+)\s*=\s*z\.object\s*\(\s*\{([^}]*)\}/g;
-  let m;
-  while ((m = pattern.exec(content)) !== null) {
-    const name = m[1];
-    const body = m[2];
-    const fields = [];
-    // field: z.string() / field: z.number() / field: z.boolean() etc.
-    const fieldPattern = /(\w+)\s*:\s*z\.(\w+)/g;
-    let fm;
-    while ((fm = fieldPattern.exec(body)) !== null) {
-      fields.push({ name: fm[1], type: `z.${fm[2]}` });
-    }
-    if (fields.length > 0) {
-      models.push({ className: name, fields, kind: 'zod' });
-    }
-  }
-  return models;
-}
-
-// ─── Drizzle ORM table extraction ────────────────────────────────────────────
-
-function extractDrizzleTables(content) {
-  const models = [];
-  // pgTable('users', {...}) / mysqlTable / sqliteTable
-  const tablePattern = /(?:pgTable|mysqlTable|sqliteTable|table)\s*\(\s*['"](\w+)['"]\s*,\s*\{([^}]*)\}/g;
-  let m;
-  while ((m = tablePattern.exec(content)) !== null) {
-    const tableName = m[1];
-    const body = m[2];
-    const fields = [];
-    // id: serial('id') / name: text('name') / email: varchar('email', ...)
-    const colPattern = /(\w+)\s*:\s*(\w+)\s*\(/g;
-    let fm;
-    while ((fm = colPattern.exec(body)) !== null) {
-      fields.push({ name: fm[1], type: fm[2] });
-    }
-    if (fields.length > 0) {
-      models.push({ className: tableName, name: tableName, fields, kind: 'drizzle' });
-    }
-  }
-  return models;
-}
+// ─── Zod & Drizzle schema extraction ─────────────────────────────────────────
+// Moved to ../schemas.js so the JavaScript plugin can reuse them (both plugins
+// run them on the non-API path). Imported at the top of this file.
 
 // ─── Event / webhook listener extraction ────────────────────────────────────
 

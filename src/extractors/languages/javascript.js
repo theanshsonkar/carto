@@ -2,6 +2,7 @@ const parser = require('@babel/parser');
 const path = require('path');
 const tsParser = require('../tree-sitter-parser');
 const { extractJsFrameworkRoutes } = require('../frameworks');
+const { extractZodSchemas, extractDrizzleTables } = require('../schemas');
 
 const PARSE_OPTIONS = {
   sourceType: 'module',
@@ -68,12 +69,15 @@ module.exports = {
       // Non-API file: tree-sitter only, no Babel. Still attempt regex-based
       // framework routes (Remix / SvelteKit / Astro file-based) since
       // those are detected by filename, not by import.
+      // Zod/Drizzle are content-based and mostly live in non-API modules.
+      const zodModels = extractZodSchemas(content);
+      const drizzleModels = extractDrizzleTables(content);
       return {
         routes:      extractJsFrameworkRoutes(content, filename),
-        models:      [],
+        models:      [...zodModels, ...drizzleModels],
         functions,
         envVars:     _extractEnvVarsFromImports(content),
-        dbTables:    [],
+        dbTables:    drizzleModels.map(m => ({ tableName: m.name, modelName: m.name })),
         fetches:     [],
         storageKeys: [],
         _tsImports:  tsImports,
@@ -114,10 +118,10 @@ module.exports = {
     }
     return {
       routes:      baseRoutes,
-      models:      [],
+      models:      [...extractZodSchemas(content), ...extractDrizzleTables(content)],
       functions:   extractJSFunctions(ast),
       envVars:     extractProcessEnv(ast),
-      dbTables:    [],
+      dbTables:    extractDrizzleTables(content).map(m => ({ tableName: m.name, modelName: m.name })),
       fetches:     extractJSFetches(ast),
       storageKeys: [],
       _tsImports:  tsImports,
