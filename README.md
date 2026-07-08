@@ -53,9 +53,9 @@ carto init
 
 That's it. `carto init` reads your repo, builds the container, and wires itself into every AI tool it finds. Restart the tool. Your AI now knows your codebase — and keeps a memory of every decision it makes inside it.
 
-### Using it with Claude Code
+### Wiring it into your AI tool
 
-`carto init` auto-detects Claude Code and writes the MCP config to `<project>/.mcp.json` for you. If you'd rather wire it by hand, that file is just:
+`carto init` auto-detects the AI tools on your machine and writes each one's MCP config for you. If you'd rather wire it by hand, the MCP server config is just:
 
 ```json
 {
@@ -68,7 +68,7 @@ That's it. `carto init` reads your repo, builds the container, and wires itself 
 }
 ```
 
-Restart Claude Code and it will spawn `carto serve` on demand — every chat now starts with your architecture, blast radius, and past decisions already loaded. The same config shape works for Cursor, Claude Desktop, Kiro, Windsurf, and any other MCP client (`carto init` writes the correct file for each).
+Point any MCP client at that and restart it — the tool spawns `carto serve` on demand, and every chat starts with your architecture, blast radius, and past decisions already loaded. Exact config file per tool is below.
 
 <details>
 <summary>Manual MCP wiring for every other tool (if it wasn't auto-detected)</summary>
