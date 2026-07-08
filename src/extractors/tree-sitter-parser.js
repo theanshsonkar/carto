@@ -396,6 +396,44 @@ function _inferKind(nameNode, langName) {
 }
 
 /**
+ * getGrammarVersions() → { [pkgName]: versionString }
+ *
+ * Resolves the installed version of the tree-sitter core plus each
+ * grammar package referenced by GRAMMAR_DEFS. Used by the ANCI manifest
+ * (CT-1 / CT-4) to pin the exact extractor grammar versions a container
+ * was built with — so the same repo + same grammars → same digest, and
+ * a consumer can tell whether a version drift could explain a diff.
+ *
+ * Best-effort and deterministic: only packages whose `package.json`
+ * resolves are included; the result is sorted by key so the manifest is
+ * byte-stable across runs. Never throws.
+ */
+function getGrammarVersions() {
+  const versions = {};
+  const pkgNames = new Set(['tree-sitter']);
+  for (const def of GRAMMAR_DEFS) {
+    // Map each grammar def to its npm package name. The loader require()s
+    // the package directly, so the def name maps 1:1 except for the
+    // hyphenated package names — derive from the actual require targets.
+    const src = String(def.loadGrammar);
+    const m = src.match(/require\('([^']+)'\)/);
+    if (m && m[1]) pkgNames.add(m[1].split('/')[0]);
+  }
+  for (const pkg of pkgNames) {
+    try {
+      const meta = require(`${pkg}/package.json`);
+      if (meta && typeof meta.version === 'string') versions[pkg] = meta.version;
+    } catch {
+      // Not installed / not resolvable — omit rather than record null.
+    }
+  }
+  // Return sorted by key for a stable, reproducible manifest.
+  const sorted = {};
+  for (const k of Object.keys(versions).sort()) sorted[k] = versions[k];
+  return sorted;
+}
+
+/**
  * getUnavailableLanguages() → string[]
  * Returns language names whose grammars failed to load (or tree-sitter itself unavailable).
  */
@@ -416,5 +454,6 @@ module.exports = {
   extractSymbols,
   extractAll,
   getUnavailableLanguages,
+  getGrammarVersions,
   GRAMMAR_DEFS,
 };
