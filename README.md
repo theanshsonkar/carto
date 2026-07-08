@@ -70,6 +70,52 @@ That's it. `carto init` reads your repo, builds the container, and wires itself 
 
 Restart Claude Code and it will spawn `carto serve` on demand — every chat now starts with your architecture, blast radius, and past decisions already loaded. The same config shape works for Cursor, Claude Desktop, Kiro, Windsurf, and any other MCP client (`carto init` writes the correct file for each).
 
+<details>
+<summary>Manual MCP wiring for every other tool (if it wasn't auto-detected)</summary>
+
+### Cursor — `~/.cursor/mcp.json`
+```json
+{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+### Claude Code — `<project>/.mcp.json`
+```bash
+claude mcp add carto -- carto serve
+```
+
+### Codex — `~/.codex/config.toml`
+```toml
+[mcp_servers.carto]
+command = "carto"
+args = ["serve"]
+```
+
+### Kiro — `~/.kiro/settings/mcp.json`
+```json
+{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+### Claude Desktop
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+### VS Code Copilot — `.vscode/mcp.json`
+```json
+{ "servers": { "carto": { "type": "stdio", "command": "carto", "args": ["serve"] } } }
+```
+
+### Windsurf — `~/.codeium/windsurf/mcp_config.json`
+```json
+{ "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
+```
+
+</details>
+
 ### How it works
 
 1. **`carto init` builds the container.** It parses your repo (imports, routes, models, domains, blast radius), writes it to `.carto/`, and auto-wires every AI tool on your machine.
