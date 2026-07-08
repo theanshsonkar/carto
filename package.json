@@ -1,6 +1,6 @@
 {
   "name": "carto-md",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Structural intelligence + episodic memory for AI coding tools. Indexes your codebase into SQLite — routes, models, import graph, blast radius, domains — and exposes ~75 MCP tools (validate_diff, get_change_plan, did_we_discuss_this, get_predictive_risk, …) for Cursor, Claude Code, Codex, Kiro, and any other MCP client.",
   "bin": {
     "carto": "src/cli/index.js"
