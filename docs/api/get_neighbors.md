@@ -1,5 +1,7 @@
 # `get_neighbors`
 
+> ⚠️ **Deprecated (CF-7).** Use `impact(file, mode="neighbors")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Get import graph neighbors of a file — files it imports and files that import it. Returns nodes and edges for visualization.
 
 ## Input schema

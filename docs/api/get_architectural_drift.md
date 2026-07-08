@@ -1,5 +1,7 @@
 # `get_architectural_drift`
 
+> ⚠️ **Deprecated (CF-7).** Use `history(view="drift")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Per-domain growth/shrink and event count over a time window. Run `carto temporal init` first to backfill from git history.
 
 ## Input schema

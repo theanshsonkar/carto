@@ -1,5 +1,7 @@
 # `get_arch_events`
 
+> ⚠️ **Deprecated (CF-7).** Use `history(view="events")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Architectural events (domain split, merge, growth, hotspot emergence). Severity filter: minor | major | critical.
 
 ## Input schema

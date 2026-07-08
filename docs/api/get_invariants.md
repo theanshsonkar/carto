@@ -1,5 +1,7 @@
 # `get_invariants`
 
+> ⚠️ **Deprecated (CF-7).** Use `patterns(kind="invariants")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Architectural invariants mined from the import graph: "Domain X never imports from Y", "Files in Z always export N symbols", etc. Confidence-scored.
 
 ## Input schema

@@ -1,5 +1,7 @@
 # `get_recent_decisions`
 
+> ⚠️ **Deprecated (CF-7).** Use `memory(kind="recent")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 List recent validation decisions and architectural choices the AI has made in this project. Returns time-descending rows.
 
 ## Input schema

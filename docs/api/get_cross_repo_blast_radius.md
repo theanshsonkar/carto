@@ -1,5 +1,7 @@
 # `get_cross_repo_blast_radius`
 
+> ⚠️ **Deprecated (CF-7).** Use `org(view="blast")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Direct downstream consumers of a producer repo. "If I break repo X, who notices?"
 
 ## Input schema

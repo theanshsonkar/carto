@@ -1,5 +1,7 @@
 # `get_complexity_trend`
 
+> ⚠️ **Deprecated (CF-7).** Use `history(view="complexity")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 A single file's presence across snapshots + commit count + current blast_radius. Use to track how a file's footprint evolved.
 
 ## Input schema

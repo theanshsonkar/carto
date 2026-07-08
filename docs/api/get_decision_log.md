@@ -1,5 +1,7 @@
 # `get_decision_log`
 
+> ⚠️ **Deprecated (CF-7).** Use `memory(kind="log")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Recent decisions from the episodic-memory log, optionally annotated with concurrent architectural events from the temporal store.
 
 ## Input schema

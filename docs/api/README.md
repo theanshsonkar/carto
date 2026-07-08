@@ -2,9 +2,29 @@
 
 Auto-generated from `src/mcp/server.js`. Re-run `node scripts/gen-api-docs.js` after adding tools.
 
-**81 tools** across 8 categories.
+**86 tools** across 9 categories.
+
+## Tool surface & tiers (CF-7)
+
+The MCP surface is collapsed into **5 parameterized families** + a tiered set of singletons.
+Which tools are *listed* to a client is gated by `CARTO_MCP_TIER` (env) or `carto.config.json` `mcp.tier`:
+
+- **core** (default): the ~10 tools every session needs — `get_architecture`, `get_context`, `impact`, `validate_diff`, `get_change_plan`, `memory`, `get_predictive_risk`, `get_minimal_context_for_intent`, `patterns`, `history`.
+- **advanced**: core + the documented ~8 (e.g. `org`, `get_routes`, `get_models`, `get_gaps`, `scaffold_for_intent`, `get_working_memory`, `get_test_coverage_map`, `get_safety_checklist`).
+- **all**: also lists experimental singletons.
+
+The **Families** collapse ~30 former tools; those old names are **deprecated shims** — they still
+resolve (byte-identical output + a one-line deprecation notice) but are never listed. See each
+family doc for the `mode`/`kind`/`view` that replaces the old tool.
 
 ## Categories
+
+### Families (5)
+- [`impact`](./impact.md)
+- [`memory`](./memory.md)
+- [`history`](./history.md)
+- [`patterns`](./patterns.md)
+- [`org`](./org.md)
 
 ### Core graph (21)
 - [`get_routes`](./get_routes.md)

@@ -1,5 +1,7 @@
 # `get_intervention_history`
 
+> ⚠️ **Deprecated (CF-7).** Use `memory(kind="interventions")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 List interventions (Carto-issued violations and suggestions) optionally filtered by file. Use to see prior warnings on a file before editing it.
 
 ## Input schema

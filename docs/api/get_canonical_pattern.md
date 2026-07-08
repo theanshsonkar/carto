@@ -1,5 +1,7 @@
 # `get_canonical_pattern`
 
+> ⚠️ **Deprecated (CF-7).** Use `patterns(kind="canonical")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Highest-quality example of a pattern in the codebase (e.g. canonical route handler). Use as a copy-paste template before writing similar code.
 
 ## Input schema

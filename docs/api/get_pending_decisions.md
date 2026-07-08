@@ -1,5 +1,7 @@
 # `get_pending_decisions`
 
+> ⚠️ **Deprecated (CF-7).** Use `memory(kind="pending")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Recent decisions with pending/unresolved/HIGH-risk flags in their payload. Surfaces unfinished AI work from the episodic log.
 
 ## Input schema

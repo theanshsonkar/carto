@@ -1,5 +1,7 @@
 # `get_churn_vs_blast_radius`
 
+> ⚠️ **Deprecated (CF-7).** Use `history(view="churn")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Scatter data of churn vs blast_radius for every changed file in a window. Use to find risk hotspots.
 
 ## Input schema

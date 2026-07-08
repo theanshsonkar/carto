@@ -1,5 +1,7 @@
 # `get_conventions`
 
+> ⚠️ **Deprecated (CF-7).** Use `patterns(kind="conventions")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Naming + export + directory conventions that apply to a given file or directory. Confidence-scored. Use before writing new code in this location.
 
 ## Input schema

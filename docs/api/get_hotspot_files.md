@@ -1,5 +1,7 @@
 # `get_hotspot_files`
 
+> ⚠️ **Deprecated (CF-7).** Use `history(view="hotspots")` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.
+
 Top files by churn × blast_radius score over a window. The CodeHealth heuristic: high-churn files in high-blast-radius positions are where bugs cluster.
 
 ## Input schema
