@@ -195,53 +195,107 @@ function mineDomainNamingInvariants(store, { threshold, domain }) {
   return out;
 }
 
+// Path fragments that mark a file as a demo / example / test / fixture — never a
+// canonical exemplar, even if it declares many routes or models. Matched as
+// directory-segment substrings (SQL LIKE '%/frag/%') so we don't accidentally
+// exclude a legitimate file whose name merely contains one of these words.
+const NON_CANONICAL_PATH_FRAGMENTS = [
+  'demo', 'demos',
+  'example', 'examples',
+  'sample', 'samples',
+  'test', 'tests', '__tests__',
+  'fixture', 'fixtures',
+  'mock', 'mocks', '__mocks__',
+];
+
+// Build the reusable "exclude junk paths" SQL fragment + params.
+function nonCanonicalPathFilter() {
+  const clauses = NON_CANONICAL_PATH_FRAGMENTS.map(() => 'f.path NOT LIKE ?');
+  const params = NON_CANONICAL_PATH_FRAGMENTS.map((frag) => `%/${frag}/%`);
+  return { sql: clauses.join(' AND '), params };
+}
+
 /**
  * getCanonicalPattern(store, { pattern_type }) → { type, examples, confidence }
  *
  * Returns the canonical example of a high-level pattern. Used by
  * `scaffold_for_intent` to find templates the AI should copy.
+ *
+ * The exemplar must be *well-connected* and *real*, not a stray demo/proxy
+ * route with zero dependents (see CF-4). We therefore:
+ *   1. Require `centrality > 0` (the file must actually be depended on).
+ *   2. Exclude demo/example/test/fixture/mock paths.
+ *   3. Rank by `count × log(dependents + 1)` — rewarding both multi-route/
+ *      multi-model files and non-trivial blast radius, instead of the old
+ *      raw `count DESC, centrality DESC` sort where a 1-route, 0-dependent
+ *      file could win.
  */
 function getCanonicalPattern(store, { pattern_type, domain = null } = {}) {
   if (!store || !store.db || !pattern_type) return null;
 
+  // Higher weight on blast radius is more discriminating than raw count alone,
+  // so rank on count × ln(dependents + 1). Ties break on count then centrality.
+  const score = (count, centrality) => count * Math.log((centrality || 0) + 1);
+  const pickBest = (rows) => {
+    let best = null;
+    for (const row of rows) {
+      row._score = score(row._count, row.centrality);
+      if (
+        !best ||
+        row._score > best._score ||
+        (row._score === best._score && row._count > best._count) ||
+        (row._score === best._score && row._count === best._count && row.centrality > best.centrality)
+      ) {
+        best = row;
+      }
+    }
+    return best;
+  };
+
+  const pathFilter = nonCanonicalPathFilter();
+
   if (pattern_type === 'route_handler') {
-    // Find the file with the most routes that also has high blast_radius
-    // — that's likely the canonical handler.
-    const row = store.db.prepare(`
-      SELECT f.path, f.centrality, COUNT(r.id) as route_count
+    // Candidate route-declaring files: must have >0 dependents and not live
+    // under a demo/example/test/fixture path.
+    const rows = store.db.prepare(`
+      SELECT f.path, f.centrality, COUNT(r.id) as _count
       FROM files f
       JOIN routes r ON r.file_id = f.id
-      ${domain ? 'JOIN domains d ON f.domain_id = d.id WHERE d.name = ?' : ''}
+      ${domain ? 'JOIN domains d ON f.domain_id = d.id' : ''}
+      WHERE f.centrality > 0
+        AND ${pathFilter.sql}
+        ${domain ? 'AND d.name = ?' : ''}
       GROUP BY f.id
-      ORDER BY route_count DESC, f.centrality DESC
-      LIMIT 1
-    `).get(...(domain ? [domain] : []));
-    if (!row) return null;
+    `).all(...pathFilter.params, ...(domain ? [domain] : []));
+    const best = pickBest(rows);
+    if (!best) return null;
     return {
       type: 'route_handler',
-      file: row.path,
-      route_count: row.route_count,
-      blast_radius: row.centrality,
+      file: best.path,
+      route_count: best._count,
+      blast_radius: best.centrality,
       confidence: 0.9,
     };
   }
 
   if (pattern_type === 'model_definition') {
-    const row = store.db.prepare(`
-      SELECT f.path, f.centrality, COUNT(m.id) as model_count
+    const rows = store.db.prepare(`
+      SELECT f.path, f.centrality, COUNT(m.id) as _count
       FROM files f
       JOIN models m ON m.file_id = f.id
-      ${domain ? 'JOIN domains d ON f.domain_id = d.id WHERE d.name = ?' : ''}
+      ${domain ? 'JOIN domains d ON f.domain_id = d.id' : ''}
+      WHERE f.centrality > 0
+        AND ${pathFilter.sql}
+        ${domain ? 'AND d.name = ?' : ''}
       GROUP BY f.id
-      ORDER BY model_count DESC
-      LIMIT 1
-    `).get(...(domain ? [domain] : []));
-    if (!row) return null;
+    `).all(...pathFilter.params, ...(domain ? [domain] : []));
+    const best = pickBest(rows);
+    if (!best) return null;
     return {
       type: 'model_definition',
-      file: row.path,
-      model_count: row.model_count,
-      blast_radius: row.centrality,
+      file: best.path,
+      model_count: best._count,
+      blast_radius: best.centrality,
       confidence: 0.85,
     };
   }
