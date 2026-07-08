@@ -134,8 +134,20 @@ function runShow(projectRoot) {
   lines.push('');
   lines.push(`  spec version    : ${h.anci.version}`);
   lines.push(`  generator       : ${h.anci.generator}`);
+  lines.push(`  carto version   : ${h.anci.carto_version || 'n/a'}`);
   lines.push(`  generated_at    : ${h.anci.generated_at}`);
   lines.push(`  body file       : ${h.anci.body.file} (${formatBytes(h.anci.body.bytes)})`);
+  if (h.anci.body && h.anci.body.content_digest) {
+    lines.push(`  content digest  : ${h.anci.body.content_digest}`);
+  }
+  if (Array.isArray(h.anci.contains) && h.anci.contains.length) {
+    lines.push(`  contains        : ${h.anci.contains.join(', ')}`);
+  }
+  if (h.source && (h.source.commit || h.source.branch)) {
+    const commit = h.source.commit ? h.source.commit.slice(0, 12) : 'n/a';
+    const branch = h.source.branch ? ` (${h.source.branch})` : '';
+    lines.push(`  source commit   : ${commit}${branch}`);
+  }
   lines.push('');
   if (h.project) {
     lines.push('Project');
@@ -223,7 +235,21 @@ function runValidate(dir) {
     }
   }
 
-  console.log(`[CARTO] ANCI valid: ${header.anci.version}, ${body.size} files indexed.`);
+  // Integrity: verify the content digest when the header declares one
+  // (CT-1). A mismatch means the body was altered after the manifest was
+  // written — fail loudly.
+  const { verifyBodyDigest } = require('../anci/consumer');
+  const digest = verifyBodyDigest(header, bodyBuf);
+  if (digest && digest.ok === false) {
+    console.error(
+      `[CARTO] content digest mismatch: header declares ${digest.expected}, ` +
+      `body hashes to ${digest.actual}`
+    );
+    return 1;
+  }
+
+  const digestNote = digest ? ' (digest verified)' : '';
+  console.log(`[CARTO] ANCI valid: ${header.anci.version}, ${body.size} files indexed.${digestNote}`);
   return 0;
 }
 

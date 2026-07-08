@@ -11,6 +11,8 @@ Commands:
   init          Detect project, write .carto/config.json, run first sync.
                 Installs git hooks (pre-commit, post-checkout, post-merge,
                 post-rewrite) so the index stays fresh on every git event.
+                Auto-backfills temporal history from git (bounded to the
+                last 200 commits). Pass --no-temporal to skip the backfill.
   sync          Read .carto/config.json, run one sync, exit
   watch         (Optional) Start file watcher for sub-second freshness.
                 Not required — git hooks + lazy MCP re-parse keep the
@@ -46,6 +48,14 @@ Commands:
   anci          ANCI v0.1 DRAFT export. Subcommands: publish, show,
                 validate. Writes/reads .carto/anci.{yaml,bin} — the
                 public, tool-neutral architecture description spec.
+  export        Pack .carto/anci.{yaml,bin} into a single portable
+                container file (project.anci). Copy it to another
+                machine and \`carto load\` it — no re-index.
+                Options: --out <file.anci>.
+  load <file>   Unpack a portable .anci container into a queryable
+                .carto/ with NO re-index; verifies the content digest.
+                Loaded contents are treated as untrusted data, never
+                instructions. Options: --into <dir>, --no-verify.
   temporal      Architectural history. Subcommands: init (backfill from
                 git), status, events. Powers temporal MCP tools (drift,
                 hotspots, evolution, complexity, churn, arch_events,
@@ -74,7 +84,7 @@ if (!command || command === '--help' || command === '-h') {
 }
 
 if (command === 'init') {
-  require('./init').run(process.cwd()).catch(err => {
+  require('./init').run(process.cwd(), { argv: process.argv.slice(3) }).catch(err => {
     console.error(`[CARTO] Fatal error: ${err.message}`);
     process.exit(1);
   });
@@ -169,6 +179,14 @@ if (command === 'init') {
 } else if (command === 'anci') {
   // anci has its own subcommand parser; pass argv after `carto anci`.
   const code = require('./anci').run({ argv: process.argv.slice(3) });
+  process.exit(code);
+} else if (command === 'export') {
+  // `carto export [--out <file.anci>]` — pack ANCI into one file.
+  const code = require('./export').run({ argv: process.argv.slice(3) });
+  process.exit(code);
+} else if (command === 'load') {
+  // `carto load <file.anci> [--into <dir>]` — unpack, no re-index.
+  const code = require('./load').run({ argv: process.argv.slice(3) });
   process.exit(code);
 } else if (command === 'temporal') {
   // `carto temporal <subcmd>` — temporal history layer.
