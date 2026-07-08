@@ -8,6 +8,15 @@ const { checkForUpdate } = require('./update-check');
 const REQUIRED_NODE_MAJOR = 18;
 const LARGE_REPO_THRESHOLD = 100_000;
 
+// Cap the auto-backfill on `carto init` to the most recent N commits so a
+// deep-history repo doesn't blow the init-time budget. This is a recency
+// window, not a date window: `-n<cap>` always returns up-to-N commits on ANY
+// repo with commits, which guarantees churn/hotspots/velocity get populated.
+// A `--since 12 months` filter was considered and rejected — it silently
+// yields an EMPTY backfill on repos whose most recent activity predates the
+// window, which would re-create the exact CF-1 symptom this fixes.
+const TEMPORAL_BACKFILL_MAX_COMMITS = 200;
+
 /**
  * Pre-flight checks that block or warn before we touch the filesystem.
  * Returns true if init should proceed, false if it should bail.
@@ -115,7 +124,69 @@ function printSummaryBox(projectRoot) {
   }
 }
 
-async function run(projectRoot) {
+/**
+ * runTemporalBackfill(projectRoot)
+ *
+ * After the first sync, replay recent git history into the temporal store so
+ * history-based tools aren't dead on a fresh index (CF-1). Bounded to the last
+ * TEMPORAL_BACKFILL_MAX_COMMITS commits so a deep repo doesn't blow the init
+ * budget, and fully non-fatal: a shallow clone, a no-git directory, or any git
+ * error prints a message and lets init finish successfully.
+ */
+async function runTemporalBackfill(projectRoot) {
+  const { backfillFromGit, isGitRepo } = require('../temporal/backfill');
+
+  if (!isGitRepo(projectRoot)) {
+    console.log('[CARTO] No git history — skipping temporal backfill. History-based tools (drift, hotspots, velocity, predictive risk) activate once this is a git repo with commits.');
+    return;
+  }
+
+  const isTty = !!(process.stdout.isTTY && process.stdout.clearLine);
+  let lastTickAt = 0;
+  const onProgress = ({ done, files }) => {
+    if (!isTty) return;
+    const now = Date.now();
+    if (now - lastTickAt < 50) return; // throttle to ~20 Hz
+    lastTickAt = now;
+    process.stdout.write(`\r[CARTO] Backfilling history: ${done} commits, ${files} file touches`);
+  };
+
+  console.log('[CARTO] Backfilling temporal history from git (recent commits)...');
+  try {
+    const result = await backfillFromGit({
+      projectRoot,
+      maxCommits: TEMPORAL_BACKFILL_MAX_COMMITS,
+      onProgress,
+    });
+    if (isTty) process.stdout.write('\r\x1b[K'); // clear the progress line
+
+    if (result.commits === 0) {
+      // Non-git was handled above; reaching here means an empty/shallow repo
+      // or a git error captured in result.errors.
+      if (result.errors && result.errors.length > 0) {
+        console.log(`[CARTO] Temporal backfill found no history (${result.errors[0]}). History-based tools will populate as commits land.`);
+      } else {
+        console.log('[CARTO] Temporal backfill found no commits yet. History-based tools will populate as commits land.');
+      }
+      return;
+    }
+
+    console.log(`[CARTO] Temporal history ready: ${result.commits} commit${result.commits === 1 ? '' : 's'}, ${result.files} file touches in ${result.elapsedMs}ms.`);
+    if (result.errors && result.errors.length > 0) {
+      for (const e of result.errors) console.warn(`[CARTO]   ⚠ ${e}`);
+    }
+  } catch (err) {
+    // Non-fatal by contract — never fail init over the backfill.
+    if (isTty) process.stdout.write('\r\x1b[K');
+    console.warn(`[CARTO] Temporal backfill skipped (${err && err.message ? err.message : err}). Run \`carto temporal init\` to retry; the rest of the index is ready.`);
+  }
+}
+
+async function run(projectRoot, opts = {}) {
+  const argv = Array.isArray(opts.argv) ? opts.argv : [];
+  // `--no-temporal` (or explicit opts.temporal === false) skips the git-history
+  // backfill. Default is to run it.
+  const temporalEnabled = opts.temporal === false ? false : !argv.includes('--no-temporal');
   checkForUpdate(); // fire and forget
   if (!preflightChecks(projectRoot)) return;
   console.log('[CARTO] Detecting project...');
@@ -191,6 +262,16 @@ async function run(projectRoot) {
     projectRoot,
     output: path.resolve(projectRoot, config.output || 'AGENTS.md')
   });
+
+  // Backfill temporal history from git so the temporal/predictive tools
+  // (change_velocity, hotspot_files, drift, invariants, predictive_risk,
+  // scaffold_for_intent) return real data with no manual `carto temporal
+  // init` step. Bounded + non-fatal — a shallow/no-git repo still finishes.
+  if (temporalEnabled) {
+    await runTemporalBackfill(projectRoot);
+  } else {
+    console.log('[CARTO] Skipping temporal backfill (--no-temporal). Run `carto temporal init` later to enable history-based tools.');
+  }
 
   // Auto-wire MCP config into installed AI tools
   wireIDEs(projectRoot);
@@ -530,4 +611,6 @@ module.exports._internal = {
   mergeMcpJson,
   upsertCodexToml,
   wireIDEs,
+  runTemporalBackfill,
+  TEMPORAL_BACKFILL_MAX_COMMITS,
 };
