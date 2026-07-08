@@ -39,7 +39,8 @@ Framework-specific route and model extraction lives inside the language plugins.
 ### Tier 3 — Core (review carefully before merging)
 
 - `src/agents/merger.js` — merger logic. One bad merge = developer loses manual notes.
-- `src/agents/leiden.js` — Leiden+CPM graph clustering. Wrong clusters = wrong domain context.
+- `src/agents/domains.js` — domain assignment (declared config + keyword/majority-vote inference). Wrong domains = wrong context everywhere.
+- `src/agents/leiden.js` — Leiden+CPM graph clustering. Present but not on the default domain path; touch only if wiring it in.
 - `src/store/sqlite-store.js` — SQLite persistence layer.
 - `src/mcp/server.js` — MCP server tools. Breaking changes affect Kiro/Cursor/Claude.
 - `src/store/sync.js` — full sync pipeline.
@@ -183,20 +184,22 @@ Test on at least 2 real open-source projects using the framework.
 
 ## How domain clustering works
 
-Domain detection uses **Leiden+CPM graph clustering** (`src/agents/leiden.js`). Files that import each other heavily cluster together. Domain names are inferred from path tokens, with keyword hints for well-known patterns.
+Every file gets exactly one domain, resolved in strict priority order: **declared config wins, inference is the fallback.** All tools read the assignment through a single accessor (`store.getDomainOf`), so they never disagree. See [`docs/concepts/domains.md`](docs/concepts/domains.md) for the full spec.
 
-For non-SaaS repos, users can define custom domains in `carto.config.json`:
+**Declared (primary).** Define domains in `carto.config.json`. Globs are recommended for monorepos; keywords + anchors give finer control:
 
 ```json
 {
   "domains": {
-    "EDITOR": ["editor", "monaco", "text"],
-    "PLATFORM": ["platform", "service", "registry"]
+    "EDITOR":   { "globs": ["src/editor/**", "packages/*/editor/**"] },
+    "PLATFORM": { "keywords": ["platform", "service"], "anchor": ["src/platform/registry.ts"] }
   }
 }
 ```
 
-The keyword seeds in `src/store/sync.js` (the `keywordSeeds` object) can be extended for new domain types.
+**Inferred (fallback).** For anything undeclared, Carto infers a domain from path keywords plus an import-graph majority vote (`src/agents/domains.js`), and drops low-confidence files to `CORE`/`UNCLASSIFIED` rather than guessing a wrong specific domain. The keyword seeds in `src/store/sync.js` can be extended for new domain types.
+
+> `src/agents/leiden.js` ships a Leiden+CPM clusterer, but it is not on the default inference path today - the active fallback is the keyword + majority-vote pass in `domains.js`.
 
 ---
 
