@@ -2,6 +2,31 @@
 
 All notable changes to Carto land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [2.1.1] - 2026-07-08
+
+Correctness, trust, and real portability. The external-audit fixes land, the tool surface collapses to a default core-10, and the container becomes a single verifiable file you can move between machines.
+
+### Added
+- **Single-file container** - `carto export` packs `.carto/anci.{yaml,bin}` into one portable `.anci` file; `carto load <file>` unpacks it on another machine with no re-index and verifies the content digest. Loaded contents are treated as untrusted data, never instructions.
+- **Container identity** - the ANCI manifest now records source commit, tree hash, carto version, tree-sitter grammar versions, and a sha256 content digest. The same repo rebuilds to the same digest.
+- **Staleness warnings** - MCP responses and `carto doctor` warn "graph is N commits stale" instead of silently serving old numbers.
+- **Model extractors** - Zod (`z.object`) and Drizzle (`pgTable`/`sqliteTable`/`mysqlTable`) schemas are now extracted and surfaced by `get_models`.
+- **Temporal auto-backfill** - `carto init` backfills git history automatically (bounded to ~200 commits); pass `--no-temporal` to skip. Temporal and predictive tools now return real data with no manual step.
+- **Audit CI gate** - `test/audit-supabase.js` pins the external-audit findings so trust can't silently regress.
+
+### Changed
+- **MCP surface collapsed** from ~76 flat tools into a handful of parameterized families (`impact`, `memory`, `history`, `patterns`, `org`) plus a default core-10, so the tool list stops burning context at session start. Former tool names still resolve as deprecated shims with byte-identical output.
+- **Domain classification** now routes through a single source of truth, so `get_data_flow` and `get_cross_domain` always agree; repo-declared domain globs in `carto.config.json` are the primary source, with inference as the fallback.
+- **`get_canonical_pattern`** requires a non-trivial, well-connected exemplar (ignores demo/example/fixture routes).
+- **`get_change_plan`** matches intent on word boundaries instead of naive substring.
+- **`get_conventions`** mines naming/export/directory patterns with confidence instead of a single trivial rule.
+- README reworked around portability ("build once, load anywhere"), the active-guardrail framing, and container identity.
+- Test suite expanded to 417 tests.
+
+### Fixed
+- Domain misclassification from over-broad keyword seeds (byte-size utility, theme resolver, and similar).
+- Deterministic file discovery (sorted POSIX paths) so content digests are reproducible across machines.
+
 ## [2.1.0] — 2026-06-26
 
 The big one. Five new memory layers, six new languages, two-axis growth across the MCP surface.
