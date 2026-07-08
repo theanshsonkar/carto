@@ -871,15 +871,26 @@ class SQLiteStore {
   }
 
   assignFileToDomain(fileId, domainId, confidence = 1.0) {
+    // domain_assignments is the single source of truth. files.domain_id is a
+    // denormalized mirror written here in the same call so that every reader —
+    // whether it queries domain_assignments (getDomainForFile, getCrossDomainDeps,
+    // the bitmap sidecar) or JOINs on files.domain_id (brain/predictive/retrieval
+    // SQL) — always sees the same domain for a file. The two can never drift
+    // because they are written together and cleared together (see
+    // clearDomainAssignments). This is the CF-3 single-source-of-truth fix.
     this._db.prepare(`
       INSERT OR REPLACE INTO domain_assignments (file_id, domain_id, confidence)
       VALUES (?, ?, ?)
     `).run(fileId, domainId, confidence);
+    this._db.prepare('UPDATE files SET domain_id = ? WHERE id = ?').run(domainId, fileId);
   }
 
   clearDomainAssignments() {
     this._db.prepare('DELETE FROM domain_assignments').run();
     this._db.prepare('DELETE FROM domains').run();
+    // Reset the denormalized mirror so files that lose an assignment on the
+    // next full re-cluster don't retain a stale domain_id.
+    this._db.prepare('UPDATE files SET domain_id = NULL').run();
   }
 
   _getDomainForFileId(fileId) {
@@ -896,6 +907,23 @@ class SQLiteStore {
     const file = this.getFileByPath(relPath);
     if (!file) return null;
     return this._getDomainForFileId(file.id);
+  }
+
+  /**
+   * getDomainOf(fileIdOrPath) → domain name (string) or null
+   *
+   * The single canonical accessor every tool should use to answer
+   * "what domain is this file in?". Accepts either a numeric file id or a
+   * relative path, and always resolves against domain_assignments (the source
+   * of truth) so no two tools can disagree. Returns null when the file is
+   * unknown or unassigned; callers decide whether to display 'CORE'.
+   */
+  getDomainOf(fileIdOrPath) {
+    if (fileIdOrPath == null) return null;
+    if (typeof fileIdOrPath === 'number') {
+      return this._getDomainForFileId(fileIdOrPath);
+    }
+    return this.getDomainForFile(String(fileIdOrPath));
   }
 
   // ─── Reverse deps (blast radius) ──────────────────────────────────────
