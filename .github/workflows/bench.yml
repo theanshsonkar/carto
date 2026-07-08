@@ -73,3 +73,51 @@ jobs:
           name: bench-output-${{ github.run_id }}
           path: bench-output.txt
           retention-days: 90
+
+  audit-gate:
+    # M1a correctness gate. Clones a PINNED supabase commit, indexes it with
+    # the real pipeline, and asserts the external-audit findings still hold
+    # (models > 0, generic utils not misclassified, temporal non-empty,
+    # data_flow ↔ cross_domain domain agreement). Scheduled — not per-PR —
+    # because a full clone + index is too heavy for the sub-8-min PR budget.
+    # See test/audit-supabase.js and CARTO_PLAN.md §4 "Audit as CI gate".
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      # Pin the reference commit so the gate is reproducible. Bump this
+      # deliberately (and re-verify the assertions) when refreshing the corpus.
+      SUPABASE_SHA: a4334a2cc75b85e3c569e24c9e33be94b37064d7
+      SUPABASE_DIR: ${{ github.workspace }}/.audit-supabase
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        # See test.yml for the legacy-peer-deps rationale.
+        run: npm ci --legacy-peer-deps
+
+      - name: Clone pinned supabase commit
+        # Fetch only the pinned SHA with shallow history (enough for temporal
+        # backfill's churn/snapshots) — avoids a multi-GB full clone.
+        run: |
+          set -e
+          git init "$SUPABASE_DIR"
+          git -C "$SUPABASE_DIR" remote add origin https://github.com/supabase/supabase
+          git -C "$SUPABASE_DIR" fetch --depth 200 origin "$SUPABASE_SHA"
+          git -C "$SUPABASE_DIR" checkout FETCH_HEAD
+
+      - name: Index the clone (structural + temporal)
+        # Mirror the real pipeline without the global MCP-config wiring that
+        # `carto init` performs: runSync builds carto.db + bitmap, then
+        # backfillFromGit populates the temporal store (snapshots + churn).
+        run: |
+          set -e
+          node -e "require('./src/store/sync').runSync({ projectRoot: process.env.SUPABASE_DIR })"
+          node -e "require('./src/temporal/backfill').backfillFromGit({ projectRoot: process.env.SUPABASE_DIR, maxCommits: 200 }).then(r => console.log('backfill:', r.commits, 'commits,', r.files, 'touches'))"
+
+      - name: Run audit gate
+        run: node test/audit-supabase.js --repo "$SUPABASE_DIR"
