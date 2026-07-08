@@ -15,25 +15,32 @@ const path = require('path');
 const projectRoot = path.join(__dirname, '..');
 const docsDir = path.join(projectRoot, 'docs', 'api');
 
-function loadTools() {
-  // Cheap eval — extract the TOOLS array literal from server.js so we
-  // don't have to wire MCP server startup just to read tool definitions.
-  // We require() the module and read the captured TOOLS via a re-export.
-  const serverPath = path.join(projectRoot, 'src', 'mcp', 'server.js');
-  const src = fs.readFileSync(serverPath, 'utf-8');
-  // Find the `const TOOLS = [` block.
-  const startIdx = src.indexOf('const TOOLS = [');
-  if (startIdx === -1) throw new Error('TOOLS array not found in server.js');
-  // Walk forward, balancing brackets.
+function extractArrayLiteral(src, decl) {
+  const startIdx = src.indexOf(decl);
+  if (startIdx === -1) return null;
   let depth = 0, i = startIdx;
   for (; i < src.length; i++) {
     if (src[i] === '[') depth++;
     else if (src[i] === ']') { depth--; if (depth === 0) { i++; break; } }
   }
-  const arrayLiteral = src.slice(startIdx + 'const TOOLS = '.length, i);
-  // eslint-disable-next-line no-eval
-  const TOOLS = (new Function(`return ${arrayLiteral}`))();
-  return TOOLS;
+  const arrayLiteral = src.slice(startIdx + decl.length, i);
+  // eslint-disable-next-line no-new-func
+  return (new Function(`return ${arrayLiteral}`))();
+}
+
+function loadTools() {
+  // Cheap eval — extract the tool array literals from server.js so we
+  // don't have to wire MCP server startup just to read tool definitions.
+  // CF-7: the listable surface is the 5 parameterized FAMILY_TOOLS plus
+  // the kept singletons in TOOLS. Both are documented; collapsed old names
+  // stay in TOOLS (still documented as deprecated shims).
+  const serverPath = path.join(projectRoot, 'src', 'mcp', 'server.js');
+  const src = fs.readFileSync(serverPath, 'utf-8');
+  const TOOLS = extractArrayLiteral(src, 'const TOOLS = ');
+  if (!TOOLS) throw new Error('TOOLS array not found in server.js');
+  const FAMILY_TOOLS = extractArrayLiteral(src, 'const FAMILY_TOOLS = ') || [];
+  // Families first, then the kept/collapsed singletons.
+  return [...FAMILY_TOOLS, ...TOOLS];
 }
 
 function indexMarkdown(tools) {
@@ -44,6 +51,19 @@ function indexMarkdown(tools) {
     'Auto-generated from `src/mcp/server.js`. Re-run `node scripts/gen-api-docs.js` after adding tools.',
     '',
     `**${tools.length} tools** across ${groups.size} categories.`,
+    '',
+    '## Tool surface & tiers (CF-7)',
+    '',
+    'The MCP surface is collapsed into **5 parameterized families** + a tiered set of singletons.',
+    'Which tools are *listed* to a client is gated by `CARTO_MCP_TIER` (env) or `carto.config.json` `mcp.tier`:',
+    '',
+    '- **core** (default): the ~10 tools every session needs — `get_architecture`, `get_context`, `impact`, `validate_diff`, `get_change_plan`, `memory`, `get_predictive_risk`, `get_minimal_context_for_intent`, `patterns`, `history`.',
+    '- **advanced**: core + the documented ~8 (e.g. `org`, `get_routes`, `get_models`, `get_gaps`, `scaffold_for_intent`, `get_working_memory`, `get_test_coverage_map`, `get_safety_checklist`).',
+    '- **all**: also lists experimental singletons.',
+    '',
+    'The **Families** collapse ~30 former tools; those old names are **deprecated shims** — they still',
+    'resolve (byte-identical output + a one-line deprecation notice) but are never listed. See each',
+    'family doc for the `mode`/`kind`/`view` that replaces the old tool.',
     '',
     '## Categories',
     '',
@@ -61,9 +81,11 @@ function indexMarkdown(tools) {
 function groupByPrefix(tools) {
   // Group by the first prefix segment of the tool name.
   const groups = new Map();
+  const FAMILY = new Set(['impact', 'memory', 'history', 'patterns', 'org']);
   for (const t of tools) {
     let group = 'Other';
-    if (t.name.startsWith('get_arch') || t.name.startsWith('get_domain_evolution') || t.name.startsWith('get_hotspot') ||
+    if (FAMILY.has(t.name)) group = 'Families';
+    else if (t.name.startsWith('get_arch') || t.name.startsWith('get_domain_evolution') || t.name.startsWith('get_hotspot') ||
         t.name.startsWith('get_complexity') || t.name.startsWith('get_churn') || t.name.startsWith('get_domain_health') ||
         t.name.startsWith('get_temporal') || t.name === 'get_architectural_drift') group = 'Temporal';
     else if (t.name === 'get_invariants' || t.name === 'get_canonical_pattern' || t.name === 'get_conventions' ||
@@ -92,16 +114,23 @@ function groupByPrefix(tools) {
     if (!groups.has(group)) groups.set(group, []);
     groups.get(group).push(t.name);
   }
-  const order = ['Core graph', 'Episodic Memory', 'Temporal', 'Brain', 'AI-native', 'Adjacent', 'Predictive', 'Org-wide', 'Other'];
+  const order = ['Families', 'Core graph', 'Episodic Memory', 'Temporal', 'Brain', 'AI-native', 'Adjacent', 'Predictive', 'Org-wide', 'Other'];
   const sorted = new Map();
   for (const g of order) if (groups.has(g)) sorted.set(g, groups.get(g));
   return sorted;
 }
 
-function toolMarkdown(t) {
+function toolMarkdown(t, deprecations) {
+  const replacement = deprecations && deprecations[t.name];
   const lines = [
     `# \`${t.name}\``,
     '',
+  ];
+  if (replacement) {
+    lines.push(`> ⚠️ **Deprecated (CF-7).** Use \`${replacement}\` instead. This name still resolves and returns byte-identical output for a deprecation window, but is no longer listed by default and emits a one-line notice.`);
+    lines.push('');
+  }
+  lines.push(
     t.description || '_(no description)_',
     '',
     '## Input schema',
@@ -112,7 +141,7 @@ function toolMarkdown(t) {
     '',
     '## Required arguments',
     '',
-  ];
+  );
   const required = (t.inputSchema && t.inputSchema.required) || [];
   if (required.length === 0) lines.push('_None._');
   else for (const r of required) lines.push(`- \`${r}\``);
@@ -140,13 +169,16 @@ function toolMarkdown(t) {
 function main() {
   const dry = process.argv.includes('--dry-run');
   const tools = loadTools();
+  // Deprecation map lives in the server module; used only to annotate docs.
+  let deprecations = {};
+  try { deprecations = require(path.join(projectRoot, 'src', 'mcp', 'server.js')).DEPRECATIONS || {}; } catch { /* best-effort */ }
   if (!dry) {
     fs.mkdirSync(docsDir, { recursive: true });
   }
   let written = 0;
   for (const t of tools) {
     const p = path.join(docsDir, `${t.name}.md`);
-    const md = toolMarkdown(t);
+    const md = toolMarkdown(t, deprecations);
     if (dry) {
       console.log(`\n=== ${p} ===\n${md}\n`);
     } else {
