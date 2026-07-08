@@ -18,6 +18,11 @@ action.yml
 KIRO_SPEC*.md
 PROGRESS.md
 Progress/
+CARTO_PLAN.md
+
+# Marketing site — not part of the npm package (huge; has its own node_modules/build)
+carto-site/
+carto-site-v2/
 
 # Tests
 test/
