@@ -143,6 +143,38 @@ function diagnose(projectRoot) {
     });
   }
 
+  // ─── Index staleness vs git HEAD (CT-1b) ────────────────────────
+  // The ANCI manifest records the commit the index was built from. If
+  // HEAD has moved (or the working tree is dirty), the index serves
+  // numbers from an older repo state — warn with the sync fix.
+  try {
+    const { computeStaleness, stalenessBanner } = require('../anci/staleness');
+    const st = computeStaleness(projectRoot, { cartoDir });
+    const banner = stalenessBanner(st);
+    if (banner) {
+      results.push({
+        id: 'index-staleness',
+        status: 'warn',
+        label: 'Index freshness',
+        detail: st.status === 'behind'
+          ? `${st.commitsBehind == null ? 'several' : st.commitsBehind} commit(s) behind HEAD` +
+            (st.uncommitted ? ` + ${st.uncommitted} uncommitted` : '')
+          : st.status === 'diverged'
+            ? 'built from a commit not in the current history'
+            : `${st.uncommitted} uncommitted file(s) since the index was built`,
+        fix: 'Run `carto sync` to refresh the index to the current HEAD.',
+      });
+    } else if (st.status === 'fresh') {
+      results.push({
+        id: 'index-staleness',
+        status: 'ok',
+        label: 'Index freshness',
+        detail: 'index matches current git HEAD',
+      });
+    }
+    // status 'unknown' → stay quiet (no manifest / non-git / can't tell).
+  } catch { /* staleness is best-effort — never break doctor */ }
+
   // ─── Git hooks ──────────────────────────────────────────────────
   const gitDir = path.join(projectRoot, '.git');
   if (fs.existsSync(gitDir)) {
@@ -172,6 +204,43 @@ function diagnose(projectRoot) {
       detail: 'no .git directory — hooks can\'t fire',
       fix: 'Not a git repo. Carto still works; the index will only refresh on explicit `carto sync` or MCP lazy re-parse.',
     });
+  }
+
+  // ─── Temporal store populated ───────────────────────────────────
+  // A fresh `carto init` auto-backfills git history (CF-1). If the store
+  // is empty (0 commits) but this IS a git repo, the history-based tools
+  // (drift, hotspots, velocity, predictive_risk, scaffold_for_intent) will
+  // silently return nothing — warn with the manual fix.
+  if (fs.existsSync(gitDir)) {
+    let temporalCommits = null; // null = couldn't read
+    try {
+      const { TemporalStore } = require('../temporal/store');
+      const ts = TemporalStore.openIfExists(projectRoot, { readonly: true });
+      if (ts) {
+        try { temporalCommits = ts.countCommits(); } finally { ts.close(); }
+      } else {
+        temporalCommits = 0; // no temporal db at all
+      }
+    } catch { temporalCommits = null; }
+
+    if (temporalCommits === 0) {
+      results.push({
+        id: 'temporal-store',
+        status: 'warn',
+        label: 'Temporal history',
+        detail: 'empty — history-based tools (drift, hotspots, velocity, predictive risk) will return nothing',
+        fix: 'Run `carto temporal init` to backfill git history (or re-run `carto init`, which now backfills automatically).',
+      });
+    } else if (temporalCommits > 0) {
+      results.push({
+        id: 'temporal-store',
+        status: 'ok',
+        label: 'Temporal history',
+        detail: `${temporalCommits} commit${temporalCommits === 1 ? '' : 's'} backfilled`,
+      });
+    }
+    // temporalCommits === null → couldn't read; stay quiet rather than
+    // emit a confusing check.
   }
 
   // ─── .cartoignore conflicts ─────────────────────────────────────
