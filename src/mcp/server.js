@@ -12,6 +12,8 @@ const { syncFiles } = require('../store/sync');
 const bitmapTools = require('../bitmap/tools');
 const { ensureBitmapFresh, invalidate: invalidateBitmap } = require('../bitmap/index');
 const { validateDiff, recordSideEffects } = require('./validate');
+const impactMod = require('./impact');
+const { computeStaleness, stalenessBanner } = require('../anci/staleness');
 
 const projectRoot = process.cwd();
 
@@ -471,15 +473,20 @@ function formatCanonical(r, patternType) {
 function formatConventions(convs, file) {
   const lines = [`# Conventions${file ? `: ${file}` : ''}`];
   if (!convs || convs.length === 0) {
-    lines.push('\n_No conventions detected._');
+    lines.push(file
+      ? `\n_No high-confidence conventions cover ${file}. Its directory doesn't yet ` +
+        `have enough sibling files to establish a naming/export pattern (need ≥4)._`
+      : '\n_No conventions detected. The repo may be too small or too heterogeneous ' +
+        'to mine stable patterns._');
     return lines.join('\n');
   }
-  lines.push(`\n${convs.length} convention${convs.length === 1 ? '' : 's'}.\n`);
-  lines.push('| Confidence | Kind | Scope | Rule |');
-  lines.push('|-----------:|------|-------|------|');
+  lines.push(`\n${convs.length} convention${convs.length === 1 ? '' : 's'} (confidence ≥ 0.75).\n`);
+  lines.push('| Confidence | Strength | Kind | Scope | Rule |');
+  lines.push('|-----------:|----------|------|-------|------|');
   for (const c of convs.slice(0, 50)) {
-    lines.push(`| ${c.confidence.toFixed(2)} | ${c.kind} | ${c.scope} | ${c.rule} |`);
+    lines.push(`| ${c.confidence.toFixed(2)} | ${c.strength || '—'} | ${c.kind} | ${c.scope} | ${c.rule} |`);
   }
+  if (convs.length > 50) lines.push(`\n_…${convs.length - 50} more conventions._`);
   return lines.join('\n');
 }
 
@@ -780,7 +787,16 @@ function formatSafetyChecklist(r) {
 function formatDataFlow(r) {
   const lines = [`# Data Flow: ${r.source || ''}`];
   lines.push(`\n- **Domain:** ${r.domain || '—'}`);
-  if (r.imports && r.imports.length > 0) {
+  const hasImports = r.imports && r.imports.length > 0;
+  const hasImportedBy = r.imported_by && r.imported_by.length > 0;
+  const hasRoutes = r.routes_in_file && r.routes_in_file.length > 0;
+  const hasEnv = r.env_vars && r.env_vars.length > 0;
+  if (!hasImports && !hasImportedBy && !hasRoutes && !hasEnv) {
+    lines.push('\n_No import edges, routes, or env vars recorded for this file — ' +
+      'it\'s a leaf with no tracked dependencies (or the path is outside the index)._');
+    return lines.join('\n');
+  }
+  if (hasImports) {
     lines.push('\n## Upstream (imports)');
     for (const i of r.imports.slice(0, 20)) lines.push(`- ${i.path || i}`);
   }
@@ -802,7 +818,15 @@ function formatDataFlow(r) {
 function formatInterfaceContract(r) {
   const lines = [`# Interface Contract: ${r.file || ''}`];
   lines.push(`\n- **Domain:** ${r.domain || '—'}`);
-  if (r.exports && r.exports.length > 0) {
+  const hasExports = r.exports && r.exports.length > 0;
+  const hasRoutes = r.routes && r.routes.length > 0;
+  const hasModels = r.models && r.models.length > 0;
+  if (!hasExports && !hasRoutes && !hasModels) {
+    lines.push('\n_No exported symbols, routes, or models detected — this file exposes ' +
+      'no public interface (or the path is outside the index)._');
+    return lines.join('\n');
+  }
+  if (hasExports) {
     lines.push('\n## Exports');
     lines.push('| Name | Kind | Default? |');
     lines.push('|------|------|---------:|');
@@ -1481,36 +1505,20 @@ const TOOLS = [
   { name: 'get_microservices_migration_cut_points', description: 'Suggested microservices extraction order. Repos with high stability (more incoming than outgoing edges) extract first.', inputSchema: { type: 'object', properties: {}, required: [] } },
 ];
 
-// ─── Server setup ─────────────────────────────────────────────────────────────
+// ─── Tool dispatch core ───────────────────────────────────────────────────────
 
-const server = new Server(
-  { name: 'carto', version: '2.0.0' },
-  { capabilities: { tools: {} } }
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
-  // Normalize file-arg tools to the canonical SQLite-stored form so
-  // `./lib/x.js`, absolute paths, and Windows separators all resolve.
-  // Tools that don't take a `file` arg are unaffected.
-  if (args && typeof args.file === 'string') {
-    args.file = normalizeFileArg(projectRoot, args.file);
-    // Lazy mtime+size check. Re-parse the requested file inline
-    // if it's stale on disk (user edited but didn't commit). Best-effort:
-    // failures here never block the answer.
-    lazyReparseFile(args.file);
-  }
-  // Wrap entire handler body so any tool error (SQLite, null deref, bad
-  // input) returns a structured error response instead of crashing the
-  // MCP transport. An unhandled throw here would kill the stdio
-  // connection and Claude Code/Kiro would surface
-  // `-32000 Failed to reconnect`.
-  try {
-    const s = getStore();
-    if (!s) return notIndexed();
-
+/**
+ * runTool(name, args, s) — internal, name-keyed tool dispatch.
+ *
+ * This is the pre-CF-7 handler body verbatim: a chain of
+ * `if (name === '...')` handlers plus the temporal/brain/ai/adjacent/
+ * predictive/org sub-dispatchers. It is called with a resolved internal
+ * tool name and an already-opened readonly store `s`. The CF-7 layer
+ * (`resolveFamily` + deprecation shims + tiering, see `dispatchTool`)
+ * wraps this function; the handler bodies themselves are unchanged so
+ * blast-radius / validate_diff output stays byte-identical.
+ */
+function runTool(name, args, s) {
   if (name === 'get_routes') {
     const routes = s.getRoutes();
     if (routes.length === 0) return text('No routes found.');
@@ -1522,17 +1530,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (name === 'get_blast_radius') {
     // Bitmap path with SQLite fallback. Output shape and
     // formatting are identical between the two paths.
+    // CF-7: rendered by src/mcp/impact.js (shared with the impact() tool).
     const sidecar = getSidecar();
-    const deps = sidecar
-      ? bitmapTools.blastRadius(sidecar, args.file)
-      : s.getBlastRadius(args.file);
-    if (!deps) return text(`File not found in index: ${args.file}`);
-    if (deps.length === 0) return text(`No dependents found for: ${args.file}`);
-    const lines = [`# Blast Radius: ${args.file}\n`, `**Affected files:** ${deps.length}\n`];
-    lines.push('| File | Hops |');
-    lines.push('|------|------|');
-    for (const d of deps) lines.push(`| ${d.file} | ${d.hop_distance} |`);
-    return text(lines.join('\n'));
+    return text(impactMod.blast({ store: s, sidecar, file: args.file }));
   }
 
   if (name === 'get_structure') {
@@ -1612,18 +1612,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   if (name === 'get_neighbors') {
+    // CF-7: rendered by src/mcp/impact.js (shared with the impact() tool).
     const hops = Math.min(args.hops || 1, 3);
-    const nb = s.getNeighbors(args.file, hops);
-    if (nb.nodes.length === 0) return text(`File not found or no neighbors: ${args.file}`);
-    const lines = [`# Import Neighbors: ${args.file} (${hops} hop${hops > 1 ? 's' : ''})\n`];
-    lines.push('| File | Domain | Root |');
-    lines.push('|------|--------|------|');
-    for (const n of nb.nodes) lines.push(`| ${n.id} | ${n.domain} | ${n.isRoot ? '✓' : ''} |`);
-    lines.push('');
-    lines.push(`## Edges (${nb.edges.length})`);
-    for (const e of nb.edges.slice(0, 50)) lines.push(`- ${e.source} → ${e.target}`);
-    if (nb.edges.length > 50) lines.push(`_...and ${nb.edges.length - 50} more_`);
-    return text(lines.join('\n'));
+    return text(impactMod.neighbors({ store: s, file: args.file, hops }));
   }
 
   if (name === 'get_cross_domain') {
@@ -1994,27 +1985,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     const result = bitmapTools.simulateChangeImpact(sidecar, normalizedFiles);
-    const lines = [
-      `# Simulate Change Impact\n`,
-      `Changing **${normalizedFiles.length}** file${normalizedFiles.length === 1 ? '' : 's'} ` +
-      `simultaneously affects **${result.count}** transitive dependent` +
-      `${result.count === 1 ? '' : 's'}.\n`,
-    ];
-    lines.push('## Input files\n');
-    for (const f of normalizedFiles) lines.push(`- \`${f}\``);
-    lines.push('');
-    if (result.count === 0) {
-      lines.push('_No additional files would be affected. None of the input files have dependents in the index._');
-    } else {
-      lines.push('## Affected files\n');
-      lines.push('| File | Min Hop |');
-      lines.push('|------|---------|');
-      for (const r of result.files.slice(0, 200)) {
-        lines.push(`| \`${r.file}\` | ${r.hop_distance} |`);
-      }
-      if (result.count > 200) lines.push(`\n_...and ${result.count - 200} more._`);
-    }
-    return text(lines.join('\n'));
+    // CF-7: rendered by src/mcp/impact.js (shared with the impact() tool).
+    return text(impactMod.formatSimulate(result, normalizedFiles));
   }
 
   // ─── Validation API + Episodic Memory ─────────────────────────────
@@ -2522,6 +2494,273 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   return text(`Unknown tool: ${name}`);
+}
+
+// ─── CF-7: parameterized tool families + tiering + deprecated shims ──────────
+//
+// Move A collapses ~30 sibling tools into 5 parameterized families
+// (impact / memory / history / patterns / org). Move B tiers the surface
+// so only a ~10-tool core is exposed by default. Every collapsed old name
+// still RESOLVES (forwards to the internal handler, byte-identical) but is
+// never listed and emits a one-line deprecation notice — Carto's own
+// episodic/decision log references the old names, so removing them abruptly
+// would break memory. Removal is a later, separate change (§5 CF-7).
+
+/**
+ * FAMILY_RESOLVERS — new parameterized family tool → internal (name,args).
+ * Each resolver returns { name, args } to forward to runTool, or
+ * { text } to short-circuit with a helpful message (bad mode/kind/view).
+ */
+const FAMILY_RESOLVERS = {
+  // impact(file|files, mode) — blast radius / simulate / neighbors / data flow
+  impact(args) {
+    const mode = (args.mode || 'blast').toLowerCase();
+    switch (mode) {
+      case 'blast':
+      case 'blast_radius':
+        return { name: 'get_blast_radius', args: { file: args.file } };
+      case 'simulate':
+      case 'simulate_change_impact':
+        return { name: 'simulate_change_impact', args: { files: args.files } };
+      case 'neighbors':
+        return { name: 'get_neighbors', args: { file: args.file, hops: args.hops } };
+      case 'data_flow':
+      case 'dataflow':
+        return { name: 'get_data_flow', args: { file: args.file } };
+      default:
+        return { text: `Unknown impact mode: "${args.mode}". Use one of: blast, simulate, neighbors, data_flow.` };
+    }
+  },
+  // memory(kind, ...) — episodic memory: search / log / recent / session / pending / interventions
+  memory(args) {
+    const kind = (args.kind || 'search').toLowerCase();
+    switch (kind) {
+      case 'search':
+        return { name: 'did_we_discuss_this', args: { topic: args.topic || args.query } };
+      case 'log':
+        return { name: 'get_decision_log', args: { hours: args.hours } };
+      case 'recent':
+        return { name: 'get_recent_decisions', args: { time_range: args.time_range, kind: args.filter } };
+      case 'session':
+        return { name: 'get_session_context', args: { session_id: args.session_id } };
+      case 'pending':
+        return { name: 'get_pending_decisions', args: { hours: args.hours } };
+      case 'interventions':
+        return { name: 'get_intervention_history', args: { file: args.file } };
+      default:
+        return { text: `Unknown memory kind: "${args.kind}". Use one of: search, log, recent, session, pending, interventions.` };
+    }
+  },
+  // history(view, ...) — temporal layer: drift / evolution / hotspots / events / file / velocity / complexity / churn / health
+  history(args) {
+    const view = (args.view || 'drift').toLowerCase();
+    switch (view) {
+      case 'drift':
+        return { name: 'get_architectural_drift', args: { domain: args.domain, time_range: args.time_range } };
+      case 'evolution':
+        return { name: 'get_domain_evolution', args: { domain: args.domain, time_range: args.time_range } };
+      case 'hotspots':
+        return { name: 'get_hotspot_files', args: { time_range: args.time_range, limit: args.limit } };
+      case 'events':
+        return { name: 'get_arch_events', args: { severity: args.severity, kind: args.kind, time_range: args.time_range } };
+      case 'file':
+        return { name: 'get_temporal_context', args: { file: args.file } };
+      case 'velocity':
+        return { name: 'get_change_velocity', args: { days: args.days } };
+      case 'complexity':
+        return { name: 'get_complexity_trend', args: { file: args.file, time_range: args.time_range } };
+      case 'churn':
+        return { name: 'get_churn_vs_blast_radius', args: { time_range: args.time_range } };
+      case 'health':
+        return { name: 'get_domain_health', args: { domain: args.domain } };
+      default:
+        return { text: `Unknown history view: "${args.view}". Use one of: drift, evolution, hotspots, events, file, velocity, complexity, churn, health.` };
+    }
+  },
+  // patterns(kind, ...) — semantic/procedural: invariants / conventions / canonical / actions
+  patterns(args) {
+    const kind = (args.kind || 'invariants').toLowerCase();
+    switch (kind) {
+      case 'invariants':
+        return { name: 'get_invariants', args: { domain: args.domain, threshold: args.threshold } };
+      case 'conventions':
+        return { name: 'get_conventions', args: { file: args.file } };
+      case 'canonical':
+        return { name: 'get_canonical_pattern', args: { pattern_type: args.pattern_type, domain: args.domain } };
+      case 'actions':
+        return { name: 'get_action_patterns', args: { intent: args.intent } };
+      default:
+        return { text: `Unknown patterns kind: "${args.kind}". Use one of: invariants, conventions, canonical, actions.` };
+    }
+  },
+  // org(view, ...) — cross-repo / multi-repo
+  org(args) {
+    const view = (args.view || 'architecture').toLowerCase();
+    switch (view) {
+      case 'architecture':
+        return { name: 'get_org_architecture', args: {} };
+      case 'graph':
+        return { name: 'get_service_dependency_graph', args: {} };
+      case 'blast':
+        return { name: 'get_cross_repo_blast_radius', args: { repo: args.repo } };
+      case 'consumers':
+        return { name: 'find_consumers_of_api', args: { target: args.target } };
+      case 'domains':
+        return { name: 'get_org_domain_mapping', args: {} };
+      case 'violations':
+        return { name: 'get_service_boundary_violations', args: {} };
+      case 'migration':
+        return { name: 'get_microservices_migration_cut_points', args: {} };
+      default:
+        return { text: `Unknown org view: "${args.view}". Use one of: architecture, graph, blast, consumers, domains, violations, migration.` };
+    }
+  },
+};
+
+/**
+ * resolveFamily(name, args) — map a family tool call to its internal
+ * (name, args) target, or null if `name` is not a family tool.
+ * May return { text } to short-circuit on an invalid mode/kind/view.
+ */
+function resolveFamily(name, args) {
+  const resolver = FAMILY_RESOLVERS[name];
+  if (!resolver) return null;
+  return resolver(args || {});
+}
+
+/**
+ * DEPRECATIONS — old tool name → the family call that replaces it.
+ * Old names still resolve (byte-identical); they just carry a one-line
+ * deprecation notice and are never listed by ListTools.
+ */
+const DEPRECATIONS = {
+  get_blast_radius: 'impact(file, mode="blast")',
+  simulate_change_impact: 'impact(files, mode="simulate")',
+  get_neighbors: 'impact(file, mode="neighbors")',
+  get_data_flow: 'impact(file, mode="data_flow")',
+  did_we_discuss_this: 'memory(query, kind="search")',
+  get_decision_log: 'memory(kind="log")',
+  get_recent_decisions: 'memory(kind="recent")',
+  get_session_context: 'memory(kind="session")',
+  get_pending_decisions: 'memory(kind="pending")',
+  get_intervention_history: 'memory(kind="interventions")',
+  get_architectural_drift: 'history(view="drift")',
+  get_domain_evolution: 'history(view="evolution")',
+  get_hotspot_files: 'history(view="hotspots")',
+  get_arch_events: 'history(view="events")',
+  get_temporal_context: 'history(view="file")',
+  get_change_velocity: 'history(view="velocity")',
+  get_complexity_trend: 'history(view="complexity")',
+  get_churn_vs_blast_radius: 'history(view="churn")',
+  get_domain_health: 'history(view="health")',
+  get_invariants: 'patterns(kind="invariants")',
+  get_conventions: 'patterns(kind="conventions")',
+  get_canonical_pattern: 'patterns(kind="canonical")',
+  get_action_patterns: 'patterns(kind="actions")',
+  get_org_architecture: 'org(view="architecture")',
+  get_service_dependency_graph: 'org(view="graph")',
+  get_cross_repo_blast_radius: 'org(view="blast")',
+  find_consumers_of_api: 'org(view="consumers")',
+  get_org_domain_mapping: 'org(view="domains")',
+  get_service_boundary_violations: 'org(view="violations")',
+  get_microservices_migration_cut_points: 'org(view="migration")',
+};
+
+// The one-line deprecation notice is prepended to shim output followed by
+// this exact separator. Tests strip everything up to and including the
+// separator to assert the remaining body is byte-identical to the family
+// tool's output.
+const DEPRECATION_SEP = '\n\n';
+
+function withDeprecationNotice(result, oldName) {
+  const replacement = DEPRECATIONS[oldName];
+  const notice = `> ⚠️ \`${oldName}\` is deprecated — use \`${replacement}\`. Returning identical results for now.`;
+  // Only annotate plain text results; leave error envelopes untouched.
+  if (!result || !Array.isArray(result.content)) return result;
+  const first = result.content[0];
+  if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
+  const annotated = notice + DEPRECATION_SEP + first.text;
+  return { ...result, content: [{ ...first, text: annotated }, ...result.content.slice(1)] };
+}
+
+// ─── CT-1b: query-time staleness banner ──────────────────────────────────────
+//
+// Every MCP text response is prefixed with a one-line warning when the
+// on-disk index (ANCI manifest commit) has drifted from the repo's current
+// HEAD, so an AI client never silently trusts numbers from an older tree.
+// Computing this spawns git, so it's memoized for a short TTL — MCP calls
+// arrive in bursts and HEAD rarely moves mid-burst. A banner only appears
+// for genuinely stale/dirty git repos; a non-git repo, a fresh index, or an
+// indeterminate state produces no banner (so byte-identical tool output is
+// unchanged in those cases).
+const STALENESS_TTL_MS = 10_000;
+let _stalenessCache = { at: 0, banner: undefined };
+
+function currentStalenessBanner() {
+  if (process.env.CARTO_DISABLE_STALENESS === '1') return null;
+  const now = Date.now();
+  if (_stalenessCache.banner !== undefined && (now - _stalenessCache.at) < STALENESS_TTL_MS) {
+    return _stalenessCache.banner;
+  }
+  let banner = null;
+  try {
+    banner = stalenessBanner(computeStaleness(projectRoot));
+  } catch {
+    banner = null; // never let freshness detection break a tool call
+  }
+  _stalenessCache = { at: now, banner };
+  return banner;
+}
+
+function withStalenessBanner(result) {
+  const banner = currentStalenessBanner();
+  if (!banner) return result;
+  if (!result || !Array.isArray(result.content)) return result;
+  const first = result.content[0];
+  if (!first || first.type !== 'text' || typeof first.text !== 'string') return result;
+  const annotated = banner + DEPRECATION_SEP + first.text;
+  return { ...result, content: [{ ...first, text: annotated }, ...result.content.slice(1)] };
+}
+
+/**
+ * dispatchTool(rawName, rawArgs) — the public entry point.
+ *
+ * 1. Resolve family tools (impact/memory/history/patterns/org) to their
+ *    internal (name, args). Old names pass through unchanged.
+ * 2. Normalize the file arg + lazy-reparse (moved here so family calls
+ *    that carry a `file` get the same treatment the old tools did).
+ * 3. Run the internal handler under the crash-guard try/catch.
+ * 4. If the caller used a deprecated old name, prepend a one-line notice
+ *    (body stays byte-identical).
+ *
+ * Exported for the correctness/regression suites so the §3 DO-NOT-BREAK
+ * guarantee can be asserted against the new surface.
+ */
+function dispatchTool(rawName, rawArgs) {
+  let name = rawName;
+  let args = rawArgs || {};
+
+  const resolved = resolveFamily(name, args);
+  if (resolved) {
+    if (resolved.text) return text(resolved.text);
+    name = resolved.name;
+    args = resolved.args || {};
+  }
+
+  // Normalize file-arg tools to the canonical SQLite-stored form so
+  // `./lib/x.js`, absolute paths, and Windows separators all resolve.
+  if (args && typeof args.file === 'string') {
+    args.file = normalizeFileArg(projectRoot, args.file);
+    lazyReparseFile(args.file);
+  }
+
+  // Crash-guard: any tool error returns a structured error response
+  // instead of killing the stdio transport.
+  let result;
+  try {
+    const s = getStore();
+    if (!s) return notIndexed();
+    result = runTool(name, args, s);
   } catch (err) {
     process.stderr.write(`[CARTO MCP] Tool "${name}" error: ${err.stack || err.message || err}\n`);
     return {
@@ -2529,6 +2768,113 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       isError: true,
     };
   }
+
+  if (Object.prototype.hasOwnProperty.call(DEPRECATIONS, rawName)) {
+    result = withDeprecationNotice(result, rawName);
+  }
+  // CT-1b: prepend a staleness warning when the index has drifted from
+  // HEAD. Applied last so it's the first line the client sees. No-op on
+  // fresh / non-git / indeterminate indexes and on error envelopes.
+  if (!result || !result.isError) {
+    result = withStalenessBanner(result);
+  }
+  return result;
+}
+
+// ─── Move B: tiering — which tools are listed by default ─────────────────────
+//
+// TIERS maps every listable tool name to a tier. The 30 collapsed old
+// names are intentionally absent (they resolve but are never listed).
+// Exposure is controlled by CARTO_MCP_TIER (env) or carto.config.json
+// `mcp.tier`:  core (default) < advanced < all.
+const TIERS = {
+  // core-10: always exposed (§5 CF-7 suggested core)
+  get_architecture: 'core',
+  get_context: 'core',
+  impact: 'core',
+  validate_diff: 'core',
+  get_change_plan: 'core',
+  memory: 'core',
+  get_predictive_risk: 'core',
+  get_minimal_context_for_intent: 'core',
+  patterns: 'core',
+  history: 'core',
+  // advanced: exposed at tier >= advanced
+  org: 'advanced',
+  get_routes: 'advanced',
+  get_models: 'advanced',
+  get_gaps: 'advanced',
+  scaffold_for_intent: 'advanced',
+  get_working_memory: 'advanced',
+  get_test_coverage_map: 'advanced',
+  get_safety_checklist: 'advanced',
+};
+
+const TIER_ORDER = { core: 0, advanced: 1, experimental: 2, all: 2 };
+
+function resolveTierName() {
+  let tier = (process.env.CARTO_MCP_TIER || '').toLowerCase();
+  if (!tier) {
+    try {
+      const cfgPath = path.join(projectRoot, 'carto.config.json');
+      if (fs.existsSync(cfgPath)) {
+        const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
+        if (cfg && cfg.mcp && typeof cfg.mcp.tier === 'string') tier = cfg.mcp.tier.toLowerCase();
+      }
+    } catch { /* config is best-effort */ }
+  }
+  if (!(tier in TIER_ORDER)) tier = 'core';
+  return tier;
+}
+
+// FAMILY_TOOLS — the 5 new parameterized family tool definitions injected
+// into the listable surface.
+const FAMILY_TOOLS = [
+  { name: 'impact', description: 'Impact of changing code: blast radius (default), multi-file simulate, import neighbors, or data flow. Signature capability — "what breaks if I touch this?"', inputSchema: { type: 'object', properties: { file: { type: 'string', description: 'Relative file path (modes: blast, neighbors, data_flow).' }, files: { type: 'array', items: { type: 'string' }, description: 'File paths for mode="simulate" (change a set at once).' }, mode: { type: 'string', enum: ['blast', 'simulate', 'neighbors', 'data_flow'], description: 'blast=transitive dependents (default); simulate=union for a file set; neighbors=import graph neighbors; data_flow=upstream/downstream + routes/models/env.' }, hops: { type: 'number', description: 'Neighbor hops (mode="neighbors", default 1, max 3).' } }, required: [] } },
+  { name: 'memory', description: 'Episodic memory: search past decisions (default), decision log, recent decisions, session recap, pending work, or a file\'s intervention history. Ask "did we already decide this?"', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['search', 'log', 'recent', 'session', 'pending', 'interventions'], description: 'search=substring over the log (default); log=recent decision log; recent=validation decisions; session=full session recap; pending=unfinished/HIGH-risk work; interventions=warnings on a file.' }, query: { type: 'string', description: 'Search topic (kind="search").' }, file: { type: 'string', description: 'File filter (kind="interventions").' }, hours: { type: 'number', description: 'Lookback hours (kind="log"/"pending").' }, time_range: { type: 'string', description: 'Window like "7d" (kind="recent").' }, filter: { type: 'string', description: 'Decision-kind filter (kind="recent").' }, session_id: { type: 'number', description: 'Session id (kind="session").' } }, required: [] } },
+  { name: 'history', description: 'Temporal/architectural history: domain drift (default), domain evolution, hotspots, arch events, a file\'s timeline, change velocity, complexity trend, churn-vs-blast, domain health. Requires `carto temporal init`.', inputSchema: { type: 'object', properties: { view: { type: 'string', enum: ['drift', 'evolution', 'hotspots', 'events', 'file', 'velocity', 'complexity', 'churn', 'health'], description: 'Which historical view to return (default drift).' }, domain: { type: 'string', description: 'Domain filter (drift/evolution/health).' }, file: { type: 'string', description: 'File (file/complexity views).' }, time_range: { type: 'string', description: 'Window like "30d", "90d".' }, limit: { type: 'number', description: 'Row cap (hotspots).' }, severity: { type: 'string', description: 'Event severity (events).' }, kind: { type: 'string', description: 'Event kind (events).' }, days: { type: 'number', description: 'Lookback days (velocity).' } }, required: [] } },
+  { name: 'patterns', description: 'Semantic + procedural patterns mined from the repo: architectural invariants (default), naming/export/dir conventions, canonical exemplar, or "when X changes, Y changes" action patterns.', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['invariants', 'conventions', 'canonical', 'actions'], description: 'invariants=mined rules (default); conventions=naming/export/dir; canonical=best exemplar; actions=git co-change patterns.' }, domain: { type: 'string', description: 'Domain filter (invariants/canonical).' }, threshold: { type: 'number', description: 'Confidence threshold (invariants).' }, file: { type: 'string', description: 'File or directory (conventions).' }, pattern_type: { type: 'string', description: 'route_handler | model_definition (canonical).' }, intent: { type: 'string', description: 'Intent filter (actions).' } }, required: [] } },
+  { name: 'org', description: 'Cross-repo / multi-repo view: org architecture (default), service dependency graph, cross-repo blast radius, API consumers, per-repo domains, boundary violations, or migration cut points. Requires `carto org init`.', inputSchema: { type: 'object', properties: { view: { type: 'string', enum: ['architecture', 'graph', 'blast', 'consumers', 'domains', 'violations', 'migration'], description: 'Which org-wide view to return (default architecture).' }, repo: { type: 'string', description: 'Producer repo (view="blast").' }, target: { type: 'string', description: 'Package/module (view="consumers").' } }, required: [] } },
+];
+
+/**
+ * listTools(tierName) — the tiered ListTools surface. Family tools + the
+ * kept singletons whose tier <= the active tier. Deprecated old names are
+ * never listed (they still resolve via dispatchTool).
+ */
+function listTools(tierName) {
+  const tier = tierName || resolveTierName();
+  const max = TIER_ORDER[tier] != null ? TIER_ORDER[tier] : 0;
+  const listed = [];
+  // Kept singletons (from the original TOOLS array). Collapsed old names
+  // (in DEPRECATIONS) are NEVER listed — they resolve but stay hidden.
+  // Everything else defaults to the `experimental` tier (listed only at
+  // CARTO_MCP_TIER=all), so the default context is just the core-10.
+  for (const t of TOOLS) {
+    if (Object.prototype.hasOwnProperty.call(DEPRECATIONS, t.name)) continue;
+    const label = TIERS[t.name] || 'experimental';
+    if (TIER_ORDER[label] <= max) listed.push(t);
+  }
+  // Family tools (not in the original TOOLS array).
+  for (const f of FAMILY_TOOLS) {
+    const label = TIERS[f.name] || 'experimental';
+    if (TIER_ORDER[label] <= max) listed.push(f);
+  }
+  return listed;
+}
+
+// ─── Server setup ─────────────────────────────────────────────────────────────
+
+const server = new Server(
+  { name: 'carto', version: '2.0.0' },
+  { capabilities: { tools: {} } }
+);
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: listTools() }));
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const { name, arguments: args } = request.params;
+  return dispatchTool(name, args || {});
 });
 
 async function main() {
@@ -2536,7 +2882,21 @@ async function main() {
   await server.connect(transport);
 }
 
-main().catch(err => {
-  console.error('[CARTO MCP] Fatal:', err.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch(err => {
+    console.error('[CARTO MCP] Fatal:', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  dispatchTool,
+  runTool,
+  resolveFamily,
+  listTools,
+  TOOLS,
+  FAMILY_TOOLS,
+  TIERS,
+  DEPRECATIONS,
+  DEPRECATION_SEP,
+};
