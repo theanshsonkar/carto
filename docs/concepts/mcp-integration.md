@@ -24,9 +24,11 @@ For each AI tool it detects on your machine, init writes the appropriate MCP con
 
 Each config tells the tool: *"when the user starts a chat, run `carto serve` as a child process and route MCP traffic to it"*.
 
-## The ~76 tools Carto exposes
+## The tools Carto exposes
 
-Grouped by what they answer. Categories below match the [`docs/api/`](../api/) layout — that directory is the full per-tool reference (auto-generated from `src/mcp/server.js`). The picks below are the high-impact ones; your AI tool picks whichever one fits the question mid-task.
+Carto exposes a small **default core (~10 tools)** plus a handful of **parameterized families** (`impact`, `memory`, `history`, `patterns`, `org`), so your AI tool spends its context budget on your codebase instead of a long tool menu. The full capability set stays reachable: the ~30 former sibling tools (`get_blast_radius`, `simulate_change_impact`, `did_we_discuss_this`, ...) resolve as **deprecated shims** with byte-identical output, and advanced/experimental tools are available by widening the surface (`CARTO_MCP_TIER=advanced`, or `carto.config.json` -> `mcp.tier`).
+
+The groups below map every capability by what it answers. Categories match the [`docs/api/`](../api/) layout, which is the full per-tool reference (auto-generated from `src/mcp/server.js`). Your AI tool picks whichever fits the question mid-task; you don't choose by hand.
 
 ### Core graph (16) — project shape, blast radius, change planning
 
