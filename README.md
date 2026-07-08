@@ -19,6 +19,13 @@ Carto fixes that. It packages a repository into a **portable AI container** that
 
 One SQLite file on your disk. No network. No telemetry. No cloud.
 
+### 📦 What is an AI Context Container?
+
+When you run `carto init`, it doesn't spin up a Docker daemon or create virtual network bridges. Instead, it creates a logical container right in your project root (`.carto/`).
+
+This container houses your codebase's **ANCI** (Architecturally Normalized Code Index) schema. It acts as a universal, portable memory bank. No matter which AI tool you swap to—or if you push your code to a remote CI pipeline—the container ensures your AI starts the session with perfect structural awareness.
+
+
 ![Carto answering a blast-radius query on the supabase repo, inside an MCP client (Kiro CLI, running Claude)](docs/screenshots/carto-supabase-blast-radius.png)
 
 |  |  |
