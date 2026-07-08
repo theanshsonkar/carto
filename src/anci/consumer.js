@@ -43,6 +43,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const yaml = require('./yaml');
 const { deserializeBody } = require('./deserialize');
 const {
@@ -113,16 +114,74 @@ function loadAnci(dir, opts = {}) {
     throw new Error('ANCI body failed to parse (corrupt magic, version, or section)');
   }
 
+  // 4b. Integrity: verify the content digest when the header carries one.
+  // `opts.verify === true` promotes a mismatch to a hard error; otherwise
+  // it's advisory (surfaced via reader.verifyDigest() and opts.warn).
+  const digestResult = verifyBodyDigest(header, bodyBuf);
+  if (digestResult && digestResult.ok === false) {
+    if (opts.verify) {
+      throw new Error(
+        `ANCI digest mismatch: header declares ${digestResult.expected}, ` +
+        `body hashes to ${digestResult.actual} — the container may be corrupt or tampered with`
+      );
+    }
+    if (opts.warn) {
+      opts.warn(
+        `ANCI digest mismatch: header ${digestResult.expected} != body ${digestResult.actual}`
+      );
+    }
+  }
+
   // 5. Build the reader.
-  return makeReader({ header, body });
+  return makeReader({ header, body, bodyBuf, digestResult });
 }
 
-function makeReader({ header, body }) {
+/**
+ * verifyBodyDigest(header, bodyBuf) → { ok, algorithm, expected, actual } | null
+ *
+ * Recomputes the body hash and compares it to the header's declared
+ * `anci.body.content_digest`. Returns null when the header carries no
+ * digest (older containers) or the algorithm is unknown — "can't verify"
+ * is distinct from "verified and mismatched".
+ */
+function verifyBodyDigest(header, bodyBuf) {
+  const declared = header && header.anci && header.anci.body &&
+    typeof header.anci.body.content_digest === 'string'
+    ? header.anci.body.content_digest
+    : null;
+  if (!declared) return null;
+  const sep = declared.indexOf(':');
+  const algorithm = sep >= 0 ? declared.slice(0, sep) : 'sha256';
+  const expectedHex = sep >= 0 ? declared.slice(sep + 1) : declared;
+  let actualHex;
+  try {
+    actualHex = crypto.createHash(algorithm).update(bodyBuf).digest('hex');
+  } catch {
+    // Unknown algorithm — treat as "can't verify".
+    return null;
+  }
+  const expected = `${algorithm}:${expectedHex}`;
+  const actual = `${algorithm}:${actualHex}`;
+  return { ok: actualHex === expectedHex, algorithm, expected, actual };
+}
+
+function makeReader({ header, body, bodyBuf, digestResult }) {
   // ── Convenience flat projections ─────────────────────────────────
   const domains = header.domains || [];
   const routes = header.routes || [];
   const models = header.models || [];
   const high_impact = header.high_impact || [];
+
+  // Container identity projections (CT-1). All degrade to null/[] on
+  // older containers that predate the manifest fields.
+  const source = header.source || null;
+  const grammar_versions = header.grammar_versions || null;
+  const contains = (header.anci && Array.isArray(header.anci.contains))
+    ? header.anci.contains
+    : [];
+  const carto_version = (header.anci && typeof header.anci.carto_version === 'string')
+    ? header.anci.carto_version
+    : null;
 
   // domain id → name and file → domain id are in the body; build a
   // quick path → domainName map for getDomainOf().
@@ -288,12 +347,33 @@ function makeReader({ header, body }) {
     return out;
   }
 
+  /**
+   * verifyDigest() → { ok, algorithm, expected, actual } | null
+   *
+   * Recomputes the body hash and compares it to the manifest's declared
+   * `content_digest`. Returns null when the container declares no digest
+   * (pre-CT-1 containers) — callers distinguish "can't verify" (null)
+   * from "verified" (`ok:true`) and "tampered" (`ok:false`).
+   */
+  function verifyDigest() {
+    if (digestResult) return digestResult;
+    // Fallback: recompute on demand if we still hold the body bytes.
+    if (bodyBuf) return verifyBodyDigest(header, bodyBuf);
+    return null;
+  }
+
   return {
     header,
     domains,
     routes,
     models,
     high_impact,
+    // Container identity (CT-1).
+    source,
+    grammar_versions,
+    contains,
+    carto_version,
+    verifyDigest,
     blastRadius,
     simulateChangeImpact,
     getHighImpactFiles,
@@ -302,4 +382,4 @@ function makeReader({ header, body }) {
   };
 }
 
-module.exports = { loadAnci, ACCEPTED_VERSION_PREFIX };
+module.exports = { loadAnci, verifyBodyDigest, ACCEPTED_VERSION_PREFIX };
