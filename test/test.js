@@ -2368,6 +2368,7 @@ async function runAsyncSuite() {
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-stale-mcp-'));
     const serverPath = require.resolve('../src/mcp/server.js');
     const cwd = process.cwd();
+    let srv = null;
     try {
       fs.mkdirSync(path.join(projectRoot, 'src'));
       fs.writeFileSync(path.join(projectRoot, 'src', 'a.ts'), 'export const a = 1;\n');
@@ -2388,12 +2389,13 @@ async function runAsyncSuite() {
       // Fresh: no banner — body starts with the tool's own header.
       process.chdir(projectRoot);
       delete require.cache[serverPath];
-      let srv = require(serverPath);
+      srv = require(serverPath);
       let r = srv.dispatchTool('impact', { file: 'src/a.ts', mode: 'blast' });
       assert.ok(/^# Blast Radius: src\/a\.ts/.test(r.content[0].text),
         `fresh index must not carry a banner; got: ${r.content[0].text.slice(0, 60)}`);
 
       // Advance HEAD → next fresh require sees a stale index and warns.
+      srv.closeStore();          // release handle before dropping this instance
       process.chdir(cwd);
       fs.writeFileSync(path.join(projectRoot, 'src', 'c.ts'), 'export const c = 3;\n');
       g(['add', '-A']);
@@ -2410,8 +2412,10 @@ async function runAsyncSuite() {
         'banner must precede — not replace — the tool body');
     } finally {
       process.chdir(cwd);
+      // Windows locks open DB files; release the readonly store before rmSync.
+      try { if (srv && srv.closeStore) srv.closeStore(); } catch { /* ignore */ }
       delete require.cache[serverPath];
-      fs.rmSync(projectRoot, { recursive: true, force: true });
+      fs.rmSync(projectRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     }
   });
 
@@ -3248,6 +3252,39 @@ test('Path normalization', 'empty / non-string input is returned unchanged', () 
   assert.strictEqual(normalizeFileArg('/Users/x/proj', ''), '');
   assert.strictEqual(normalizeFileArg('/Users/x/proj', undefined), undefined);
   assert.strictEqual(normalizeFileArg('/Users/x/proj', null), null);
+});
+
+// Regression: import to_path must be stored POSIX-normalized so the
+// unresolved-import repair pass (WHERE files.path = imports.to_path)
+// matches on Windows, where resolvers emit backslash paths. Before the
+// fix this left imports unresolved on Windows → blast radius = 0 deps.
+test('Path normalization', 'import to_path stored as POSIX so repair resolves (Windows)', () => {
+  const { SQLiteStore } = require('../src/store/sqlite-store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carto-topath-'));
+  const store = new SQLiteStore(dir);
+  store.open();
+  try {
+    const idB = store.upsertFile('src/b.ts', { language: 'typescript', hash: 'b', mtime: 1, size: 1 });
+    const idA = store.upsertFile('src/a.ts', { language: 'typescript', hash: 'a', mtime: 1, size: 1 });
+    // Simulate a Windows resolver: native backslash target, unresolved.
+    store.storeExtraction(idA, { imports: [{ path: 'src\\b.ts', resolvedFileId: null }] });
+
+    const row = store.db.prepare(
+      'SELECT to_path, to_file_id FROM imports WHERE from_file_id = ?'
+    ).get(idA);
+    assert.strictEqual(row.to_path, 'src/b.ts',
+      `to_path must be stored POSIX-normalized, got ${JSON.stringify(row.to_path)}`);
+
+    const repaired = store.resolveUnresolvedImports();
+    assert.strictEqual(repaired, 1, 'repair pass must resolve the backslash import');
+    const after = store.db.prepare(
+      'SELECT to_file_id FROM imports WHERE from_file_id = ?'
+    ).get(idA);
+    assert.strictEqual(after.to_file_id, idB, 'a.ts must resolve to b.ts after repair');
+  } finally {
+    store.close();
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 });
 
 

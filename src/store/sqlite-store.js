@@ -460,7 +460,13 @@ class SQLiteStore {
         for (const imp of data.imports) {
           const toFileId = imp.resolvedFileId || null;
           const resolved = toFileId ? 1 : 0;
-          ins.run(fileId, toFileId, imp.path, imp.symbol || null, resolved);
+          // Normalize to_path to POSIX at the write boundary. Import
+          // resolvers use path.relative() which yields native separators
+          // (backslashes on Windows); files.path is always POSIX. Without
+          // this, resolveUnresolvedImports() (WHERE path = to_path) never
+          // matches on Windows → imports stay unresolved → blast radius
+          // reports zero dependents. Same code, same results, all OSes.
+          ins.run(fileId, toFileId, normalizePath(imp.path), imp.symbol || null, resolved);
         }
       }
 
