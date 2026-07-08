@@ -11,6 +11,7 @@
     "test:correctness": "node test/correctness.js",
     "test:benchmark": "node test/benchmark.js",
     "test:bench-ci": "node test/bench-ci.js",
+    "test:audit-supabase": "node test/audit-supabase.js",
     "postinstall": "node scripts/postinstall.js",
     "bench:bitmap": "node bench/bitmap-validation/index.js",
     "bench:scale": "node bench/scale-test/index.js"
