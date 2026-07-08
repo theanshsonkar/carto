@@ -19,7 +19,7 @@ Carto fixes that. It packages a repository into a **portable AI container** that
 
 One SQLite file on your disk. No network. No telemetry. No cloud.
 
-### 📦 What is an AI Context Container?
+### 📦 What is an Carto Container?
 
 When you run `carto init`, it doesn't spin up a Docker daemon or create virtual network bridges. Instead, it creates a logical container right in your project root (`.carto/`).
 
