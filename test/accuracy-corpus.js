@@ -36,6 +36,25 @@ const path = require('path');
 const { SQLiteStore } = require('../src/store/sqlite-store');
 const { buildFromStore } = require('../src/bitmap/sidecar');
 const bitmapTools = require('../src/bitmap/tools');
+// CF-7: the impact() tool's formatters. Re-pointing the correctness harness
+// at this module proves the §3 blast-radius/simulate guarantee physically
+// transfers to the new parameterized `impact` surface.
+const impactMod = require('../src/mcp/impact');
+
+// Parse the "# Blast Radius" markdown the impact tool emits back into a
+// { count, files:Set } so we can assert parity with the raw bitmap engine.
+function parseBlastMarkdown(md) {
+  const files = new Set();
+  let count = null;
+  for (const line of md.split('\n')) {
+    const cm = line.match(/^\*\*Affected files:\*\*\s+(\d+)/);
+    if (cm) { count = parseInt(cm[1], 10); continue; }
+    // table rows: `| path | hop |` — skip the header + separator rows.
+    const rm = line.match(/^\|\s*(.+?)\s*\|\s*(\d+)\s*\|$/);
+    if (rm && rm[1] !== 'File') files.add(rm[1]);
+  }
+  return { count, files };
+}
 
 const argv = process.argv.slice(2);
 function flag(name, def) {
@@ -236,6 +255,37 @@ function verifyRepo(repoPath) {
     sciChecked++;
   }
 
+  // ── 5. impact() tool-surface parity (CF-7) ──────────────────────
+  // The MCP `impact` tool renders blast/simulate via src/mcp/impact.js.
+  // Assert its formatted output reflects the SAME bitmap engine result
+  // the harness verified above — i.e. the collapse to impact(...) did not
+  // alter the blast-radius numbers or file set. This is the concrete
+  // "re-point the correctness suite at the new impact tool" check.
+  let impactChecked = 0;
+  for (const fid of sampleIds) {
+    const filePath = sidecar.fileIdToPath.get(fid);
+    const bmRes = bitmapTools.blastRadius(sidecar, filePath); // tool default hops
+    const md = impactMod.blast({ store, sidecar, file: filePath });
+    if (!bmRes || bmRes.length === 0) {
+      // Tool should emit a "no dependents"/"not found" message, not a table.
+      if (/^#\s+Blast Radius/.test(md)) {
+        failures.push({ tool: 'impact', file: filePath, msg: `expected empty message, got a blast table` });
+      }
+      impactChecked++;
+      continue;
+    }
+    const parsed = parseBlastMarkdown(md);
+    const bmSet = new Set(bmRes.map(r => r.file));
+    if (parsed.count !== bmRes.length) {
+      failures.push({ tool: 'impact', file: filePath, msg: `count mismatch: tool=${parsed.count} engine=${bmRes.length}` });
+    } else if (!setEqual(parsed.files, bmSet)) {
+      const onlyTool = [...parsed.files].filter(x => !bmSet.has(x));
+      const onlyEngine = [...bmSet].filter(x => !parsed.files.has(x));
+      failures.push({ tool: 'impact', file: filePath, msg: `file-set mismatch: tool_only=${onlyTool.length} engine_only=${onlyEngine.length}`, onlyBm: onlyEngine.slice(0, 3) });
+    }
+    impactChecked++;
+  }
+
   store.close();
 
   return {
@@ -245,6 +295,7 @@ function verifyRepo(repoPath) {
     highImpactCheckedTopN: Math.min(N, sqlHi.length),
     blastRadiusSamples: brChecked,
     simulateChangeImpactGroups: sciChecked,
+    impactToolSamples: impactChecked,
     failures,
   };
 }
@@ -271,7 +322,7 @@ for (const repo of ALL_REPOS) {
   } else if (result.error) {
     console.log(`ERROR ${result.error.split('\n')[0]}`);
   } else if (result.failures.length === 0) {
-    console.log(`PASS  files=${result.files} xd_edges=${result.crossDomainEdges} br=${result.blastRadiusSamples}/${SAMPLES} sci=${result.simulateChangeImpactGroups}/5 hi_top=${result.highImpactCheckedTopN}  (${dt}ms)`);
+    console.log(`PASS  files=${result.files} xd_edges=${result.crossDomainEdges} br=${result.blastRadiusSamples}/${SAMPLES} sci=${result.simulateChangeImpactGroups}/5 impact=${result.impactToolSamples}/${SAMPLES} hi_top=${result.highImpactCheckedTopN}  (${dt}ms)`);
   } else {
     console.log(`FAIL  ${result.failures.length} failure(s) in ${dt}ms`);
     for (const f of result.failures.slice(0, 5)) {

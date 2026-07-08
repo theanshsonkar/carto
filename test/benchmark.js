@@ -165,6 +165,21 @@ async function benchmarkRepo(repoName) {
     store.getBlastRadius(highImpact[0].file);
     const q2Ms = hrMs(q2Start);
     console.log(`    get_blast_radius(${path.basename(highImpact[0].file)}): ${q2Ms}ms`);
+
+    // CF-7: the same query through the impact() tool's code path
+    // (src/mcp/impact.js over the bitmap sidecar). Must be no slower
+    // than the legacy path — the collapse is a rename, not a slowdown.
+    try {
+      const impactMod = require('../src/mcp/impact');
+      const { buildFromStore } = require('../src/bitmap/sidecar');
+      const sidecar = buildFromStore(store);
+      const q2bStart = process.hrtime();
+      impactMod.blast({ store, sidecar, file: highImpact[0].file });
+      const q2bMs = hrMs(q2bStart);
+      console.log(`    impact(blast, bitmap): ${q2bMs}ms`);
+    } catch (err) {
+      console.log(`    impact(blast, bitmap): SKIP (${err.message})`);
+    }
   }
 
   // get_routes
