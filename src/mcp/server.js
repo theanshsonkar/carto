@@ -47,6 +47,21 @@ function getStore() {
 }
 
 /**
+ * closeStore() — release the module-scoped SQLite handle.
+ *
+ * The server opens the store lazily and keeps it for the process lifetime.
+ * Tests (and any embedder) that build a throwaway index in a temp dir must
+ * be able to release the handle before deleting that dir — on Windows an
+ * open DB file cannot be unlinked (EBUSY), unlike POSIX. No-op if unopened.
+ */
+function closeStore() {
+  if (store) {
+    try { store.close(); } catch { /* already closed / never opened */ }
+    store = null;
+  }
+}
+
+/**
  * getSidecar() — bitmap engine entry point.
  *
  * Lazily loads (or rebuilds) the in-memory bitmap sidecar for the
@@ -2894,6 +2909,7 @@ module.exports = {
   runTool,
   resolveFamily,
   listTools,
+  closeStore,
   TOOLS,
   FAMILY_TOOLS,
   TIERS,

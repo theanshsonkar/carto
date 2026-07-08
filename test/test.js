@@ -3193,7 +3193,10 @@ async function runCf7Suite() {
     });
   } finally {
     process.chdir(cwd);
-    fs.rmSync(projectRoot, { recursive: true, force: true });
+    // Windows locks open DB files: release the MCP server's readonly store
+    // handle before deleting the temp dir, or fs.rmSync throws EBUSY.
+    try { if (srv && srv.closeStore) srv.closeStore(); } catch { /* ignore */ }
+    fs.rmSync(projectRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 }
 
