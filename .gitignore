@@ -15,6 +15,10 @@ CARTO_SCALE_REPORT.md
 CARTO_V2_ARCHITECTURE.md
 Progress/
 
+# Marketing site — lives in this working tree but is not part of the npm package
+carto-site/
+carto-site-v2/
+
 # npm pack output — regenerated, never committed
 *.tgz
 
