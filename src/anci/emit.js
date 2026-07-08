@@ -14,6 +14,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const yaml = require('./yaml');
 const {
   serializeBody,
@@ -22,6 +23,7 @@ const {
   ANCI_BIN_FILENAME,
   ANCI_YAML_FILENAME,
 } = require('./serialize');
+const { sourceIdentity } = require('./git-meta');
 
 /**
  * emitToCartoDir({ cartoDir, sidecar, store, generator, generatedAt })
@@ -49,14 +51,29 @@ function emitToCartoDir({ cartoDir, sidecar, store, generator, generatedAt }) {
   fs.writeFileSync(binTmp, body);
   fs.renameSync(binTmp, binPath);
 
+  // 1b. Content digest — sha256 over the exact bytes written to disk.
+  // Prefixed with the algorithm so the manifest is self-describing and
+  // future digests (e.g. sha512) can coexist. Consumers recompute this
+  // to verify integrity (CT-1).
+  const contentDigest = 'sha256:' + crypto.createHash('sha256').update(body).digest('hex');
+
+  // 1c. Source identity — git commit/tree/branch of the repo being
+  // packaged. `cartoDir` is `<projectRoot>/.carto`, so the project root
+  // is its parent. Best-effort: all null on a non-git repo.
+  const projectRoot = path.dirname(cartoDir);
+  const source = sourceIdentity(projectRoot);
+
   // 2. Header — built with the body's actual on-disk byte count so the
-  // header's `body.bytes` cross-check matches.
+  // header's `body.bytes` cross-check matches, plus the digest + source
+  // identity computed above.
   const header = buildHeader({
     sidecar,
     store,
     generator: generator || resolveGenerator(),
     generatedAt: generatedAt || new Date().toISOString(),
     bodyBytes: body.length,
+    contentDigest,
+    source,
   });
   const yamlText = yaml.emit(header);
   const yamlPath = path.join(cartoDir, ANCI_YAML_FILENAME);
