@@ -1,6 +1,6 @@
 # Carto
 
-**The portable AI container for your codebase. Package a repo once — every AI tool understands it in seconds, and knows what breaks before it changes anything.**
+**The portable AI container for your codebase. Package a repo once - every AI tool understands it in seconds, and knows what breaks before it changes anything.**
 
 [Docs](docs/) · [Quickstart](docs/quickstart.md) · [Tools](#tools-your-ai-can-call) · [ANCI Spec](docs/anci/v0.1-DRAFT.md) · [Benchmarks](docs/scale.md) · [Changelog](CHANGELOG.md)
 
@@ -13,29 +13,25 @@
 
 > **Docker made apps portable. Carto makes codebases portable for AI.**
 
-Every AI tool re-reads your entire codebase from scratch, every single session. Cursor builds its own index. Copilot builds its own. Claude Code builds its own. Same parsing, every tool, every time — and none of them remember what they learned yesterday.
+Every AI tool re-reads your entire codebase from scratch, every single session. Cursor builds its own index. Copilot builds its own. Claude Code builds its own. Same parsing, every tool, every time - and none of them remember what they learned yesterday.
 
-Carto fixes that. It packages a repository into a **portable AI container** that captures its architecture, dependencies, engineering history, and safety context — so any AI coding assistant understands the project in seconds instead of rediscovering it from scratch. And because the container knows how everything connects, it can tell you **what breaks before you change it.**
+Carto fixes that. It packages a repository into a **portable AI container** that captures its architecture, dependencies, engineering history, and safety context - so any AI coding assistant understands the project in seconds instead of rediscovering it from scratch. And because the container knows how everything connects, it can tell you **what breaks before you change it.**
 
 One SQLite file on your disk. No network. No telemetry. No cloud.
 
-### 📦 What is an Carto Container?
-
-When you run `carto init`, it doesn't spin up a Docker daemon or create virtual network bridges. Instead, it creates a logical container right in your project root (`.carto/`).
-
-This container houses your codebase's **ANCI** (Architecturally Normalized Code Index) schema. It acts as a universal, portable memory bank. No matter which AI tool you swap to—or if you push your code to a remote CI pipeline—the container ensures your AI starts the session with perfect structural awareness.
-
+> **Passive context vs. active guardrail.** Most tools hand the AI context and hope for the best. Carto grades every proposed diff *before* it lands - blast radius, risk, cross-domain violations - and can block a HIGH-risk edit before it ever reaches disk. Context that pushes back.
 
 ![Carto answering a blast-radius query on the supabase repo, inside an MCP client (Kiro CLI, running Claude)](docs/screenshots/carto-supabase-blast-radius.png)
 
 |  |  |
 |---|---|
-| 🗺️ **Architecture** | Import graph, routes, models, and auto-detected domains — the whole shape of the repo, mapped once. |
+| 🗺️ **Architecture** | Import graph, routes, models, and auto-detected domains - the whole shape of the repo, mapped once. |
 | 💥 **Blast Radius** | "Touch this file and 22 things break." Transitive impact of any change, in microseconds. |
 | 🧠 **Memory** | Every decision and validated diff is remembered across sessions. Ask *"did we agree on snake_case here?"* six weeks later and get the actual verdict. |
 | ⏳ **History** | Snapshots every commit. Tracks drift, churn, and architectural events. The container gets smarter the longer the repo lives. |
 | 🎯 **Predictive Risk** | Every file scored 0–1: *P(this causes the next incident)*. High-risk files surface before the PR is opened. |
-| 📦 **Portable (ANCI)** | The container is an open format — `.carto/anci.{yaml,bin}`. Any AI tool can read it without re-indexing. |
+| 📦 **Portable (ANCI)** | The **structural core** is an open format - `.carto/anci.{yaml,bin}`, stamped with its source commit + a content digest so it's versioned and verifiable. Any AI tool can read it without re-indexing. |
+| 🔐 **Verifiable** | Every container is stamped with its source commit, grammar versions, and a sha256 content digest. Same repo → same digest. Integrity is checked on load. |
 
 ---
 
@@ -44,7 +40,7 @@ This container houses your codebase's **ANCI** (Architecturally Normalized Code 
 |  |  |
 |---|---|
 | ### 🧑‍💻 I use AI coding tools | ### 🔧 I'm building AI dev tools |
-| Install once and Carto auto-wires into every AI tool on your machine. Your assistant instantly knows your architecture, remembers past decisions, and gets blocked from risky edits. **[→ Quick start](#quick-start)** | Consume the portable container directly via the ANCI format, or query it live through ~75 MCP tools. Stop building your own index. **[→ Build on Carto](#build-on-carto)** |
+| Install once and Carto auto-wires into every AI tool on your machine. Your assistant instantly knows your architecture, remembers past decisions, and gets blocked from risky edits. **[→ Quick start](#quick-start)** | Consume the portable container directly via the ANCI format, or query it live through a compact MCP surface (a core-10 plus parameterized families). Stop building your own index. **[→ Build on Carto](#build-on-carto)** |
 
 **Works with:** Cursor · Claude Code · Codex · Kiro · Claude Desktop · Windsurf · VS Code Copilot · Zed · JetBrains
 
@@ -58,7 +54,7 @@ cd your-project
 carto init
 ```
 
-That's it. `carto init` reads your repo, builds the container, and wires itself into every AI tool it finds. Restart the tool. Your AI now knows your codebase — and keeps a memory of every decision it makes inside it.
+That's it. `carto init` reads your repo, builds the container, and wires itself into every AI tool it finds. Restart the tool. Your AI now knows your codebase - and keeps a memory of every decision it makes inside it.
 
 ### Wiring it into your AI tool
 
@@ -75,29 +71,29 @@ That's it. `carto init` reads your repo, builds the container, and wires itself 
 }
 ```
 
-Point any MCP client at that and restart it — the tool spawns `carto serve` on demand, and every chat starts with your architecture, blast radius, and past decisions already loaded. Exact config file per tool is below.
+Point any MCP client at that and restart it - the tool spawns `carto serve` on demand, and every chat starts with your architecture, blast radius, and past decisions already loaded. Exact config file per tool is below.
 
 <details>
 <summary>Manual MCP wiring for every other tool (if it wasn't auto-detected)</summary>
 
-### Cursor — `~/.cursor/mcp.json`
+### Cursor - `~/.cursor/mcp.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
 
-### Claude Code — `<project>/.mcp.json`
+### Claude Code - `<project>/.mcp.json`
 ```bash
 claude mcp add carto -- carto serve
 ```
 
-### Codex — `~/.codex/config.toml`
+### Codex - `~/.codex/config.toml`
 ```toml
 [mcp_servers.carto]
 command = "carto"
 args = ["serve"]
 ```
 
-### Kiro — `~/.kiro/settings/mcp.json`
+### Kiro - `~/.kiro/settings/mcp.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
@@ -111,12 +107,12 @@ args = ["serve"]
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
 
-### VS Code Copilot — `.vscode/mcp.json`
+### VS Code Copilot - `.vscode/mcp.json`
 ```json
 { "servers": { "carto": { "type": "stdio", "command": "carto", "args": ["serve"] } } }
 ```
 
-### Windsurf — `~/.codeium/windsurf/mcp_config.json`
+### Windsurf - `~/.codeium/windsurf/mcp_config.json`
 ```json
 { "mcpServers": { "carto": { "command": "carto", "args": ["serve"], "cwd": "/your/project" } } }
 ```
@@ -126,25 +122,53 @@ args = ["serve"]
 ### How it works
 
 1. **`carto init` builds the container.** It parses your repo (imports, routes, models, domains, blast radius), writes it to `.carto/`, and auto-wires every AI tool on your machine.
-2. **Your AI loads it instead of re-reading everything.** Every chat starts with the architecture already known — the right 6–12 files, not the usual 40+.
-3. **Every proposed diff is checked first.** Risky changes are graded and flagged *before* they hit your screen. Carto also nudges: *"coupling jumped in AUTH," "two sessions are editing this file."*
-4. **The container remembers.** Decisions, validations, and drift accumulate in one SQLite file. Next session picks up where the last left off.
+2. **Your AI loads it instead of re-reading everything.** Every chat starts with the architecture already known - the right 6–12 files, not the usual 40+.
+3. **Every proposed diff is checked first.** Risky changes are graded *before* they hit your screen - and `carto mcp-middleware` can block a HIGH-risk edit before it ever reaches disk. Carto also nudges: *"coupling jumped in AUTH," "two sessions are editing this file."*
+4. **The container remembers - and knows when it's stale.** Decisions, validations, and drift accumulate in one SQLite file, so the next session picks up where the last left off. And if the repo moves ahead of the index, queries warn *"graph is N commits stale"* instead of silently serving old numbers.
 
 ---
 
 ## An index is not a container
 
-Most tools build an **index** — a snapshot of what's in the repo *right now*. Stateless. Thrown away at the end of the session. Rebuilt from scratch by the next tool.
+Most tools build an **index** - a snapshot of what's in the repo *right now*. Stateless. Thrown away at the end of the session. Rebuilt from scratch by the next tool.
 
-A **container** is different. It's portable, versioned, and carries five kinds of memory that a plain index can't:
+A **container** is different: portable, versioned, and verifiable. Carto's engine keeps **five kinds of memory** a plain index can't - all queryable **live** over MCP:
 
-- **Structural** — imports, routes, models, domains, blast radius.
-- **Episodic** — every diff validated, every decision made. Queryable weeks later.
-- **Temporal** — snapshots, churn, deltas. *"AUTH grew 18 files and lost stability when `billing.ts` moved out."*
-- **Semantic** — invariants and conventions mined from the import graph, not declared by humans.
-- **Procedural** — patterns mined from git history. *"When a route is added, auth middleware is touched 89% of the time."*
+- **Structural** - imports, routes, models, domains, blast radius.
+- **Episodic** - every diff validated, every decision made. Queryable weeks later.
+- **Temporal** - snapshots, churn, deltas. *"AUTH grew 18 files and lost stability when `billing.ts` moved out."*
+- **Semantic** - invariants and conventions mined from the import graph, not declared by humans.
+- **Procedural** - patterns mined from git history. *"When a route is added, auth middleware is touched 89% of the time."*
+
+All five run live in the engine - one SQLite file (`.carto/carto.db`), queried over MCP. The **portable container file** - the open [ANCI](docs/anci/v0.1-DRAFT.md) export any tool can read *without* Carto's runtime - today carries the **structural core** (import graph, domains, routes, models, blast radius), stamped with its source commit + a content digest so it's versioned and verifiable. Making the other four memories portable *in the file* is on the roadmap.
 
 Your AI tool sees files. Carto's container sees architecture, history, *and* consequences.
+
+---
+
+## Is this Docker?
+
+No. Docker containerizes **compute** - the OS, libraries, and binaries a CPU needs to run your code anywhere. Carto containerizes **context** - the import graph, blast radius, and structural boundaries an LLM needs to reason about your code without re-reading it.
+
+There's no daemon, no image pull, no virtual network. A Carto container is just a lightweight `.carto/` folder: a local SQLite database plus an open [ANCI](docs/anci/v0.1-DRAFT.md) map. It costs nothing while idle, answers a blast-radius query in microseconds on a 7,500-file repo, and never touches the cloud. Any AI agent - Claude Code, Cursor, or your CI pipeline - taps into it instantly instead of re-indexing from scratch.
+
+---
+
+## Build once, load anywhere
+
+The whole point of a container is that it's *one file you can move.* Build it on one machine, load it on another - no re-index, no Carto runtime needed to read it.
+
+```bash
+# machine A - build and pack into a single file
+carto init
+carto export --out myrepo.anci        # one file: yaml + bitmap + manifest
+
+# machine B - load it, no re-parsing the repo
+carto load myrepo.anci                 # unpacks + verifies the content digest
+carto impact src/auth/session.ts       # blast radius, instantly
+```
+
+Copy it, attach it to a release, or hand it to a teammate - the receiving machine gets the full structural container in seconds. The digest is verified on load, and loaded contents are treated as **untrusted data, never instructions.**
 
 ---
 
@@ -161,15 +185,15 @@ carto init ──────────── parse (tree-sitter, 17 languages
 │   ├── carto.db        SQLite: graph, routes, models,  │
 │   │                   domains, decisions, history     │
 │   ├── bitmap.bin      Roaring Bitmap reverse-dep       │
-│   │                   graph — blast radius in µs       │
-│   └── anci.{yaml,bin} the portable, open format any    │
-│                       AI tool can read                 │
+│   │                   graph - blast radius in µs       │
+│   └── anci.{yaml,bin} portable open format - `carto export`     │
+│                       packs it into one verifiable .anci file   │
 └─────────────────────────────────────────────────────┘
    ↓
-your AI tool  ── loads it via MCP (~75 tools) or ANCI directly
+your AI tool  ── loads it via MCP (core-10 + families) or ANCI directly
 ```
 
-**Blast radius is not search.** Search finds files that *mention* something. Blast radius finds files that *break* when you change something — transitively, over the real import graph. On a 7,500-file repo, one query returns in ~3 microseconds thanks to the bitmap engine.
+**Blast radius is not search.** Search finds files that *mention* something. Blast radius finds files that *break* when you change something - transitively, over the real import graph. On a 7,500-file repo, one query returns in ~3 microseconds thanks to the bitmap engine.
 
 ---
 
@@ -192,19 +216,27 @@ Or query it live through the MCP server your AI tool already runs.
 
 ## Tools your AI can call
 
-About 75 tools, grouped by what they're for:
+A small **core** is exposed by default (≈10 tools), with the rest collapsed into a handful of
+**parameterized families** - so your AI tool spends its context on your codebase, not on a tool menu.
 
-| Group | Tools |
+| Core tool | What it's for |
 |---|---|
-| **Structure** | `get_change_plan` · `get_blast_radius` · `simulate_change_impact` · `validate_diff` · `get_context` · `get_routes` · `get_models` · `get_cross_domain` · `get_high_impact_files` |
-| **Episodic memory** | `did_we_discuss_this` · `get_decision_log` · `get_session_context` · `get_pending_decisions` · `get_intervention_history` |
-| **Temporal** | `get_architectural_drift` · `get_domain_evolution` · `get_hotspot_files` · `get_arch_events` · `get_temporal_context` · `get_change_velocity` · `get_complexity_trend` |
-| **Brain** | `get_invariants` · `get_conventions` · `get_canonical_pattern` · `get_action_patterns` · `get_working_memory` · `get_active_suggestions` · `scaffold_for_intent` |
-| **Predictive** | `get_predictive_risk` · `get_safety_checklist` · `get_drift_digest` · `get_test_coverage_map` |
-| **Retrieval** | `get_minimal_context_for_intent` · `get_progressive_disclosure_tree` |
-| **Org / multi-repo** | `get_org_architecture` · `get_service_dependency_graph` · `get_cross_repo_blast_radius` · `find_consumers_of_api` · `get_service_boundary_violations` |
+| `get_architecture` · `get_context` | Orient in the repo; full context for one file |
+| `impact` | Blast radius / multi-file simulate / neighbors / data flow - *what breaks if I touch this?* (`mode=`) |
+| `validate_diff` | Grade a proposed diff (risk + violations) |
+| `get_change_plan` | Natural-language intent → files to touch |
+| `memory` | Episodic memory - search past decisions, logs, sessions, interventions (`kind=`) |
+| `history` | Temporal history - drift, hotspots, evolution, churn, health (`view=`) |
+| `patterns` | Mined invariants / conventions / canonical exemplar / co-change patterns (`kind=`) |
+| `get_predictive_risk` · `get_minimal_context_for_intent` | Risk score per file; token-budgeted context picker |
 
-Full reference at [`docs/api/`](docs/api/). You don't need to memorize any of these — your AI picks the right one mid-task.
+Beyond the core, `org(view=…)` covers multi-repo, and advanced/experimental tools (`get_routes`,
+`get_models`, `get_gaps`, `scaffold_for_intent`, …) are available by widening the surface with
+`CARTO_MCP_TIER=advanced` (or `all`), or `carto.config.json` → `mcp.tier`. The ~30 former sibling
+tools (`get_blast_radius`, `did_we_discuss_this`, …) still resolve as **deprecated shims** that
+forward to the new families with byte-identical output.
+
+Full reference at [`docs/api/`](docs/api/). You don't need to memorize any of these - your AI picks the right one mid-task.
 
 ---
 
@@ -229,7 +261,9 @@ Query latency on vscode (7,567 files): `validate_diff` p50 **84 µs** · `get_bl
 
 **Routes:** Express · Next.js · tRPC · React Router · FastAPI · Flask · Django · Gin · Echo · Chi · Actix · Axum · Rocket · Spring · JAX-RS · ASP.NET · Rails · Sinatra
 
-**Models:** Prisma · Zod · Drizzle · Pydantic · SQLAlchemy · Go structs · Rust structs · JPA · EF Core · ActiveRecord
+**Models:** Prisma · Zod · Drizzle · Pydantic · SQLAlchemy · Django · Go structs · Rust structs · JPA · ActiveRecord · Eloquent
+
+> _Planned (not yet extracted end-to-end):_ EF Core.
 
 ---
 
@@ -239,6 +273,8 @@ Query latency on vscode (7,567 files): `validate_diff` p50 **84 µs** · `get_bl
 |---|---|
 | `carto init` | Build the container, generate AGENTS.md, install git hooks, wire every AI tool found |
 | `carto sync` | Re-build changed files (auto-runs on commit / checkout / merge / rebase) |
+| `carto export` | Pack the container into one portable, verifiable `.anci` file |
+| `carto load <file>` | Load an `.anci` container into a queryable `.carto/` - no re-index, digest verified |
 | `carto serve` | Start the MCP server (your AI tool runs this) |
 | `carto impact <file>` | Blast radius of one file |
 | `carto pr-impact` | Diff-shaped impact report between two refs |
@@ -261,9 +297,9 @@ Query latency on vscode (7,567 files): `validate_diff` p50 **84 µs** · `get_bl
 
 ## Origin
 
-I was building [Emfirge](https://www.emfirge.cloud) — a cloud security agent that maps AWS infrastructure into a graph and simulates the blast radius of every change. The AI inside it kept hallucinating about resources it had only half-seen, so I wrote a module that mapped every account into a structured graph the AI could query directly. The hallucinations stopped.
+I was building [Emfirge](https://www.emfirge.cloud) - a cloud security agent that maps AWS infrastructure into a graph and simulates the blast radius of every change. The AI inside it kept hallucinating about resources it had only half-seen, so I wrote a module that mapped every account into a structured graph the AI could query directly. The hallucinations stopped.
 
-Carto is that idea, applied to source code: package a system into a container the AI can query — and it stops guessing, and stops forgetting.
+Carto is that idea, applied to source code: package a system into a container the AI can query - and it stops guessing, and stops forgetting.
 
 ---
 
@@ -273,4 +309,4 @@ MIT. Free forever.
 
 ---
 
-*Your code changes. Carto knows. Every AI you use knows — and remembers.*
+*Your code changes. Carto knows. Every AI you use knows - and remembers.*
