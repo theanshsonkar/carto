@@ -185,17 +185,53 @@ function deriveBodyFromSidecar(sidecar) {
  * (routes, models, domain counts) and architecture from the bitmap
  * `sidecar` (high-impact files). Both arguments are required because
  * the binary body alone does not carry route/model semantics.
+ *
+ * CT-1 container identity fields (all optional; degrade to sensible
+ * defaults when the emitter can't compute them):
+ *   - cartoVersion    — carto-md version the container was built with.
+ *   - grammarVersions — { pkg: version } map of tree-sitter grammars.
+ *   - source          — { commit, tree_hash, branch } git identity.
+ *   - contentDigest   — "sha256:…" hash of the on-disk anci.bin body.
+ *   - contains        — capability list, e.g. ["structural"].
  */
-function buildHeader({ sidecar, store, generator, generatedAt, bodyBytes }) {
+function buildHeader({
+  sidecar, store, generator, generatedAt, bodyBytes,
+  cartoVersion, grammarVersions, source, contentDigest, contains,
+}) {
   // ── anci block ───────────────────────────────────────────────────
+  const body = {
+    file: ANCI_BIN_FILENAME,
+    bytes: typeof bodyBytes === 'number' ? bodyBytes : 0,
+  };
+  // content_digest is optional — only present when the emitter computed
+  // it (it needs the finished body buffer). Consumers verify against it.
+  if (typeof contentDigest === 'string' && contentDigest) {
+    body.content_digest = contentDigest;
+  }
   const anciBlock = {
     version: '0.1.0-DRAFT',
     generator: generator || 'carto-md@unknown',
     generated_at: generatedAt || new Date().toISOString(),
-    body: {
-      file: ANCI_BIN_FILENAME,
-      bytes: typeof bodyBytes === 'number' ? bodyBytes : 0,
-    },
+    // carto-md version this container was produced by. Distinct from
+    // `generator` (which is free-form) — this is a bare version string
+    // for reproducibility checks.
+    carto_version: typeof cartoVersion === 'string' && cartoVersion
+      ? cartoVersion
+      : resolveCartoVersion(),
+    // Capability list — which memory layers this container carries.
+    // v0.1 ships the structural layer only (CT-2 scopes the claim).
+    contains: Array.isArray(contains) && contains.length ? contains : ['structural'],
+    body,
+  };
+
+  // ── source block (git identity) ──────────────────────────────────
+  // Always emitted so the schema shape is stable; fields are null on a
+  // non-git repo or when git can't be reached.
+  const src = source || {};
+  const sourceBlock = {
+    commit: typeof src.commit === 'string' ? src.commit : null,
+    tree_hash: typeof src.tree_hash === 'string' ? src.tree_hash : null,
+    branch: typeof src.branch === 'string' ? src.branch : null,
   };
 
   // ── project block ────────────────────────────────────────────────
@@ -242,14 +278,49 @@ function buildHeader({ sidecar, store, generator, generatedAt, bodyBytes }) {
     file: m.file,
   }));
 
-  return {
+  // ── grammar_versions block ───────────────────────────────────────
+  // { pkg: version }; only emitted when at least one grammar resolved.
+  const grammars = grammarVersions && typeof grammarVersions === 'object'
+    ? grammarVersions
+    : resolveGrammarVersions();
+
+  const header = {
     anci: anciBlock,
+    source: sourceBlock,
     project,
     domains,
     high_impact,
     routes,
     models,
   };
+  if (grammars && Object.keys(grammars).length > 0) {
+    header.grammar_versions = grammars;
+  }
+  return header;
+}
+
+/**
+ * resolveCartoVersion() → bare version string (e.g. "2.1.0").
+ * Defensive: falls back to "unknown" if package.json is unreadable.
+ */
+function resolveCartoVersion() {
+  try {
+    return require('../../package.json').version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * resolveGrammarVersions() → { pkg: version } | {}
+ * Best-effort — returns {} if the parser module can't be loaded.
+ */
+function resolveGrammarVersions() {
+  try {
+    return require('../extractors/tree-sitter-parser').getGrammarVersions();
+  } catch {
+    return {};
+  }
 }
 
 module.exports = {
