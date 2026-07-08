@@ -200,7 +200,9 @@ function dataFlow(args, ctx) {
   const routes = store.db.prepare('SELECT method, path FROM routes WHERE file_id = ?').all(file.id);
   const models = store.db.prepare('SELECT name, kind FROM models WHERE file_id = ?').all(file.id);
   const envVars = store.db.prepare('SELECT name FROM env_vars WHERE file_id = ?').all(file.id).map(r => r.name);
-  const domain = file.domain_id ? (store.db.prepare('SELECT name FROM domains WHERE id = ?').get(file.domain_id) || {}).name : null;
+  // Single source of truth: resolve domain via the canonical accessor so
+  // get_data_flow can never disagree with get_cross_domain (CF-3).
+  const domain = store.getDomainOf(file.id);
 
   return {
     source: args.file,
@@ -232,7 +234,7 @@ function interfaceContract(args, ctx) {
   `).all(f.id);
   return {
     file: args.file,
-    domain: f.domain_id ? (store.db.prepare('SELECT name FROM domains WHERE id = ?').get(f.domain_id) || {}).name : null,
+    domain: store.getDomainOf(f.id),
     exports: symbols,
     models,
     routes,
