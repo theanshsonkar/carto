@@ -149,6 +149,82 @@ function camelTokens(name) {
   return [...out];
 }
 
+// ─── Route path token matching (CF-5) ────────────────────────────────
+
+/**
+ * routePathTokens(routePath) → [token, ...]
+ *
+ * Split a route path into whole word tokens on any non-alphanumeric
+ * boundary, so `/api/ai/sql/generate-v4` → [api, ai, sql, generate, v4]
+ * and `/api/ai/feedback/rate` → [api, ai, feedback, rate]. Path params
+ * (`{id}`, `:id`, `[ref]`) are stripped to their inner word by the same
+ * split. This is what lets us reject the substring false-positive where
+ * "rate" ⊂ "gene**rate**-v4".
+ */
+function routePathTokens(routePath) {
+  if (!routePath) return [];
+  const out = new Set();
+  for (const seg of String(routePath).split(/[^a-zA-Z0-9]+/)) {
+    if (seg) out.add(seg.toLowerCase());
+  }
+  return [...out];
+}
+
+/**
+ * tokenMatchesRoute(token, routeTokens) → bool
+ *
+ * Whole-token / prefix match, mirroring the Stage B file-token rule:
+ *   - exact whole-token match, OR
+ *   - token length ≥ 4 (or a length-3 dev abbreviation) AND some route
+ *     token is longer and starts with it ("user" → "users",
+ *     "auth" → "authentication").
+ * A pure substring like "rate" ⊂ "generate" is NOT a match.
+ */
+function tokenMatchesRoute(token, routeTokens) {
+  if (!token) return false;
+  for (const pt of routeTokens) {
+    if (pt === token) return true;
+  }
+  if (token.length >= 4 || (token.length === 3 && ABBREV3.has(token))) {
+    for (const pt of routeTokens) {
+      if (pt.length > token.length && pt.startsWith(token)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Light, conservative synonym rules for route matching. Only fire when
+ * ALL trigger tokens co-occur in the intent, so a bare "rate" (feedback
+ * rating) does NOT pull in throttle routes — only "rate limit(ing)" does.
+ * `has` is a predicate over the intent's content tokens.
+ */
+const ROUTE_SYNONYM_RULES = [
+  {
+    when: (has) => has('rate') && has(t => t.startsWith('limit')),
+    add: ['ratelimit', 'throttle', 'throttling'],
+  },
+];
+
+/**
+ * routeSynonyms(content) → [extraToken, ...]
+ *
+ * Expand the content tokens with any synonym tokens whose rule fires.
+ * Deduped and filtered to tokens not already present.
+ */
+function routeSynonyms(content) {
+  const set = new Set(content);
+  const has = (arg) =>
+    typeof arg === 'function' ? content.some(arg) : set.has(arg);
+  const extra = new Set();
+  for (const rule of ROUTE_SYNONYM_RULES) {
+    if (rule.when(has)) {
+      for (const s of rule.add) if (!set.has(s)) extra.add(s);
+    }
+  }
+  return [...extra];
+}
+
 // ─── IDF over indexed corpus ─────────────────────────────────────────
 
 /**
@@ -282,25 +358,65 @@ function selectAnchors(store, tokens, idf, maxAnchors = 8) {
 
   // Also try matching each content token against route paths — catches
   // intents like "users endpoint" that don't carry a "/path".
+  //
+  // CF-5: store.searchRoutes() is a coarse substring (`LIKE %token%`)
+  // prefilter — it will return "generate-v4" for the token "rate". We
+  // re-verify every candidate on WORD/SEGMENT boundaries here so
+  // "rate" only matches a route with a whole "rate" token, never
+  // "gene**rate**". Routes are ranked by how many distinct intent
+  // tokens they match (IDF-weighted), so multi-token hits rank first.
   if (tokens.paths.length === 0 && tokens.content.length > 0) {
-    for (const t of tokens.content) {
-      if (t.length < 3) continue; // avoid 2-char route flooding
+    // Route-search tokens: content tokens (len ≥ 3 to avoid 2-char
+    // route flooding) plus any conservative synonyms ("rate limit" →
+    // throttle/ratelimit). Synonyms are tracked so they don't inflate
+    // the matched-token count beyond their triggering intent.
+    const contentSearch = tokens.content.filter(t => t.length >= 3);
+    const synonyms = routeSynonyms(tokens.content).filter(t => t.length >= 3);
+    const searchTokens = [...new Set([...contentSearch, ...synonyms])];
+
+    // key = "METHOD /path FILE" → { route, matched:Set, score }
+    const matchedRoutes = new Map();
+    for (const t of searchTokens) {
       let routes = [];
       try { routes = store.searchRoutes(t) || []; } catch { routes = []; }
       for (const r of routes) {
-        const key = `${r.method} ${r.path} ${r.file}`;
-        if (routesSeen.has(key)) continue;
-        routesSeen.add(key);
+        const rTokens = routePathTokens(r.path);
+        // Reject substring-only false positives.
+        if (!tokenMatchesRoute(t, rTokens)) continue;
         const methodOk = tokens.verbs.length === 0 || tokens.verbs.includes(r.method);
         if (!methodOk) continue;
-        anchors.push({
-          kind: 'route',
-          value: `${r.method} ${r.path}`,
-          file: r.file,
-          score: 60 * idfWeight(idf, t),
-          reason: `route path contains "${t}"`
-        });
+        const key = `${r.method} ${r.path} ${r.file}`;
+        let entry = matchedRoutes.get(key);
+        if (!entry) {
+          entry = { route: r, matched: new Set(), weight: 0 };
+          matchedRoutes.set(key, entry);
+        }
+        if (!entry.matched.has(t)) {
+          entry.matched.add(t);
+          entry.weight += idfWeight(idf, t);
+        }
       }
+    }
+
+    for (const entry of matchedRoutes.values()) {
+      const r = entry.route;
+      const key = `${r.method} ${r.path} ${r.file}`;
+      if (routesSeen.has(key)) continue;
+      routesSeen.add(key);
+      const n = entry.matched.size;
+      const matchList = [...entry.matched].join(', ');
+      anchors.push({
+        kind: 'route',
+        value: `${r.method} ${r.path}`,
+        file: r.file,
+        // Base 60 × IDF weight, plus a bonus per additional matched
+        // token so a route matching "rate" + "limit" outranks one
+        // matching only "rate".
+        score: 60 * entry.weight + 40 * (n - 1),
+        reason: n > 1
+          ? `route path matches ${n} tokens: ${matchList}`
+          : `route path matches "${matchList}"`
+      });
     }
   }
 
@@ -730,6 +846,9 @@ module.exports = {
   tokenize,
   pathTokens,
   camelTokens,
+  routePathTokens,
+  tokenMatchesRoute,
+  routeSynonyms,
   computeIdf,
   selectAnchors,
   expandGraph,
