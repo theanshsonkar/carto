@@ -2,6 +2,67 @@
 
 All notable changes to Carto land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [2.1.2] - 2026-07-09
+
+Monorepo import resolution — the fix that makes blast radius and the diff guardrail
+trustworthy on the alias-heavy repos most teams actually have. Benchmarking on
+supabase/supabase and prisma/prisma exposed that Carto was resolving only ~24% of the
+internal import graph on workspace monorepos; this release takes it to ~69–73% with zero
+unresolved *relative* edges, and every graph-derived feature (blast radius, `validate_diff`,
+domains, high-impact ranking) inherits the fix.
+
+### Fixed
+- **Workspace-alias imports are no longer dropped (CARTO-001, Critical).** The resolver now
+  builds a workspace-package map (every `package.json` `name`) and resolves scoped
+  (`@scope/pkg/sub`), bare workspace names (`ui`, `common`, `ui-patterns`), and Next.js
+  `baseUrl` imports (`components/…`) to real files — before falling back to "external npm".
+  Every candidate is existence-checked, so genuine npm packages can't false-resolve.
+  On supabase: resolved import edges **24.4% → 69.2%**, and `impact` recall on a
+  barrel-re-exported utility (`cn`) went from ~10% to **97.9%** (independent grep oracle).
+  On prisma: **73.1%** resolved, 2,203 scoped `@prisma/*` edges connected.
+- **Barrel re-exports now propagate blast radius.** `export * from '…'` / `export { x } from '…'`
+  re-exports (and dynamic `import()`) are captured as real dependency edges, so changing a
+  symbol re-exported through a package barrel correctly surfaces every downstream consumer.
+- **`validate_diff` catches cross-domain couplings added via aliases (CARTO-002, High).**
+  A new `PAYMENTS → AUTH` import added via a workspace/`baseUrl`/`@/` specifier is now graded
+  `HIGH` with a `cross_domain` violation, matching the relative-path behavior — previously it
+  returned `SAFE`.
+- **JSONC parser no longer corrupts tsconfigs with URLs in strings.** The comment-stripper was
+  regex-based and ate `//` inside string values (e.g. `"$schema": "https://…"`), throwing
+  `JSON.parse` and silently dropping *all* `compilerOptions.paths` aliases. Replaced with a
+  string-aware stripper (also applied to the legacy alias loader).
+- **`detectFramework().language` reflects the repo (CARTO-004).** Derived from TS-vs-JS
+  file-extension majority, so TypeScript repos report `typescript` instead of `javascript`.
+- **`carto sync` self-heals a missing `.carto/config.json` (CARTO-005).** A container built via
+  the programmatic API (`StoreAdapter.index`) is now fully usable by `carto sync`, which
+  reconstructs the config from the existing index instead of refusing with "Run carto init first".
+- **`carto explain` "Relevant Symbols" table renders correctly (CARTO-008).** Pipe and newline
+  characters in the "Why" column are escaped so the markdown table no longer breaks into
+  phantom columns.
+- **`carto explain` output is tighter and ranked (CARTO-003).** Forward-import expansion is
+  relevance-ranked and pruned (kept in full only when small), anchors are split high vs
+  low-confidence, and the cross-domain / blast-radius / conventions sections are capped with
+  "N more" pointers. On supabase #47672 the `explain` output dropped **2,734 → 1,364 tokens
+  (−50%)** with the full reference touch-set preserved.
+- **Framework detection weights `dependencies` over `devDependencies` (CARTO-010).** A UI
+  framework (e.g. `react`) seen only in `devDependencies` is down-ranked, so a library/CLI
+  monorepo like prisma reports `node-generic`/`typescript` instead of `react`.
+
+### Changed
+- **Domain taxonomy is now driven by the import graph (CARTO-006).** With the graph ~69% resolved,
+  community detection yields structural domains (e.g. supabase: 13 domains, top 53%) instead of
+  collapsing ~91% of files into `CORE`. `carto check` now warns when a single domain dominates
+  >70% of files ("low domain resolution").
+- **`get_models` reports data models honestly (CARTO-007).** Output is bucketed by kind —
+  schema/ORM models (Zod, Prisma, Drizzle, structs, …) are counted separately from TS
+  `interface`s and Swift/Flutter UI classes, so the headline count isn't inflated.
+
+### Known issues
+- **CARTO-009 (open):** the default `*secret*` / `*password*` / `*credential*` ignore globs match
+  source *code* files (e.g. `SecretRow.tsx`, `ResetPasswordForm.tsx`, whole `JwtSecrets/` dirs),
+  excluding them from the index. A fix is deferred because it changes a deliberate,
+  test-enforced security posture; tracked for a follow-up.
+
 ## [2.1.1] - 2026-07-08
 
 Correctness, trust, and real portability. The external-audit fixes land, the tool surface collapses to a default core-10, and the container becomes a single verifiable file you can move between machines.

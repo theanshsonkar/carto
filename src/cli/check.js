@@ -165,6 +165,21 @@ async function run(projectRoot, opts = {}) {
     for (const d of domains) {
       console.log(`     ${d.name.padEnd(16)} ${String(d.fileCount).padStart(5)} files  ${String(d.routeCount).padStart(4)} routes  ${String(d.modelCount).padStart(4)} models`);
     }
+    // Low-resolution warning: when a single domain (typically the CORE
+    // fallback) swallows >70% of files, the taxonomy told you almost
+    // nothing about the repo's structure — every cross-domain feature
+    // degrades with it (CARTO-006).
+    const totalDomainFiles = domains.reduce((s, d) => s + d.fileCount, 0);
+    if (totalDomainFiles > 0) {
+      const top = domains.reduce((a, b) => (b.fileCount > a.fileCount ? b : a));
+      const share = top.fileCount / totalDomainFiles;
+      if (share > 0.70) {
+        console.log('');
+        console.log(`  ⚠️  Low domain resolution: ${(share * 100).toFixed(0)}% of files are in ${top.name}.`);
+        console.log(`     Domain classification added little — cross-domain / validate_diff signals will be weak.`);
+        console.log(`     Consider declaring domains in carto.config.json (globs/keywords/anchors).`);
+      }
+    }
     console.log('');
   }
 

@@ -61,47 +61,31 @@ function extractImports(content, filePath, projectRoot) {
   const resolved = new Set();
 
   for (const imp of rawImports) {
-    // Bare module specifiers (npm packages) — record as-is so
-    // downstream consumers can see which external packages this file
-    // depends on. Stored with to_file_id = NULL, resolved = 0.
-    if (isBareModuleSpecifier(imp)) {
-      resolved.add(imp);
-      continue;
-    }
-
     let resolvedPath;
     if (imp.startsWith('.')) {
-      // Relative import
+      // Relative import (behavior unchanged — this path already worked).
       resolvedPath = resolveImportPath(imp, fileDir, projectRoot, ext);
     } else {
-      // Aliased import (@/, ~/, #/, etc.)
-      const aliasedAbs = resolveAliasedImport(imp, projectRoot);
-      if (aliasedAbs) {
-        resolvedPath = resolveImportPath(aliasedAbs, path.dirname(aliasedAbs), projectRoot, ext);
-        if (!resolvedPath) {
-          // Try treating aliasedAbs as the base directly
-          const extensions = ['.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs'];
-          if (fs.existsSync(aliasedAbs) && fs.statSync(aliasedAbs).isFile()) {
-            resolvedPath = aliasedAbs;
-          } else {
-            for (const e of extensions) {
-              if (fs.existsSync(aliasedAbs + e)) { resolvedPath = aliasedAbs + e; break; }
-            }
-            if (!resolvedPath) {
-              for (const e of extensions) {
-                const idx = path.join(aliasedAbs, 'index' + e);
-                if (fs.existsSync(idx)) { resolvedPath = idx; break; }
-              }
-            }
-          }
-        }
-      }
+      // Non-relative specifier. Try, in order: (1) nearest tsconfig/jsconfig
+      // path-aliases, (2) legacy root alias + conventions, (3) the workspace
+      // package map (scoped `@scope/pkg[/sub]`, bare workspace names like
+      // `ui`/`common`, and barrel entries), (4) nearest tsconfig `baseUrl`
+      // bare imports (Next.js `components/...`, `data/...`). Every candidate
+      // is existence-checked on disk, so a genuine external npm package
+      // (`react`, `next-auth`, …) can never false-resolve to a local file.
+      resolvedPath = resolveNonRelativeImport(imp, fileDir, projectRoot);
     }
+
     if (resolvedPath) {
       const rel = path.isAbsolute(resolvedPath)
         ? path.relative(projectRoot, resolvedPath)
         : resolvedPath;
       resolved.add(rel);
+    } else if (isBareModuleSpecifier(imp)) {
+      // True external npm package — record as-is (stored with
+      // to_file_id = NULL, resolved = 0) so downstream consumers can still
+      // see which external packages a file depends on.
+      resolved.add(imp);
     }
   }
 
@@ -123,6 +107,23 @@ function extractJSImports(content) {
   const importPattern = /import\s+(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/g;
   let match;
   while ((match = importPattern.exec(content)) !== null) {
+    imports.push(match[1]);
+  }
+
+  // Re-exports: `export * from '...'`, `export * as ns from '...'`,
+  // `export { a, b } from '...'`, `export type { X } from '...'`.
+  // These are genuine dependency edges — they are how barrel files
+  // (`packages/ui/index.tsx` → `export * from './src/lib/utils'`) forward
+  // a symbol's definition, so blast radius must propagate through them.
+  const exportFromPattern =
+    /export\s+(?:type\s+)?(?:\*(?:\s+as\s+[\w$]+)?|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]/g;
+  while ((match = exportFromPattern.exec(content)) !== null) {
+    imports.push(match[1]);
+  }
+
+  // Dynamic imports: `import('...')` (Next.js lazy loading, code-split routes).
+  const dynamicImportPattern = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  while ((match = dynamicImportPattern.exec(content)) !== null) {
     imports.push(match[1]);
   }
 
@@ -171,9 +172,9 @@ function loadPathAliases(projectRoot) {
     const configPath = path.join(projectRoot, configFile);
     try {
       const raw = fs.readFileSync(configPath, 'utf-8');
-      // Strip comments (tsconfig allows them)
-      const cleaned = raw.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
-      const config = JSON.parse(cleaned);
+      // Use the string-aware JSONC parser so a `"$schema": "https://..."`
+      // URL (or any `//` inside a string) doesn't corrupt the parse.
+      const config = _parseJsonc(raw);
       const paths = config?.compilerOptions?.paths || {};
       const baseUrl = config?.compilerOptions?.baseUrl || '.';
       const base = path.resolve(projectRoot, baseUrl);
@@ -216,6 +217,344 @@ function resolveAliasedImport(importPath, projectRoot) {
       return path.join(targetDir, rest);
     }
   }
+  return null;
+}
+
+// ─── CARTO-001: monorepo workspace / baseUrl / barrel resolution ──────────────
+//
+// Root cause fixed here: workspace-alias imports (`@scope/pkg/sub`), bare
+// workspace names (`ui`, `common`, `ui-patterns`), and Next.js `baseUrl`
+// imports (`components/...`) were all classified as external npm packages by
+// isBareModuleSpecifier() and dropped from the graph. On alias-heavy
+// monorepos that silently discarded ~50-70% of the internal import graph, so
+// blast radius, validate_diff, and cross-domain analysis were all computed on
+// a gutted graph. The helpers below resolve those specifiers to real project
+// files (every candidate is existence-checked), which is all downstream code
+// needs — getFileByPath() then maps them to to_file_id and flips resolved=1.
+
+// Extensions probed when resolving a specifier to a file, TS-first.
+const _JS_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.d.ts'];
+
+/**
+ * Probe an absolute base path for a real file: exact, then +ext, then
+ * /index.<ext>. Returns the absolute file path or null.
+ */
+function _probePath(absBase) {
+  try {
+    if (fs.existsSync(absBase) && fs.statSync(absBase).isFile()) return absBase;
+  } catch { /* ignore */ }
+  for (const e of _JS_EXTS) {
+    const withExt = absBase + e;
+    if (fs.existsSync(withExt)) return withExt;
+  }
+  for (const e of _JS_EXTS) {
+    const idx = path.join(absBase, 'index' + e);
+    if (fs.existsSync(idx)) return idx;
+  }
+  return null;
+}
+
+/** Parse JSON with comments + trailing commas (tsconfig/jsconfig tolerate both). */
+function _parseJsonc(raw) {
+  return JSON.parse(_stripJsonComments(raw).replace(/,(\s*[}\]])/g, '$1'));
+}
+
+/**
+ * Strip `//` line and block comments from JSON, but NOT when the comment
+ * marker appears inside a string literal. A naive regex-based stripper
+ * corrupts tsconfigs that carry a `"$schema"` URL like `https:` followed by
+ * two slashes — it eats the URL mid-string and makes JSON.parse throw,
+ * silently dropping all path aliases (this was the real reason `@/` imports
+ * weren't resolving on supabase).
+ */
+function _stripJsonComments(s) {
+  let out = '';
+  let inStr = false, strCh = '';
+  let inLine = false, inBlock = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i], c2 = s[i + 1];
+    if (inLine) { if (c === '\n') { inLine = false; out += c; } continue; }
+    if (inBlock) { if (c === '*' && c2 === '/') { inBlock = false; i++; } continue; }
+    if (inStr) {
+      out += c;
+      if (c === '\\') { if (c2 !== undefined) { out += c2; i++; } continue; }
+      if (c === strCh) inStr = false;
+      continue;
+    }
+    if (c === '"' || c === "'") { inStr = true; strCh = c; out += c; continue; }
+    if (c === '/' && c2 === '/') { inLine = true; i++; continue; }
+    if (c === '/' && c2 === '*') { inBlock = true; i++; continue; }
+    out += c;
+  }
+  return out;
+}
+
+// ─── Workspace-package map (name → { dir, entry }) ────────────────────────────
+
+const _workspaceCache = new Map(); // projectRoot → { byName:Map, names:[] }
+const _WALK_SKIP = new Set([
+  'node_modules', '.git', 'dist', 'build', '.next', 'out',
+  'coverage', '.turbo', '.cache', '.vercel', 'tmp', '.svelte-kit'
+]);
+
+/**
+ * Resolve a package.json entry point to a real source file. Tries
+ * exports["."] / module / main, then falls back to common source barrels
+ * (index.*, src/index.*) so it works on un-built source trees where the
+ * declared `main` (e.g. dist/index.js) doesn't exist yet.
+ */
+function _resolvePackageEntry(pkgDir, pj) {
+  const candidates = [];
+  const exp = pj && pj.exports;
+  if (exp) {
+    if (typeof exp === 'string') candidates.push(exp);
+    else if (typeof exp === 'object') {
+      const dot = exp['.'] !== undefined ? exp['.'] : exp;
+      if (typeof dot === 'string') candidates.push(dot);
+      else if (dot && typeof dot === 'object') {
+        for (const k of ['import', 'module', 'default', 'require', 'node', 'types']) {
+          const v = dot[k];
+          if (typeof v === 'string') { candidates.push(v); break; }
+          if (v && typeof v === 'object' && typeof v.default === 'string') { candidates.push(v.default); break; }
+        }
+      }
+    }
+  }
+  if (typeof pj?.module === 'string') candidates.push(pj.module);
+  if (typeof pj?.main === 'string') candidates.push(pj.main);
+  // Source-tree fallbacks (order matters — prefer explicit barrels).
+  candidates.push('index', 'src/index', 'src/main', 'lib/index');
+
+  for (const c of candidates) {
+    if (!c) continue;
+    const hit = _probePath(path.resolve(pkgDir, c.replace(/^\.\//, '')));
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Build the workspace-package map for a repo: every package.json with a
+ * `name`, mapped to its directory + resolved barrel entry. Uses a bounded
+ * directory walk (skipping node_modules/build dirs) so it works whether the
+ * repo declares workspaces via root package.json `workspaces`, a
+ * pnpm-workspace.yaml, or nothing at all. Cached per projectRoot.
+ */
+function loadWorkspaceMap(projectRoot) {
+  if (_workspaceCache.has(projectRoot)) return _workspaceCache.get(projectRoot);
+
+  const byName = new Map();
+  const MAX_DEPTH = 7;
+
+  const consider = (dir) => {
+    const pjPath = path.join(dir, 'package.json');
+    let pj;
+    try { pj = JSON.parse(fs.readFileSync(pjPath, 'utf-8')); } catch { return; }
+    if (pj && typeof pj.name === 'string' && pj.name) {
+      if (!byName.has(pj.name)) {
+        byName.set(pj.name, { dir, entry: _resolvePackageEntry(dir, pj) });
+      }
+    }
+  };
+
+  const walk = (dir, depth) => {
+    if (depth > MAX_DEPTH) return;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    let hasPkg = false;
+    for (const e of entries) {
+      if (e.isFile() && e.name === 'package.json') hasPkg = true;
+    }
+    if (hasPkg) consider(dir);
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      if (e.name.startsWith('.') || _WALK_SKIP.has(e.name)) continue;
+      walk(path.join(dir, e.name), depth + 1);
+    }
+  };
+
+  walk(projectRoot, 0);
+
+  // Longest names first so `@scope/pkg` wins over a hypothetical `@scope`.
+  const names = [...byName.keys()].sort((a, b) => b.length - a.length);
+  const map = { byName, names };
+  _workspaceCache.set(projectRoot, map);
+  return map;
+}
+
+/**
+ * Resolve a specifier against the workspace-package map.
+ *   - exact package name (`ui`, `@supabase/pg-meta`) → its barrel entry
+ *     (so blast radius propagates through re-export barrels), falling back
+ *     to the package dir's index if no entry was resolvable.
+ *   - subpath (`@calcom/trpc/server/types`, `common/hooks`) →
+ *     `<pkgDir>/<sub>` or `<pkgDir>/src/<sub>`.
+ * Returns an absolute file path or null.
+ */
+function resolveWorkspaceImport(imp, projectRoot) {
+  const wm = loadWorkspaceMap(projectRoot);
+  if (wm.names.length === 0) return null;
+
+  for (const name of wm.names) {
+    if (imp === name) {
+      const { dir, entry } = wm.byName.get(name);
+      return entry || _probePath(path.join(dir, 'index')) || _probePath(path.join(dir, 'src/index'));
+    }
+    if (imp.startsWith(name + '/')) {
+      const { dir } = wm.byName.get(name);
+      const sub = imp.slice(name.length + 1);
+      return _probePath(path.join(dir, sub)) || _probePath(path.join(dir, 'src', sub));
+    }
+  }
+  return null;
+}
+
+// ─── Nearest tsconfig/jsconfig chain (paths + baseUrl) ────────────────────────
+
+const _tsconfigParseCache = new Map();  // configPath → { aliases:Map<prefix,[absDir]>, baseUrlDir|null }
+const _nearestTsconfigCache = new Map(); // startDir → parsed chain | null
+
+/** Resolve a tsconfig `extends` target to an absolute config path. */
+function _resolveExtends(ext, fromDir, projectRoot) {
+  if (!ext || typeof ext !== 'string') return null;
+  let target;
+  if (ext.startsWith('.')) {
+    target = path.resolve(fromDir, ext);
+  } else {
+    // Bare `pkg[/sub]` — resolve against the workspace map (e.g. supabase's
+    // `tsconfig/nextjs.json`). node_modules-only extends are ignored (their
+    // configs rarely add local paths and aren't present in source trees).
+    const wm = loadWorkspaceMap(projectRoot);
+    const slash = ext.indexOf('/');
+    const pkg = slash === -1 ? ext : ext.slice(0, slash);
+    const sub = slash === -1 ? '' : ext.slice(slash + 1);
+    const rec = wm.byName.get(pkg);
+    if (!rec) return null;
+    target = sub ? path.join(rec.dir, sub) : path.join(rec.dir, 'tsconfig.json');
+  }
+  if (!/\.json$/.test(target)) target += '.json';
+  return fs.existsSync(target) ? target : null;
+}
+
+/**
+ * Parse a tsconfig/jsconfig (following `extends`) into absolute path-alias
+ * targets + an absolute baseUrl dir (only when baseUrl is explicitly set —
+ * TS only resolves bare specifiers against baseUrl when it's declared).
+ */
+function _parseTsconfigChain(configPath, projectRoot, seen) {
+  if (_tsconfigParseCache.has(configPath)) return _tsconfigParseCache.get(configPath);
+  seen = seen || new Set();
+  if (seen.has(configPath)) return { aliases: new Map(), baseUrlDir: null };
+  seen.add(configPath);
+
+  let cfg;
+  try { cfg = _parseJsonc(fs.readFileSync(configPath, 'utf-8')); } catch { cfg = {}; }
+  const dir = path.dirname(configPath);
+
+  let aliases = new Map();
+  let baseUrlDir = null;
+
+  if (cfg.extends) {
+    const extList = Array.isArray(cfg.extends) ? cfg.extends : [cfg.extends];
+    for (const ex of extList) {
+      const parentPath = _resolveExtends(ex, dir, projectRoot);
+      if (parentPath) {
+        const parent = _parseTsconfigChain(parentPath, projectRoot, seen);
+        for (const [k, v] of parent.aliases) aliases.set(k, v);
+        if (parent.baseUrlDir) baseUrlDir = parent.baseUrlDir;
+      }
+    }
+  }
+
+  const co = cfg.compilerOptions || {};
+  // baseUrl is resolved relative to THIS config's directory.
+  const ownBaseUrlDir = co.baseUrl !== undefined ? path.resolve(dir, co.baseUrl) : path.resolve(dir);
+  if (co.baseUrl !== undefined) baseUrlDir = ownBaseUrlDir;
+
+  if (co.paths && typeof co.paths === 'object') {
+    for (const [pattern, targets] of Object.entries(co.paths)) {
+      if (!Array.isArray(targets) || targets.length === 0) continue;
+      const prefix = pattern.replace(/\*$/, '');
+      const absTargets = targets.map(t =>
+        path.resolve(ownBaseUrlDir, String(t).replace(/\*$/, '')));
+      aliases.set(prefix, absTargets);
+    }
+  }
+
+  const result = { aliases, baseUrlDir };
+  _tsconfigParseCache.set(configPath, result);
+  return result;
+}
+
+/** Find + parse the nearest tsconfig/jsconfig walking up from a directory. */
+function _getTsconfigForDir(startDir, projectRoot) {
+  if (_nearestTsconfigCache.has(startDir)) return _nearestTsconfigCache.get(startDir);
+
+  let dir = startDir;
+  let configPath = null;
+  while (dir && dir.startsWith(projectRoot)) {
+    for (const name of ['tsconfig.json', 'jsconfig.json']) {
+      const p = path.join(dir, name);
+      if (fs.existsSync(p)) { configPath = p; break; }
+    }
+    if (configPath) break;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  const result = configPath ? _parseTsconfigChain(configPath, projectRoot) : null;
+  _nearestTsconfigCache.set(startDir, result);
+  return result;
+}
+
+/** Resolve `imp` against the nearest tsconfig `paths` aliases. */
+function resolveTsconfigPaths(imp, fileDir, projectRoot) {
+  const chain = _getTsconfigForDir(fileDir, projectRoot);
+  if (!chain || chain.aliases.size === 0) return null;
+  // Longest prefix first for correctness (`@ui/` before `@/`).
+  const prefixes = [...chain.aliases.keys()].sort((a, b) => b.length - a.length);
+  for (const prefix of prefixes) {
+    const isWildcard = prefix.endsWith('/') || prefix === '';
+    const matches = isWildcard ? imp.startsWith(prefix) : imp === prefix;
+    if (!matches) continue;
+    const rest = imp.slice(prefix.length);
+    for (const targetDir of chain.aliases.get(prefix)) {
+      const hit = _probePath(rest ? path.join(targetDir, rest) : targetDir);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/** Resolve a bare `imp` against the nearest tsconfig `baseUrl` (Next.js style). */
+function resolveBaseUrlImport(imp, fileDir, projectRoot) {
+  const chain = _getTsconfigForDir(fileDir, projectRoot);
+  if (!chain || !chain.baseUrlDir) return null;
+  return _probePath(path.join(chain.baseUrlDir, imp));
+}
+
+/**
+ * Resolve a non-relative JS/TS specifier to a project file, or null if it's a
+ * genuine external package. Order: tsconfig paths → legacy root alias/
+ * conventions → workspace-package map → tsconfig baseUrl.
+ */
+function resolveNonRelativeImport(imp, fileDir, projectRoot) {
+  let r = resolveTsconfigPaths(imp, fileDir, projectRoot);
+  if (r) return r;
+
+  const aliasedAbs = resolveAliasedImport(imp, projectRoot);
+  if (aliasedAbs) {
+    r = _probePath(aliasedAbs);
+    if (r) return r;
+  }
+
+  r = resolveWorkspaceImport(imp, projectRoot);
+  if (r) return r;
+
+  r = resolveBaseUrlImport(imp, fileDir, projectRoot);
+  if (r) return r;
+
   return null;
 }
 
@@ -460,7 +799,33 @@ function buildImportGraph(fileContents, projectRoot) {
   return graph;
 }
 
-module.exports = { extractImports, buildImportGraph };
+module.exports = { extractImports, buildImportGraph, resolveSpecifier };
+
+/**
+ * resolveSpecifier(spec, fromFileRel, projectRoot) → project-relative path | null
+ *
+ * Resolve a single import specifier (as written in source) to the
+ * project-relative path of the file it points to, or null if it's a
+ * genuine external package / unresolvable. Shared with validate_diff so
+ * the guardrail resolves the *same* workspace-alias / baseUrl / barrel
+ * specifiers the indexer does (CARTO-002) — otherwise a newly-added
+ * `import { x } from 'ui'` crossing a domain boundary would slip past as
+ * SAFE just because it isn't a relative path.
+ */
+function resolveSpecifier(spec, fromFileRel, projectRoot) {
+  if (!spec || typeof spec !== 'string' || !projectRoot) return null;
+  const fromAbsDir = path.dirname(path.resolve(projectRoot, fromFileRel));
+  const sourceExt = path.extname(fromFileRel).toLowerCase();
+  let abs;
+  if (spec.startsWith('.')) {
+    abs = resolveImportPath(spec, fromAbsDir, projectRoot, sourceExt);
+  } else {
+    abs = resolveNonRelativeImport(spec, fromAbsDir, projectRoot);
+  }
+  if (!abs) return null;
+  const rel = path.isAbsolute(abs) ? path.relative(projectRoot, abs) : abs;
+  return rel.split(path.sep).join('/');
+}
 
 // ─── Rust imports ─────────────────────────────────────────────────────────────
 

@@ -21,7 +21,10 @@ function detectFramework(projectRoot) {
   const candidates = findFile(projectRoot, ['requirements.txt', 'package.json', 'pyproject.toml', 'DESCRIPTION', 'go.mod'], 3);
 
   const pythonDetections = new Set();
-  const jsDetections = new Set();
+  const jsProd = new Set();
+  const jsDev = new Set();
+  let sawPackageJson = false;
+  let sawBinPackage = false;
   const rDetections = new Set();
 
   for (const f of candidates.filter(f => path.basename(f) === 'requirements.txt')) {
@@ -33,7 +36,11 @@ function detectFramework(projectRoot) {
   }
 
   for (const f of candidates.filter(f => path.basename(f) === 'package.json')) {
-    for (const r of detectAllFromPackageJson(f)) jsDetections.add(r);
+    sawPackageJson = true;
+    for (const r of detectAllFromPackageJson(f)) {
+      if (r.hasBin) sawBinPackage = true;
+      (r.dev ? jsDev : jsProd).add(r.framework);
+    }
   }
 
   for (const f of candidates.filter(f => path.basename(f) === 'DESCRIPTION')) {
@@ -50,7 +57,32 @@ function detectFramework(projectRoot) {
   }
 
   const bestPython = PYTHON_PRIORITY.find(fw => pythonDetections.has(fw)) || null;
-  const bestJS = JS_PRIORITY.find(fw => jsDetections.has(fw)) || null;
+
+  // ── JS framework selection (CARTO-010) ──────────────────────────────
+  // Weight prod deps over dev deps. A framework declared in `dependencies`
+  // is a high-confidence app signal. A UI framework (react) seen ONLY in
+  // `devDependencies` is a dev-tool/build-time signal, not the repo's app
+  // framework — a library/CLI monorepo (prisma) must not report "react".
+  const UI_DEV_ONLY_DOWNRANK = new Set(['react']);
+  let bestJS = JS_PRIORITY.find(fw => jsProd.has(fw)) || null;
+  let jsConfidence = bestJS ? 'high' : 'none';
+  if (!bestJS) {
+    const devFw = JS_PRIORITY.find(fw => jsDev.has(fw) && fw !== 'node-generic') || null;
+    if (devFw && !UI_DEV_ONLY_DOWNRANK.has(devFw)) {
+      // A non-UI framework (next/express) in devDeps only — unusual but a
+      // real, if weak, signal. Report it low-confidence.
+      bestJS = devFw;
+      jsConfidence = 'low';
+    } else if (sawPackageJson) {
+      // Either only a dev-only UI framework (react in devDeps → library/CLI,
+      // esp. when a `bin` is present), or a package.json with no framework
+      // at all. Both resolve to the generic Node shape, low confidence.
+      bestJS = 'node-generic';
+      jsConfidence = 'low';
+    }
+  }
+  void sawBinPackage; // library-vs-app hint; dev-only UI already routes here
+
   const bestR = R_PRIORITY.find(fw => rDetections.has(fw)) || null;
   const bestGo = GO_PRIORITY.find(fw => goDetections.has(fw)) || null;
 
@@ -60,16 +92,46 @@ function detectFramework(projectRoot) {
       language: 'python',
       confidence: 'high',
       secondaryFramework: bestJS,
-      secondaryLanguage: 'javascript'
+      secondaryLanguage: deriveJsLanguage(projectRoot)
     };
   }
 
   if (bestPython) return { framework: bestPython, language: 'python', confidence: 'high' };
-  if (bestJS)     return { framework: bestJS, language: 'javascript', confidence: 'high' };
+  if (bestJS)     return { framework: bestJS, language: deriveJsLanguage(projectRoot), confidence: jsConfidence };
   if (bestGo)     return { framework: bestGo, language: 'go', confidence: 'high' };
   if (bestR)      return { framework: bestR, language: 'r', confidence: 'high' };
 
   return { framework: 'unknown', language: 'unknown', confidence: 'none' };
+}
+
+/**
+ * deriveJsLanguage(projectRoot) → 'typescript' | 'javascript'
+ *
+ * A JS "framework" detection says nothing about whether the repo is TS or
+ * JS. Derive it from the file-extension majority (.ts/.tsx vs .js/.jsx) so
+ * an overwhelmingly-TypeScript monorepo isn't mislabeled "javascript"
+ * (CARTO-004). `.d.ts` declaration files are ignored — they're type stubs,
+ * not authored source, and every JS repo with types ships them.
+ */
+function deriveJsLanguage(projectRoot) {
+  let ts = 0, js = 0;
+  const SKIP = new Set([...IGNORE_DIRS, 'dist', 'build', 'out', '.next', 'coverage']);
+  const walk = (dir, depth) => {
+    if (depth > 6) return;
+    let items;
+    try { items = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const it of items) {
+      if (it.name.startsWith('.') || SKIP.has(it.name)) continue;
+      if (it.isDirectory()) { walk(path.join(dir, it.name), depth + 1); continue; }
+      const name = it.name.toLowerCase();
+      if (name.endsWith('.d.ts')) continue;
+      if (name.endsWith('.ts') || name.endsWith('.tsx')) ts++;
+      else if (name.endsWith('.js') || name.endsWith('.jsx') ||
+               name.endsWith('.mjs') || name.endsWith('.cjs')) js++;
+    }
+  };
+  walk(projectRoot, 0);
+  return ts > js ? 'typescript' : 'javascript';
 }
 
 /**
@@ -120,25 +182,45 @@ function detectAllFromPythonDeps(filePath) {
 }
 
 /**
- * Returns all matching JS frameworks from a package.json.
+ * Returns all matching JS frameworks from a package.json, tagged with the
+ * dependency section they were found in.
+ *
+ * → [{ framework, dev, hasBin }, ...]
+ *   - `dev`    true  ⇒ the signal came from `devDependencies` only
+ *   - `hasBin` true  ⇒ this package declares a `bin` (CLI/library shape)
+ *
+ * CARTO-010: `dependencies` and `devDependencies` used to be merged into
+ * one bag, so a UI framework declared *only* as a dev dependency (e.g.
+ * prisma's `packages/cli` pulling `react` for a build/test tool) was
+ * reported as the repo's primary framework. Keeping the section lets the
+ * aggregator weight prod deps over dev deps and down-rank dev-only UI libs.
  */
 function detectAllFromPackageJson(filePath) {
-  const detected = [];
   let pkg;
   try {
     pkg = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
   } catch {
-    return detected;
+    return [];
   }
 
-  const deps = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
+  const prod = pkg.dependencies || {};
+  const dev = pkg.devDependencies || {};
+  const hasBin = !!pkg.bin;
+  const out = [];
 
-  if (deps['next']) detected.push('nextjs');
-  if (deps['express']) detected.push('express');
-  if (deps['react'] && !deps['next']) detected.push('react');
-  if (!detected.length) detected.push('node-generic');
+  const scan = (deps, isDev) => {
+    const found = [];
+    if (deps['next']) found.push('nextjs');
+    if (deps['express']) found.push('express');
+    if (deps['react'] && !deps['next']) found.push('react');
+    for (const fw of found) out.push({ framework: fw, dev: isDev, hasBin });
+    return found.length;
+  };
 
-  return detected;
+  scan(prod, false);
+  scan(dev, true);
+
+  return out;
 }
 
 function detectAllFromGoMod(filePath) {

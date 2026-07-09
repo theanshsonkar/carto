@@ -321,6 +321,34 @@ function idfWeight(idf, token) {
   return idf.get(token);
 }
 
+/**
+ * scoreFileRelevance(filePath, tokens, idf) → number
+ *
+ * IDF-weighted relevance of a file's *path* to the intent's content
+ * tokens — the same rule as Stage B anchor scoring, minus the base
+ * weights, used to RANK/PRUNE the graph-expansion output (forward
+ * imports, callers) so `carto explain` stops dumping every 1-hop
+ * neighbour regardless of relevance (CARTO-003). A whole-token hit
+ * scores full IDF; a prefix hit (len ≥ 4, or a dev abbreviation) scores
+ * a fraction. 0 ⇒ the file shares no token with the intent.
+ */
+function scoreFileRelevance(filePath, tokens, idf) {
+  if (!filePath || !tokens || !tokens.content || tokens.content.length === 0) return 0;
+  const toks = pathTokens(filePath);
+  const set = new Set(toks);
+  let score = 0;
+  for (const t of tokens.content) {
+    if (set.has(t)) {
+      score += idfWeight(idf, t);
+    } else if (t.length >= 4 || (t.length === 3 && ABBREV3.has(t))) {
+      if (toks.find(pt => pt.length > t.length && pt.startsWith(t))) {
+        score += 0.3 * idfWeight(idf, t);
+      }
+    }
+  }
+  return score;
+}
+
 // ─── Anchor selection ────────────────────────────────────────────────
 
 /**
@@ -522,7 +550,7 @@ function selectAnchors(store, tokens, idf, maxAnchors = 8) {
 // ─── Graph expansion ─────────────────────────────────────────────────
 
 function expandGraph(store, anchors, opts = {}) {
-  const maxBlast = opts.maxBlast || 25;
+  const maxBlast = opts.maxBlast || 15;
   const maxBlastHops = opts.maxBlastHops || 5;
   const anchorFiles = anchors.map(a => a.file);
   const anchorSet = new Set(anchorFiles);
@@ -711,10 +739,63 @@ function planChange(store, intentRaw) {
 
   const expansion = expandGraph(store, anchors);
 
+  // ── CARTO-003: rank + prune the graph-expansion output ─────────────
+  // The old plan dumped every 1-hop forward import, every caller, and up
+  // to 27 cross-domain edges into the output regardless of relevance —
+  // a ~2.7k-token wall for a 5-file task. Anchors are the true, ranked
+  // touch-set and are ALWAYS kept in full; the surrounding graph is now
+  // relevance-ranked and capped so the true touch-set survives while the
+  // padding is dropped.
+
+  // Anchor confidence: a relative split so callers can see which anchors
+  // are strong (multi-token / high-IDF hits) vs weak keyword matches.
+  const topScore = anchors.length ? anchors[0].score : 0;
+  for (const a of anchors) {
+    a.confidence = (topScore > 0 && a.score >= 0.5 * topScore) ? 'high' : 'maybe';
+  }
+
+  // Forward imports (files anchors import) — keep all when few (preserves
+  // small plans intact), else keep the intent-relevant ones, capped.
+  const FORWARD_KEEP_ALL = 8;
+  const FORWARD_CAP = 10;
+  const fwd = expansion.forwardDeps;
+  let keptForward;
+  let forwardPruned = 0;
+  if (fwd.length <= FORWARD_KEEP_ALL) {
+    keptForward = fwd;
+  } else {
+    const scored = fwd
+      .map(f => ({ f, s: scoreFileRelevance(f, tokens, idf) }))
+      .sort((a, b) => b.s - a.s || a.f.localeCompare(b.f));
+    const relevant = scored.filter(x => x.s > 0);
+    keptForward = (relevant.length ? relevant : scored).slice(0, FORWARD_CAP).map(x => x.f);
+    forwardPruned = fwd.length - keptForward.length;
+  }
+
+  // Callers (backward importers) — relevance-rank + cap.
+  const REVIEW_CAP = 10;
+  let filesToReview = expansion.backwardDeps;
+  if (filesToReview.length > REVIEW_CAP) {
+    filesToReview = filesToReview
+      .map(f => ({ f, s: scoreFileRelevance(f, tokens, idf) }))
+      .sort((a, b) => b.s - a.s || a.f.localeCompare(b.f))
+      .slice(0, REVIEW_CAP)
+      .map(x => x.f);
+  }
+
+  // Cross-domain edges — the single biggest token sink; cap with a count
+  // of how many were omitted (the full set is available via `impact`).
+  const CROSS_DOMAIN_CAP = 8;
+  const crossDomainOmitted = Math.max(0, expansion.crossDomainEdges.length - CROSS_DOMAIN_CAP);
+  const crossDomainEdges = expansion.crossDomainEdges.slice(0, CROSS_DOMAIN_CAP);
+
+  // Conventions — 3 is plenty as an exemplar hint.
+  const conventions = expansion.conventions.slice(0, 3);
+
   const filesToTouch = [
     ...new Set([
       ...anchors.map(a => a.file),
-      ...expansion.forwardDeps
+      ...keptForward
     ])
   ].sort();
 
@@ -723,11 +804,12 @@ function planChange(store, intentRaw) {
     tokens,
     anchors,
     filesToTouch,
-    filesToReview: expansion.backwardDeps,
+    filesToReview,
     blastRadius: expansion.blastRadius,
     affectedDomains: expansion.affectedDomains,
-    crossDomainEdges: expansion.crossDomainEdges,
-    conventions: expansion.conventions,
+    crossDomainEdges,
+    conventions,
+    meta: { forwardPruned, crossDomainOmitted },
     guidance: null
   };
 }
@@ -768,22 +850,42 @@ function formatPlanMarkdown(plan) {
   // chosen even when it has no route.
   const symbolAnchors = plan.anchors.filter(a => a.kind === 'symbol');
   if (symbolAnchors.length > 0) {
+    // Escape characters that would otherwise break a markdown table cell:
+    // a raw `|` is read as a column delimiter (the "Why" column joins its
+    // reasons with ` | `), and a newline ends the row (CARTO-008).
+    const cell = (s) => String(s == null ? '' : s)
+      .replace(/\\/g, '\\\\')
+      .replace(/\|/g, '\\|')
+      .replace(/\r?\n/g, ' ');
     lines.push('## Relevant Symbols\n');
     lines.push('| Symbol | File | Why |');
     lines.push('|--------|------|-----|');
     for (const a of symbolAnchors.slice(0, 8)) {
-      lines.push(`| \`${a.value}\` | \`${a.file}\` | ${a.reason} |`);
+      lines.push(`| \`${cell(a.value)}\` | \`${cell(a.file)}\` | ${cell(a.reason)} |`);
     }
     lines.push('');
   }
 
-  // ── Files to Touch (anchors + forward 1-hop) ──────────────────────
+  // ── Files to Touch (anchors first, then pruned forward 1-hop) ─────
   if (plan.filesToTouch && plan.filesToTouch.length > 0) {
     lines.push('## Files to Touch\n');
-    const anchorFiles = new Set(plan.anchors.map(a => a.file));
-    for (const f of plan.filesToTouch) {
-      const tag = anchorFiles.has(f) ? ' _(anchor)_' : ' _(forward import)_';
+    // Anchors ranked by score (high-confidence touch-set), then the
+    // relevance-pruned forward imports. Anchors keep their confidence
+    // tag so a weak keyword match is visibly distinguished (CARTO-003).
+    const confByFile = new Map(plan.anchors.map(a => [a.file, a.confidence || 'high']));
+    const anchorOrder = plan.anchors.map(a => a.file);
+    const anchorSet = new Set(anchorOrder);
+    for (const f of anchorOrder) {
+      if (!plan.filesToTouch.includes(f)) continue;
+      const tag = confByFile.get(f) === 'maybe' ? ' _(anchor · low-confidence)_' : ' _(anchor)_';
       lines.push(`- \`${f}\`${tag}`);
+    }
+    for (const f of plan.filesToTouch) {
+      if (anchorSet.has(f)) continue;
+      lines.push(`- \`${f}\` _(forward import)_`);
+    }
+    if (plan.meta && plan.meta.forwardPruned > 0) {
+      lines.push(`\n_${plan.meta.forwardPruned} lower-relevance forward import(s) pruned — run \`impact\` on an anchor for the full dependency set._`);
     }
     lines.push('');
   }
@@ -822,6 +924,9 @@ function formatPlanMarkdown(plan) {
     lines.push('|------|-------------|-----|----------|');
     for (const e of plan.crossDomainEdges) {
       lines.push(`| \`${e.from}\` | ${e.fromDomain} | \`${e.to}\` | ${e.toDomain} |`);
+    }
+    if (plan.meta && plan.meta.crossDomainOmitted > 0) {
+      lines.push(`\n_+${plan.meta.crossDomainOmitted} more cross-domain edge(s) omitted — run \`impact\` or \`validate_diff\` for the full audit._`);
     }
     lines.push('');
   }

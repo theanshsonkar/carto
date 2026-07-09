@@ -1679,10 +1679,34 @@ function runTool(name, args, s) {
   if (name === 'get_models') {
     const models = s.getModels(args.domain);
     if (models.length === 0) return text(args.domain ? `No models in domain: ${args.domain}` : 'No models found.');
-    const lines = [`# Models${args.domain ? ` — ${args.domain}` : ''} (${models.length})\n`];
-    lines.push('| Model | Kind | File |');
-    lines.push('|-------|------|------|');
-    for (const m of models) lines.push(`| ${m.name} | ${m.kind} | ${m.file} |`);
+    // Bucket by kind so the count isn't inflated by TS `interface`s and
+    // Swift/Flutter UI classes (CARTO-007). "Data models" = schema/ORM
+    // kinds; everything else (interface, class, swiftui-view,
+    // flutter-widget) is reported separately so `modelCount` reads honestly.
+    const NON_DATA_KINDS = new Set(['interface', 'class', 'swiftui-view', 'flutter-widget']);
+    const dataModels = models.filter(m => !NON_DATA_KINDS.has(m.kind));
+    const otherModels = models.filter(m => NON_DATA_KINDS.has(m.kind));
+    const lines = [
+      `# Models${args.domain ? ` — ${args.domain}` : ''}`,
+      '',
+      `**${dataModels.length}** data/schema models` +
+        (otherModels.length ? ` · ${otherModels.length} interfaces / UI classes (not data models)` : '') +
+        ` · ${models.length} total`,
+      '',
+    ];
+    if (dataModels.length > 0) {
+      lines.push('## Data models');
+      lines.push('| Model | Kind | File |');
+      lines.push('|-------|------|------|');
+      for (const m of dataModels) lines.push(`| ${m.name} | ${m.kind} | ${m.file} |`);
+      lines.push('');
+    }
+    if (otherModels.length > 0) {
+      lines.push('## Interfaces & UI classes (not data models)');
+      lines.push('| Symbol | Kind | File |');
+      lines.push('|--------|------|------|');
+      for (const m of otherModels) lines.push(`| ${m.name} | ${m.kind} | ${m.file} |`);
+    }
     return text(lines.join('\n'));
   }
 

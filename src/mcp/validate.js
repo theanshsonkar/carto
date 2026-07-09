@@ -38,6 +38,7 @@ const path = require('path');
 const crypto = require('crypto');
 const bitmapTools = require('../bitmap/tools');
 const { parseDiff, extractAddedImports } = require('./diff-parser');
+const { resolveSpecifier } = require('../extractors/imports');
 
 const SENSITIVE_DOMAINS = new Set(['AUTH', 'PAYMENTS', 'PAYMENT', 'BILLING', 'SECURITY']);
 
@@ -66,19 +67,33 @@ function severityRank(s) {
  * resolution here; bare modules are external and never trigger
  * cross-domain).
  */
-function resolveImportTarget(spec, fromFile, sidecar) {
+function resolveImportTarget(spec, fromFile, sidecar, projectRoot) {
   if (!spec || typeof spec !== 'string') return null;
-  if (!spec.startsWith('.') && !spec.startsWith('/')) return null;
-  const dir = path.posix.dirname(fromFile);
-  let resolved = path.posix.normalize(path.posix.join(dir, spec));
-  if (resolved.startsWith('./')) resolved = resolved.slice(2);
-  if (sidecar.pathToFileId.has(resolved)) return sidecar.pathToFileId.get(resolved);
-  // Try common extension fallbacks.
-  for (const ext of ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py']) {
-    const candidate = resolved + ext;
-    if (sidecar.pathToFileId.has(candidate)) return sidecar.pathToFileId.get(candidate);
-    const indexCandidate = resolved + '/index' + ext;
-    if (sidecar.pathToFileId.has(indexCandidate)) return sidecar.pathToFileId.get(indexCandidate);
+
+  // Fast path — relative specifiers resolved purely in path-space against
+  // the known file map (no disk access; works even without a projectRoot,
+  // e.g. fixture stores in tests).
+  if (spec.startsWith('.') || spec.startsWith('/')) {
+    const dir = path.posix.dirname(fromFile);
+    let resolved = path.posix.normalize(path.posix.join(dir, spec));
+    if (resolved.startsWith('./')) resolved = resolved.slice(2);
+    if (sidecar.pathToFileId.has(resolved)) return sidecar.pathToFileId.get(resolved);
+    for (const ext of ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py']) {
+      const candidate = resolved + ext;
+      if (sidecar.pathToFileId.has(candidate)) return sidecar.pathToFileId.get(candidate);
+      const indexCandidate = resolved + '/index' + ext;
+      if (sidecar.pathToFileId.has(indexCandidate)) return sidecar.pathToFileId.get(indexCandidate);
+    }
+    return null;
+  }
+
+  // Non-relative specifier: a bare npm package, OR a workspace-alias /
+  // baseUrl / barrel import (`ui`, `@calcom/trpc/server/types`,
+  // `components/...`). Resolve it the same way the indexer does (CARTO-002)
+  // so cross-domain couplings added via aliases aren't silently green-lit.
+  if (projectRoot) {
+    const rel = resolveSpecifier(spec, fromFile, projectRoot);
+    if (rel && sidecar.pathToFileId.has(rel)) return sidecar.pathToFileId.get(rel);
   }
   return null;
 }
@@ -93,6 +108,9 @@ function resolveImportTarget(spec, fromFile, sidecar) {
 function validateDiff(store, sidecar, diffText, opts = {}) {
   const cfg = Object.assign({}, DEFAULTS, opts || {});
   const parsedFiles = parseDiff(diffText);
+  // Repo root for resolving non-relative (workspace/alias/baseUrl) added
+  // imports the same way the indexer does — see resolveImportTarget.
+  const projectRoot = opts.projectRoot || (store && store._projectRoot) || null;
 
   const result = {
     diff: parsedFiles.map((f) => ({
@@ -202,7 +220,7 @@ function validateDiff(store, sidecar, diffText, opts = {}) {
       const existing = fromFileId !== undefined ? getExistingImportTargets(fromFileId) : new Set();
       const seenTargets = new Set();
       for (const spec of specs) {
-        const toFileId = resolveImportTarget(spec, f.path, sidecar);
+        const toFileId = resolveImportTarget(spec, f.path, sidecar, projectRoot);
         if (toFileId === null) continue;
         if (existing.has(toFileId)) continue; // already connected
         if (seenTargets.has(toFileId)) continue;
