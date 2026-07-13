@@ -24,6 +24,12 @@ CARTO_PLAN.md
 carto-site/
 carto-site-v2/
 
+# Frontend (Next.js app deployed to Cloudflare) — not part of the CLI npm package
+carto-frontend/
+
+# "Package a repo" backend (clone+parse service, deployed to AWS) — not the CLI
+backend/
+
 # Tests
 test/
 

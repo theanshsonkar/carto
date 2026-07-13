@@ -2,6 +2,24 @@
 
 All notable changes to Carto land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [2.1.3] - 2026-07-13
+
+A correctness fix for a silent hang on low-core machines.
+
+### Fixed
+- **WorkerPool could deadlock on ≤2-core machines, hanging `carto sync`/`carto init` (CF-8, Critical).**
+  On any host where the pool resolved to a single worker (`POOL_SIZE = min(cpus-1, 8) = 1`, i.e.
+  2-core CI runners, small containers, 2-vCPU serverless), indexing a repo with **>10 files** (the
+  threshold that switches to the parallel worker pool) could hang forever after
+  "Discovered N source files" — no error, no progress. Root cause: the pool tracked a worker's
+  busy state across three overlapping callbacks that raced; with one worker + a queue, after the
+  2nd task the queue was left stranded with no re-drain. Rewrote the pool around a single
+  completion path, added a `worker.on('exit')` handler that respawns a dead worker and re-drains
+  (a crashed native parse can no longer strand the queue), and added a per-file timeout
+  (`CARTO_PARSE_TIMEOUT_MS`, default 30s) so one pathological file can never hang the whole parse.
+  Public API unchanged; multi-core behavior unchanged. Verified: single-worker and multi-worker
+  both index a 47-file repo with no hang; full suite (418 tests) green.
+
 ## [2.1.2] - 2026-07-09
 
 Monorepo import resolution — the fix that makes blast radius and the diff guardrail

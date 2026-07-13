@@ -17,7 +17,7 @@ Progress/
 
 # Marketing site — lives in this working tree but is not part of the npm package
 carto-site/
-carto-site-v2/
+carto-frontend/
 
 # npm pack output — regenerated, never committed
 *.tgz
@@ -28,3 +28,10 @@ bench/bitmap-validation/REPORT.md
 bench/validation-perf/REPORT.md
 bench/scale-test/results/
 bench/scale-test/REPORT.md
+
+# "Package a repo" backend (deployed to AWS) — NOT part of the public OSS repo
+backend/
+.dockerignore
+
+# Internal execution plan / hand-off doc — not public
+CARTO_PLAN.md
