@@ -1,6 +1,6 @@
 # Carto
 
-**The portable AI container for your codebase. Package a repo once - every AI tool understands it in seconds, and knows what breaks before it changes anything.**
+**Package a repo once, and every AI tool then knows what breaks before it changes anything.** AI writes faster than you can verify, so structure ships unguarded. Carto maps your codebase into one portable container (imports, domains, blast radius, predictive risk) and grades every diff before it lands, blocking the dangerous ones before they reach disk. One local SQLite file. No cloud.
 
 [Docs](docs/) · [Quickstart](docs/quickstart.md) · [Tools](#tools-your-ai-can-call) · [ANCI Spec](docs/anci/v0.1-DRAFT.md) · [Benchmarks](docs/scale.md) · [Changelog](CHANGELOG.md)
 
@@ -11,15 +11,17 @@
 
 ---
 
-> **Docker made apps portable. Carto makes codebases portable for AI.**
+> **AI writes faster than you can verify.**
 
-Every AI tool re-reads your entire codebase from scratch, every single session. Cursor builds its own index. Copilot builds its own. Claude Code builds its own. Same parsing, every tool, every time - and none of them remember what they learned yesterday.
+Your agent can change 40 files before you understand the first one. Tests catch broken behavior. Linters catch broken syntax. Neither sees what it did to the shape of your system.
 
-Carto fixes that. It packages a repository into a **portable AI container** that captures its architecture, dependencies, engineering history, and safety context - so any AI coding assistant understands the project in seconds instead of rediscovering it from scratch. And because the container knows how everything connects, it can tell you **what breaks before you change it.**
+Carto packs that shape into one portable container: the import graph, domains, blast radius, and predictive risk, held in one local SQLite file. So any AI tool knows what breaks *before* the diff lands, and Carto can block a HIGH-risk edit before it ever reaches disk. Not passive context you hope the AI reads: **context that pushes back.**
+
+And because it is packaged once, every AI tool shares it instead of re-reading your whole codebase from scratch each session (Cursor builds its own index, Copilot builds its own, Claude Code builds its own, none of them remembering what they learned yesterday).
+
+> **Docker made apps portable. Carto makes codebases portable for AI.** Package a repo once and every AI tool understands it in seconds, instead of re-indexing from scratch every session.
 
 One SQLite file on your disk. No network. No telemetry. No cloud.
-
-> **Passive context vs. active guardrail.** Most tools hand the AI context and hope for the best. Carto grades every proposed diff *before* it lands - blast radius, risk, cross-domain violations - and can block a HIGH-risk edit before it ever reaches disk. Context that pushes back.
 
 ![Carto answering a blast-radius query on the supabase repo, inside an MCP client (Kiro CLI, running Claude)](docs/screenshots/carto-supabase-blast-radius.png)
 
