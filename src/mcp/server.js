@@ -2904,8 +2904,11 @@ function listTools(tierName) {
 
 // ─── Server setup ─────────────────────────────────────────────────────────────
 
+// Advertise the real package version to MCP clients (derived, never hardcoded,
+// so it can't drift from package.json the way the old '2.0.0' literal did).
+const PKG_VERSION = require('../../package.json').version;
 const server = new Server(
-  { name: 'carto', version: '2.0.0' },
+  { name: 'carto', version: PKG_VERSION },
   { capabilities: { tools: {} } }
 );
 
