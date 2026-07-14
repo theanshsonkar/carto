@@ -10,6 +10,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/carto-md)](https://www.npmjs.com/package/carto-md)
 
 ---
+[![Carto boarding pass](https://trycarto.theanshsonkar.workers.dev/r.png?repo=theanshsonkar/carto)](https://trycarto.theanshsonkar.workers.dev/r?repo=theanshsonkar/carto)
 
 > **AI writes faster than you can verify.**
 
