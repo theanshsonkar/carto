@@ -2932,6 +2932,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  main,
   dispatchTool,
   runTool,
   resolveFamily,

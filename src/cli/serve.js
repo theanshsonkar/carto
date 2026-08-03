@@ -18,7 +18,13 @@ function run(projectRoot) {
   }
 
   console.error('[CARTO] MCP server starting...');
-  require('../mcp/server');
+  // Call main() explicitly: when this module is require()d through the `carto`
+  // bin, server.js's `require.main === module` guard is false, so the stdio
+  // transport would never connect.
+  require('../mcp/server').main().catch(err => {
+    console.error('[CARTO MCP] Fatal:', err.message);
+    process.exit(1);
+  });
 }
 
 module.exports = { run };
