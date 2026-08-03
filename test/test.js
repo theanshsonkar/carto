@@ -253,6 +253,36 @@ test('Import graph', "import X from './utils' resolves to utils.ts if it exists"
   assert.ok(imports.includes('utils.ts'), `Expected 'utils.ts' in ${JSON.stringify(imports)}`);
 });
 
+test('Import graph', "import X from './utils.js' resolves to utils.ts (TypeScript ESM)", () => {
+  const modPath = path.join(importTmpDir, 'esmutil.ts');
+  const mainPath = path.join(importTmpDir, 'esmmain.ts');
+  fs.writeFileSync(modPath, 'export const helper = 1;', 'utf-8');
+  fs.writeFileSync(mainPath, "import { helper } from './esmutil.js';", 'utf-8');
+
+  const imports = extractImports(
+    fs.readFileSync(mainPath, 'utf-8'),
+    mainPath,
+    importTmpDir
+  );
+  assert.ok(imports.includes('esmutil.ts'), `Expected 'esmutil.ts' in ${JSON.stringify(imports)}`);
+});
+
+test('Import graph', "a real .js sibling still wins over its .ts source", () => {
+  const jsPath = path.join(importTmpDir, 'dual.js');
+  const tsPath = path.join(importTmpDir, 'dual.ts');
+  const mainPath = path.join(importTmpDir, 'dualmain.ts');
+  fs.writeFileSync(jsPath, 'module.exports = {};', 'utf-8');
+  fs.writeFileSync(tsPath, 'export const x = 1;', 'utf-8');
+  fs.writeFileSync(mainPath, "import x from './dual.js';", 'utf-8');
+
+  const imports = extractImports(
+    fs.readFileSync(mainPath, 'utf-8'),
+    mainPath,
+    importTmpDir
+  );
+  assert.ok(imports.includes('dual.js'), `Expected 'dual.js' in ${JSON.stringify(imports)}`);
+});
+
 test('Import graph', "import X from './utils' with no file → not included (no phantom links)", () => {
   const mainPath = path.join(importTmpDir, 'phantom.ts');
   fs.writeFileSync(mainPath, "import { foo } from './nonexistent';", 'utf-8');

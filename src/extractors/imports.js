@@ -239,10 +239,29 @@ const _JS_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.d.ts'];
  * Probe an absolute base path for a real file: exact, then +ext, then
  * /index.<ext>. Returns the absolute file path or null.
  */
+// TypeScript ESM mandates importing './x.js' for a file that is x.ts on disk,
+// so the literal path never exists in a TS project. Checked after the exact
+// match, so a real .js sibling still wins over its .ts source.
+const _ESM_SOURCE_SWAPS = {
+  '.js': ['.ts', '.tsx', '.d.ts'],
+  '.jsx': ['.tsx'],
+  '.mjs': ['.mts'],
+  '.cjs': ['.cts'],
+};
+
 function _probePath(absBase) {
   try {
     if (fs.existsSync(absBase) && fs.statSync(absBase).isFile()) return absBase;
   } catch { /* ignore */ }
+  const swapMatch = /\.(js|jsx|mjs|cjs)$/.exec(absBase);
+  if (swapMatch) {
+    const stem = absBase.slice(0, -swapMatch[0].length);
+    for (const e of _ESM_SOURCE_SWAPS[swapMatch[0]] || []) {
+      try {
+        if (fs.existsSync(stem + e) && fs.statSync(stem + e).isFile()) return stem + e;
+      } catch { /* ignore */ }
+    }
+  }
   for (const e of _JS_EXTS) {
     const withExt = absBase + e;
     if (fs.existsSync(withExt)) return withExt;
@@ -683,6 +702,17 @@ function resolveImportPath(importPath, fileDir, projectRoot, sourceExt) {
 
   // Try exact
   if (fs.existsSync(base) && fs.statSync(base).isFile()) return base;
+
+  // TypeScript ESM mandates './x.js' for a file that is x.ts on disk, so the
+  // literal path never exists in a TS project. Checked after the exact match,
+  // so a real .js sibling still wins over its .ts source.
+  const swapMatch = /\.(js|jsx|mjs|cjs)$/.exec(base);
+  if (swapMatch) {
+    const stem = base.slice(0, -swapMatch[0].length);
+    for (const e of _ESM_SOURCE_SWAPS[swapMatch[0]] || []) {
+      if (fs.existsSync(stem + e)) return stem + e;
+    }
+  }
 
   // Try extensions
   const extensions = ['.js', '.ts', '.jsx', '.tsx', '.mjs', '.cjs'];
