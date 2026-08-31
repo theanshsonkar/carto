@@ -743,9 +743,13 @@ async function generateOutputs(store, config, projectRoot, importGraph) {
   fs.mkdirSync(contextDir, { recursive: true });
   const lastSync = store.getMeta('last_full_sync');
 
-  for (const d of domains) {
-    if (d.fileCount === 0 && d.routeCount === 0 && d.modelCount === 0) continue;
+  // Keep this filtered list as the single source of truth for both the
+  // context files and AGENTS.md. Never link agents to files we did not emit.
+  const contextDomains = domains.filter(d =>
+    d.fileCount > 0 || d.routeCount > 0 || d.modelCount > 0
+  );
 
+  for (const d of contextDomains) {
     const domainPath = path.join(contextDir, `${d.name}.md`);
 
     // Skip regeneration if context file is newer than last sync
@@ -797,7 +801,8 @@ async function generateOutputs(store, config, projectRoot, importGraph) {
       importGraph,
       stackItems: structure.stack,
       entryPoints: structure.entryPoints,
-      highImpact: highImpact.map(h => ({ file: h.file, count: h.dependents }))
+      highImpact: highImpact.map(h => ({ file: h.file, count: h.dependents })),
+      contextDomains
     });
     mergeIntoAgentsMd(config.output, autoContent);
   }

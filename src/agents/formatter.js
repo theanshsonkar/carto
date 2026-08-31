@@ -4,7 +4,7 @@ const path = require('path');
  * Converts extracted data into a lean markdown summary for AGENTS.md.
  * Detailed content lives in .carto/context/*.md domain files.
  */
-function formatSections({ routes, models, frontend, structure, warnings, fileMap, functions, dbTables, envVars, importGraph, stackItems, entryPoints, highImpact }) {
+function formatSections({ routes, models, frontend, structure, warnings, fileMap, functions, dbTables, envVars, importGraph, stackItems, entryPoints, highImpact, contextDomains = [] }) {
   const sections = [];
 
   // 1. Project Structure
@@ -44,12 +44,14 @@ function formatSections({ routes, models, frontend, structure, warnings, fileMap
   sections.push('Read the relevant file before working on that area:\n');
   sections.push('| Domain | File | Read when... |');
   sections.push('|--------|------|--------------|');
-  sections.push('| Auth | `.carto/context/AUTH.md` | Working on login, sessions, OAuth |');
-  sections.push('| Payments | `.carto/context/PAYMENTS.md` | Working on billing, Stripe |');
-  sections.push('| tRPC | `.carto/context/TRPC.md` | Working on API procedures |');
-  sections.push('| Database | `.carto/context/DATABASE.md` | Working on models, schema |');
-  sections.push('| Events | `.carto/context/EVENTS.md` | Working on webhooks, jobs |');
-  sections.push('| Core | `.carto/context/CORE.md` | General utilities, shared code |');
+  if (contextDomains.length === 0) {
+    sections.push('| — | — | No domain context files were generated. |');
+  } else {
+    for (const domain of contextDomains) {
+      const name = String(domain.name);
+      sections.push(`| ${name} | `.concat('`.carto/context/', name, '.md` | Working on ', name.toLowerCase(), ' code |'));
+    }
+  }
 
   sections.push('\n> Run `carto serve` to enable live graph queries from Kiro, Cursor, and Claude.');
 
