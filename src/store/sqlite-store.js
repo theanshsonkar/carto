@@ -30,14 +30,8 @@ const SCHEMA_VERSION = '4';
  */
 function normalizePath(p) {
   if (typeof p !== 'string' || p.length === 0) return p;
-  let out = p;
-  // Backslash → forward slash (Windows → POSIX). path.sep is '\\' on Windows.
-  if (path.sep !== '/') out = out.split(path.sep).join('/');
-  // Some inputs may already use mixed separators (e.g., `src\utils/foo.js`).
-  // Normalize aggressively.
-  out = out.replace(/\\/g, '/');
-  // Strip leading './'
-  if (out.startsWith('./')) out = out.slice(2);
+  let out = p.replace(/\\/g, '/');
+  while (out.startsWith('./')) out = out.slice(2);
   return out;
 }
 
