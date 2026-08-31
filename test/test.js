@@ -3257,6 +3257,24 @@ test('Path normalization', "leading './' is stripped", () => {
   );
 });
 
+
+test('Path normalization', "all leading './' prefixes are stripped in SQLite paths", () => {
+  const { normalizePath } = require('../src/store/sqlite-store');
+  assert.strictEqual(normalizePath('././src/foo\\bar.js'), 'src/foo/bar.js');
+});
+
+test('Path normalization', 'AGENTS context table lists only emitted domain files', () => {
+  const { formatSections } = require('../src/agents/formatter');
+  const content = formatSections({
+    structure: [], stackItems: [], entryPoints: [], highImpact: [],
+    contextDomains: [{ name: 'SCREENS' }, { name: 'ITEMLIST' }, { name: 'NOTIFICATIONS' }]
+  });
+
+  for (const domain of ['SCREENS', 'ITEMLIST', 'NOTIFICATIONS']) {
+    assert.ok(content.includes(`.carto/context/${domain}.md`), `must list ${domain}.md`);
+  }
+  assert.ok(!content.includes('.carto/context/AUTH.md'), 'must not link a non-emitted AUTH.md');
+});
 test('Path normalization', 'absolute path under projectRoot is relativized', () => {
   assert.strictEqual(
     normalizeFileArg('/Users/x/proj', '/Users/x/proj/lib/application.js'),
