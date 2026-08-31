@@ -2,6 +2,12 @@
 
 All notable changes to Carto land here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 
+## [2.1.5] - 2026-08-31
+
+### Fixed
+- **AGENTS.md context links now mirror generated domain context files.** The auto-managed Context Files table is built from the detected domains that emit `.carto/context/<DOMAIN>.md`, so agents are never directed to hardcoded files that do not exist.
+- **SQLite path normalization handles repeated relative prefixes.** Paths such as `././src/foo\\bar.js` now normalize to `src/foo/bar.js`, preserving exact-match SQLite queries.
+
 ## [2.1.3] - 2026-07-13
 
 A correctness fix for a silent hang on low-core machines.
