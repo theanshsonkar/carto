@@ -22,14 +22,15 @@
  */
 
 /**
- * leiden(nodes, edges, gamma) → Map<nodeId, communityId>
+ * leiden(nodes, edges, gamma, seed) → Map<nodeId, communityId>
  *
  * @param {string[]} nodes - Array of node IDs (file paths)
  * @param {Array<[string, string]>} edges - Undirected edges as [from, to] pairs
  * @param {number} gamma - CPM resolution parameter (default 0.03)
+ * @param {number} seed - PRNG seed for the node visit order (default 1)
  * @returns {Map<string, number>} - Map from node ID to community ID
  */
-function leiden(nodes, edges, gamma = 0.03) {
+function leiden(nodes, edges, gamma = 0.03, seed = 1) {
   if (nodes.length === 0) return new Map();
   if (nodes.length === 1) return new Map([[nodes[0], 0]]);
 
@@ -52,6 +53,7 @@ function leiden(nodes, edges, gamma = 0.03) {
   const community = new Int32Array(n);
   for (let i = 0; i < n; i++) community[i] = i;
 
+  const random = mulberry32(seed);
   let improved = true;
   let iterations = 0;
   const MAX_ITER = 20;
@@ -61,7 +63,7 @@ function leiden(nodes, edges, gamma = 0.03) {
     iterations++;
 
     // Local-move pass: try to move each node to a neighboring community
-    const order = shuffleIndices(n);
+    const order = shuffleIndices(n, random);
     for (const i of order) {
       const currentComm = community[i];
 
@@ -181,14 +183,24 @@ function _refinementPhase(n, adj, community) {
 /**
  * Fisher-Yates shuffle of indices 0..n-1
  */
-function shuffleIndices(n) {
+function shuffleIndices(n, random) {
   const arr = new Int32Array(n);
   for (let i = 0; i < n; i++) arr[i] = i;
   for (let i = n - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
   }
   return arr;
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 /**
@@ -272,21 +284,18 @@ function clusterByGraph(importGraph, gamma = 0.03, keywordSeeds = {}) {
     for (const dep of deps) allNodes.add(dep);
   }
 
-  const nodeList = [...allNodes];
+  const nodeList = [...allNodes].sort();
   if (nodeList.length === 0) return new Map();
 
   // Build undirected edges (merge A→B and B→A)
-  const edgeSet = new Set();
-  const edges = [];
+  const edgeMap = new Map();
   for (const [from, deps] of Object.entries(importGraph)) {
     for (const to of deps) {
-      const key = [from, to].sort().join('|||');
-      if (!edgeSet.has(key)) {
-        edgeSet.add(key);
-        edges.push([from, to]);
-      }
+      const pair = [from, to].sort();
+      edgeMap.set(pair.join('|||'), pair);
     }
   }
+  const edges = [...edgeMap.keys()].sort().map(key => edgeMap.get(key));
 
   // Run Leiden
   const communityMap = leiden(nodeList, edges, gamma);

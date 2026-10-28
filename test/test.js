@@ -3851,7 +3851,7 @@ test('Change plan', 'formatPlanMarkdown: fallback message for no-anchor case', (
 
 
 // ═══════════════════════════════════════════════════════════════════
-// Adaptive clustering — 3 tests
+// Adaptive clustering — 5 tests
 // ═══════════════════════════════════════════════════════════════════
 
 const { selectClusteringStrategy } = require('../src/store/sync');
@@ -3873,6 +3873,37 @@ test('Adaptive clustering', 'Dense graph uses graph method with continuous gamma
   assert.ok(Math.abs(s.gamma - 0.06) < 0.001, `expected gamma ~0.06, got ${s.gamma}`);
   // minSize = clamp(sqrt(1000), 5, 20) = clamp(~31.6, 5, 20) = 20
   assert.strictEqual(s.minSize, 20);
+});
+
+test('Adaptive clustering', 'Leiden partition does not depend on Math.random', () => {
+  const { leiden } = require('../src/agents/leiden');
+  const nodes = Array.from({ length: 8 }, (_, i) => `src/f${i}.ts`);
+  const edges = [];
+  for (let i = 0; i < 8; i++) {
+    edges.push([nodes[i], nodes[(i + 1) % 8]]);
+    if (i % 2 === 0) edges.push([nodes[i], nodes[(i + 4) % 8]]);
+  }
+  const lcg = (s) => () => (s = (s * 16807) % 2147483647) / 2147483647;
+  const realRandom = Math.random;
+  const runWith = (seed) => {
+    Math.random = lcg(seed);
+    try { return [...leiden(nodes, edges, 0.06)]; } finally { Math.random = realRandom; }
+  };
+  assert.deepStrictEqual(runWith(1), runWith(2));
+});
+
+test('Adaptive clustering', 'clusterByGraph result does not depend on import graph order', () => {
+  const { clusterByGraph } = require('../src/agents/leiden');
+  const files = Array.from({ length: 8 }, (_, i) => `src/m${i}/index.ts`);
+  const forward = {};
+  for (let i = 0; i < 8; i++) {
+    forward[files[i]] = [files[(i + 1) % 8]];
+    if (i % 2 === 0) forward[files[i]].push(files[(i + 4) % 8]);
+  }
+  const reversed = {};
+  for (const f of [...files].reverse()) reversed[f] = [...forward[f]].reverse();
+  const sorted = (m) => [...m].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  assert.deepStrictEqual(sorted(clusterByGraph(reversed, 0.06)), sorted(clusterByGraph(forward, 0.06)));
 });
 
 // ═══════════════════════════════════════════════════════════════════

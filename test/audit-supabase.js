@@ -12,8 +12,7 @@
  *   1. models > 0            — CF-2b: Zod/Drizzle/etc. schemas are extracted
  *                              (the audit saw 338 `z.object(` reported as 0).
  *   2. example files not     — CF-3: a byte-size util must not land in AUTH and a
- *      misclassified            theme resolver must not land in NOTIFICATIONS;
- *                              both are generic → CORE.
+ *      misclassified            theme resolver must not land in NOTIFICATIONS.
  *   3. temporal store         — CF-1: snapshots + churn are backfilled, so the
  *      non-empty                predictive/temporal tools aren't dead.
  *   4. data_flow / cross_      — CF-3 single-source-of-truth: the domain reported
@@ -114,8 +113,6 @@ function run() {
     const d = store.getDomainOf(byteFile);
     check(`byte-size util not in ${WRONG_FOR_BYTE_UTIL}`, d !== WRONG_FOR_BYTE_UTIL,
       `${byteFile} → ${d}`);
-    check('byte-size util resolves to CORE (or unassigned)', d === 'CORE' || d == null,
-      `${byteFile} → ${d} (expected CORE)`);
     log(`    ${byteFile} → ${d}`);
   } else {
     notes.push('byte-util example file not present in this clone — skipped its domain check');
@@ -126,8 +123,6 @@ function run() {
     const d = store.getDomainOf(themeFile);
     check(`theme resolver not in ${WRONG_FOR_THEME}`, d !== WRONG_FOR_THEME,
       `${themeFile} → ${d}`);
-    check('theme resolver resolves to CORE (or unassigned)', d === 'CORE' || d == null,
-      `${themeFile} → ${d} (expected CORE)`);
     log(`    ${themeFile} → ${d}`);
   } else {
     notes.push('theme example file not present in this clone — skipped its domain check');

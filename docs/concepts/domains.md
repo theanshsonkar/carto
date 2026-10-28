@@ -99,7 +99,7 @@ Low confidence is a feature: Carto would rather label a file `CORE` than guess a
 
 ## Stability across syncs
 
-Re-clustering after a code change can shuffle assignments. Carto stores the previous mapping and warns via `carto check` when > 5 % of files change domain between syncs. Declared globs and anchors give you deterministic stability where it matters.
+Clustering is deterministic: the same import graph always produces the same domains. Re-clustering after a code change can still shuffle assignments. Carto stores the previous mapping and warns via `carto check` when > 5 % of files change domain between syncs. Declared globs and anchors give you deterministic stability where it matters.
 
 ## Where domains show up
 
