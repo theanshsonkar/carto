@@ -1,0 +1,3946 @@
+{
+  "sequential": [
+    {
+      "code": 0,
+      "ms": 4204,
+      "suites": {
+        "Python extractor": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Prisma extractor": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Merger": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Import graph": {
+          "ok": true,
+          "pass": 11,
+          "total": 11
+        },
+        "R extractor": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "File discovery": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Project Structure": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Path normalization": {
+          "ok": true,
+          "pass": 9,
+          "total": 9
+        },
+        "MCP resilience": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Change plan": {
+          "ok": true,
+          "pass": 21,
+          "total": 21
+        },
+        "Init flow": {
+          "ok": true,
+          "pass": 14,
+          "total": 14
+        },
+        "Git hooks": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Lazy MCP re-parse": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Store adapter (ACP V2)": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "Secret leakage": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Adaptive clustering": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Domain config": {
+          "ok": true,
+          "pass": 11,
+          "total": 11
+        },
+        "Domain stability": {
+          "ok": true,
+          "pass": 6,
+          "total": 6
+        },
+        "Extraction errors": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Framework extractors": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "CF-2b models": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "CF-1 temporal": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Native install resilience": {
+          "ok": true,
+          "pass": 11,
+          "total": 11
+        },
+        "Bitmap validation": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Bitset serialization": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Bitmap engine": {
+          "ok": true,
+          "pass": 10,
+          "total": 10
+        },
+        "Inspect command": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Validation API": {
+          "ok": true,
+          "pass": 10,
+          "total": 10
+        },
+        "Episodic Memory": {
+          "ok": true,
+          "pass": 6,
+          "total": 6
+        },
+        "PR impact": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "Scale-test driver": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "ANCI roundtrip": {
+          "ok": true,
+          "pass": 22,
+          "total": 22
+        },
+        "SSE streaming": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Files without tests": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "MCP middleware": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "carto validate": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "SWE-bench": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "CLI: status": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "CLI: why": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "CLI: doctor": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "SWE-bench tools": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Temporal storage": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "Temporal MCP tools": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Brain invariants": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "Brain conventions": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "Brain procedural": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Brain working": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Brain suggestions": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Plugin API": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "PHP extractor": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Kotlin extractor": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Swift extractor": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Dart extractor": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Long-tail frameworks": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "ACP persistence": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "ACP config": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "ACP safety": {
+          "ok": true,
+          "pass": 6,
+          "total": 6
+        },
+        "AI retrieval: lexical": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "AI retrieval: rrf": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "AI retrieval: semantic": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI context-builder": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI tools: interfaceContract": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI tools: dataFlow": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "AI tools: safetyChecklist": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "AI tools: dependencySurface": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI tools: upgradeRisk": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI tools: staleDocs": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "Adjacent: call graph": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Adjacent: IaC": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Adjacent: runtime": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Adjacent: semantic-diff": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Adjacent: llm-enrich": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "Predictive: risk-score": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Predictive: cut-points": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Predictive: validate-change": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Predictive: ownership": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Predictive: drift-digest": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "Org: store": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Org: detect": {
+          "ok": true,
+          "pass": 6,
+          "total": 6
+        },
+        "Org: sync": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Org: queries": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Docs API gen": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Rule engine: intent": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "Rule engine: engine": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Rule engine: money-as-float": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Rule engine: auth-missing": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Rule engine: gaps store": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "CF-7 MCP surface": {
+          "ok": true,
+          "pass": 10,
+          "total": 10
+        }
+      },
+      "drift": [],
+      "stderrTail": "[carto-middleware] malformed JSON on unit: Unexpected token 'o', \"not-json\" is not valid JSON\n[CARTO] Migration: Unsupported graph-cache version \"undefined\", skipping\n[CARTO] JS Babel parse failed on src/routes/broken.js: Unterminated string constant. (3:41) — using tree-sitter only\n"
+    },
+    {
+      "code": 0,
+      "ms": 4358,
+      "suites": {
+        "Python extractor": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Prisma extractor": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Merger": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Import graph": {
+          "ok": true,
+          "pass": 11,
+          "total": 11
+        },
+        "R extractor": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "File discovery": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Project Structure": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Path normalization": {
+          "ok": true,
+          "pass": 9,
+          "total": 9
+        },
+        "MCP resilience": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Change plan": {
+          "ok": true,
+          "pass": 21,
+          "total": 21
+        },
+        "Init flow": {
+          "ok": true,
+          "pass": 14,
+          "total": 14
+        },
+        "Git hooks": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Lazy MCP re-parse": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Store adapter (ACP V2)": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "Secret leakage": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Adaptive clustering": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Domain config": {
+          "ok": true,
+          "pass": 11,
+          "total": 11
+        },
+        "Domain stability": {
+          "ok": true,
+          "pass": 6,
+          "total": 6
+        },
+        "Extraction errors": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Framework extractors": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "CF-2b models": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "CF-1 temporal": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Native install resilience": {
+          "ok": true,
+          "pass": 11,
+          "total": 11
+        },
+        "Bitmap validation": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Bitset serialization": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Bitmap engine": {
+          "ok": true,
+          "pass": 10,
+          "total": 10
+        },
+        "Inspect command": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Validation API": {
+          "ok": true,
+          "pass": 10,
+          "total": 10
+        },
+        "Episodic Memory": {
+          "ok": true,
+          "pass": 6,
+          "total": 6
+        },
+        "PR impact": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "Scale-test driver": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "ANCI roundtrip": {
+          "ok": true,
+          "pass": 22,
+          "total": 22
+        },
+        "SSE streaming": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Files without tests": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "MCP middleware": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "carto validate": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "SWE-bench": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "CLI: status": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "CLI: why": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "CLI: doctor": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "SWE-bench tools": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Temporal storage": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "Temporal MCP tools": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Brain invariants": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "Brain conventions": {
+          "ok": true,
+          "pass": 8,
+          "total": 8
+        },
+        "Brain procedural": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Brain working": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Brain suggestions": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Plugin API": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "PHP extractor": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Kotlin extractor": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Swift extractor": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Dart extractor": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Long-tail frameworks": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "ACP persistence": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "ACP config": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "ACP safety": {
+          "ok": true,
+          "pass": 6,
+          "total": 6
+        },
+        "AI retrieval: lexical": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "AI retrieval: rrf": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "AI retrieval: semantic": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI context-builder": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI tools: interfaceContract": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI tools: dataFlow": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "AI tools: safetyChecklist": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "AI tools: dependencySurface": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI tools: upgradeRisk": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "AI tools: staleDocs": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "Adjacent: call graph": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Adjacent: IaC": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Adjacent: runtime": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Adjacent: semantic-diff": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Adjacent: llm-enrich": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "Predictive: risk-score": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Predictive: cut-points": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Predictive: validate-change": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Predictive: ownership": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Predictive: drift-digest": {
+          "ok": true,
+          "pass": 1,
+          "total": 1
+        },
+        "Org: store": {
+          "ok": true,
+          "pass": 3,
+          "total": 3
+        },
+        "Org: detect": {
+          "ok": true,
+          "pass": 6,
+          "total": 6
+        },
+        "Org: sync": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Org: queries": {
+          "ok": true,
+          "pass": 2,
+          "total": 2
+        },
+        "Docs API gen": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Rule engine: intent": {
+          "ok": true,
+          "pass": 7,
+          "total": 7
+        },
+        "Rule engine: engine": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Rule engine: money-as-float": {
+          "ok": true,
+          "pass": 5,
+          "total": 5
+        },
+        "Rule engine: auth-missing": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "Rule engine: gaps store": {
+          "ok": true,
+          "pass": 4,
+          "total": 4
+        },
+        "CF-7 MCP surface": {
+          "ok": true,
+          "pass": 10,
+          "total": 10
+        }
+      },
+      "drift": [],
+      "stderrTail": "[carto-middleware] malformed JSON on unit: Unexpected token 'o', \"not-json\" is not valid JSON\n[CARTO] Migration: Unsupported graph-cache version \"undefined\", skipping\n[CARTO] JS Babel parse failed on src/routes/broken.js: Unterminated string constant. (3:41) — using tree-sitter only\n"
+    }
+  ],
+  "concurrent": [
+    [
+      {
+        "worker": "w1",
+        "code": 0,
+        "ms": 5271,
+        "suites": {
+          "Python extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Prisma extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Merger": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Import graph": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "R extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "File discovery": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Project Structure": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Path normalization": {
+            "ok": true,
+            "pass": 9,
+            "total": 9
+          },
+          "MCP resilience": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Change plan": {
+            "ok": true,
+            "pass": 21,
+            "total": 21
+          },
+          "Init flow": {
+            "ok": true,
+            "pass": 14,
+            "total": 14
+          },
+          "Git hooks": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Lazy MCP re-parse": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Store adapter (ACP V2)": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Secret leakage": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adaptive clustering": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Domain config": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Domain stability": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Extraction errors": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Framework extractors": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "CF-2b models": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "CF-1 temporal": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Native install resilience": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Bitmap validation": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitset serialization": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitmap engine": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Inspect command": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Validation API": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Episodic Memory": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "PR impact": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Scale-test driver": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ANCI roundtrip": {
+            "ok": true,
+            "pass": 22,
+            "total": 22
+          },
+          "SSE streaming": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Files without tests": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "MCP middleware": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "carto validate": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "SWE-bench": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "CLI: status": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: why": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: doctor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "SWE-bench tools": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Temporal storage": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Temporal MCP tools": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain invariants": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Brain conventions": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Brain procedural": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Brain working": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain suggestions": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Plugin API": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "PHP extractor": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Kotlin extractor": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Swift extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Dart extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Long-tail frameworks": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "ACP persistence": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ACP config": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "ACP safety": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "AI retrieval: lexical": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: rrf": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: semantic": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI context-builder": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: interfaceContract": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: dataFlow": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: safetyChecklist": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: dependencySurface": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: upgradeRisk": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: staleDocs": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Adjacent: call graph": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: IaC": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: runtime": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: semantic-diff": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Adjacent: llm-enrich": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Predictive: risk-score": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: cut-points": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: validate-change": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Predictive: ownership": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: drift-digest": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Org: store": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Org: detect": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Org: sync": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Org: queries": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Docs API gen": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: intent": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Rule engine: engine": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: money-as-float": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Rule engine: auth-missing": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: gaps store": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "CF-7 MCP surface": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          }
+        }
+      },
+      {
+        "worker": "w2",
+        "code": 0,
+        "ms": 5132,
+        "suites": {
+          "Python extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Prisma extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Merger": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Import graph": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "R extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "File discovery": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Project Structure": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Path normalization": {
+            "ok": true,
+            "pass": 9,
+            "total": 9
+          },
+          "MCP resilience": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Change plan": {
+            "ok": true,
+            "pass": 21,
+            "total": 21
+          },
+          "Init flow": {
+            "ok": true,
+            "pass": 14,
+            "total": 14
+          },
+          "Git hooks": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Lazy MCP re-parse": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Store adapter (ACP V2)": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Secret leakage": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adaptive clustering": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Domain config": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Domain stability": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Extraction errors": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Framework extractors": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "CF-2b models": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "CF-1 temporal": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Native install resilience": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Bitmap validation": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitset serialization": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitmap engine": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Inspect command": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Validation API": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Episodic Memory": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "PR impact": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Scale-test driver": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ANCI roundtrip": {
+            "ok": true,
+            "pass": 22,
+            "total": 22
+          },
+          "SSE streaming": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Files without tests": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "MCP middleware": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "carto validate": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "SWE-bench": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "CLI: status": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: why": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: doctor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "SWE-bench tools": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Temporal storage": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Temporal MCP tools": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain invariants": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Brain conventions": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Brain procedural": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Brain working": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain suggestions": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Plugin API": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "PHP extractor": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Kotlin extractor": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Swift extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Dart extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Long-tail frameworks": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "ACP persistence": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ACP config": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "ACP safety": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "AI retrieval: lexical": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: rrf": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: semantic": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI context-builder": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: interfaceContract": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: dataFlow": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: safetyChecklist": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: dependencySurface": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: upgradeRisk": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: staleDocs": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Adjacent: call graph": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: IaC": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: runtime": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: semantic-diff": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Adjacent: llm-enrich": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Predictive: risk-score": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: cut-points": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: validate-change": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Predictive: ownership": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: drift-digest": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Org: store": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Org: detect": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Org: sync": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Org: queries": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Docs API gen": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: intent": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Rule engine: engine": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: money-as-float": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Rule engine: auth-missing": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: gaps store": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "CF-7 MCP surface": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          }
+        }
+      },
+      {
+        "worker": "w3",
+        "code": 0,
+        "ms": 5246,
+        "suites": {
+          "Python extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Prisma extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Merger": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Import graph": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "R extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "File discovery": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Project Structure": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Path normalization": {
+            "ok": true,
+            "pass": 9,
+            "total": 9
+          },
+          "MCP resilience": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Change plan": {
+            "ok": true,
+            "pass": 21,
+            "total": 21
+          },
+          "Init flow": {
+            "ok": true,
+            "pass": 14,
+            "total": 14
+          },
+          "Git hooks": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Lazy MCP re-parse": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Store adapter (ACP V2)": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Secret leakage": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adaptive clustering": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Domain config": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Domain stability": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Extraction errors": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Framework extractors": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "CF-2b models": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "CF-1 temporal": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Native install resilience": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Bitmap validation": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitset serialization": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitmap engine": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Inspect command": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Validation API": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Episodic Memory": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "PR impact": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Scale-test driver": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ANCI roundtrip": {
+            "ok": true,
+            "pass": 22,
+            "total": 22
+          },
+          "SSE streaming": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Files without tests": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "MCP middleware": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "carto validate": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "SWE-bench": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "CLI: status": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: why": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: doctor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "SWE-bench tools": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Temporal storage": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Temporal MCP tools": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain invariants": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Brain conventions": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Brain procedural": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Brain working": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain suggestions": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Plugin API": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "PHP extractor": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Kotlin extractor": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Swift extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Dart extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Long-tail frameworks": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "ACP persistence": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ACP config": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "ACP safety": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "AI retrieval: lexical": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: rrf": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: semantic": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI context-builder": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: interfaceContract": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: dataFlow": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: safetyChecklist": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: dependencySurface": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: upgradeRisk": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: staleDocs": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Adjacent: call graph": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: IaC": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: runtime": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: semantic-diff": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Adjacent: llm-enrich": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Predictive: risk-score": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: cut-points": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: validate-change": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Predictive: ownership": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: drift-digest": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Org: store": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Org: detect": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Org: sync": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Org: queries": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Docs API gen": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: intent": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Rule engine: engine": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: money-as-float": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Rule engine: auth-missing": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: gaps store": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "CF-7 MCP surface": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          }
+        }
+      }
+    ],
+    [
+      {
+        "worker": "w1",
+        "code": 0,
+        "ms": 5197,
+        "suites": {
+          "Python extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Prisma extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Merger": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Import graph": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "R extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "File discovery": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Project Structure": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Path normalization": {
+            "ok": true,
+            "pass": 9,
+            "total": 9
+          },
+          "MCP resilience": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Change plan": {
+            "ok": true,
+            "pass": 21,
+            "total": 21
+          },
+          "Init flow": {
+            "ok": true,
+            "pass": 14,
+            "total": 14
+          },
+          "Git hooks": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Lazy MCP re-parse": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Store adapter (ACP V2)": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Secret leakage": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adaptive clustering": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Domain config": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Domain stability": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Extraction errors": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Framework extractors": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "CF-2b models": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "CF-1 temporal": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Native install resilience": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Bitmap validation": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitset serialization": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitmap engine": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Inspect command": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Validation API": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Episodic Memory": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "PR impact": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Scale-test driver": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ANCI roundtrip": {
+            "ok": true,
+            "pass": 22,
+            "total": 22
+          },
+          "SSE streaming": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Files without tests": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "MCP middleware": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "carto validate": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "SWE-bench": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "CLI: status": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: why": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: doctor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "SWE-bench tools": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Temporal storage": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Temporal MCP tools": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain invariants": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Brain conventions": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Brain procedural": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Brain working": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain suggestions": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Plugin API": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "PHP extractor": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Kotlin extractor": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Swift extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Dart extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Long-tail frameworks": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "ACP persistence": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ACP config": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "ACP safety": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "AI retrieval: lexical": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: rrf": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: semantic": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI context-builder": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: interfaceContract": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: dataFlow": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: safetyChecklist": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: dependencySurface": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: upgradeRisk": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: staleDocs": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Adjacent: call graph": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: IaC": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: runtime": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: semantic-diff": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Adjacent: llm-enrich": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Predictive: risk-score": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: cut-points": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: validate-change": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Predictive: ownership": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: drift-digest": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Org: store": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Org: detect": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Org: sync": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Org: queries": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Docs API gen": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: intent": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Rule engine: engine": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: money-as-float": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Rule engine: auth-missing": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: gaps store": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "CF-7 MCP surface": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          }
+        }
+      },
+      {
+        "worker": "w2",
+        "code": 0,
+        "ms": 4598,
+        "suites": {
+          "Python extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Prisma extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Merger": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Import graph": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "R extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "File discovery": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Project Structure": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Path normalization": {
+            "ok": true,
+            "pass": 9,
+            "total": 9
+          },
+          "MCP resilience": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Change plan": {
+            "ok": true,
+            "pass": 21,
+            "total": 21
+          },
+          "Init flow": {
+            "ok": true,
+            "pass": 14,
+            "total": 14
+          },
+          "Git hooks": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Lazy MCP re-parse": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Store adapter (ACP V2)": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Secret leakage": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adaptive clustering": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Domain config": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Domain stability": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Extraction errors": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Framework extractors": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "CF-2b models": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "CF-1 temporal": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Native install resilience": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Bitmap validation": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitset serialization": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitmap engine": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Inspect command": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Validation API": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Episodic Memory": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "PR impact": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Scale-test driver": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ANCI roundtrip": {
+            "ok": true,
+            "pass": 22,
+            "total": 22
+          },
+          "SSE streaming": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Files without tests": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "MCP middleware": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "carto validate": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "SWE-bench": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "CLI: status": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: why": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: doctor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "SWE-bench tools": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Temporal storage": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Temporal MCP tools": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain invariants": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Brain conventions": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Brain procedural": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Brain working": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain suggestions": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Plugin API": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "PHP extractor": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Kotlin extractor": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Swift extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Dart extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Long-tail frameworks": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "ACP persistence": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ACP config": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "ACP safety": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "AI retrieval: lexical": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: rrf": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: semantic": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI context-builder": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: interfaceContract": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: dataFlow": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: safetyChecklist": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: dependencySurface": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: upgradeRisk": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: staleDocs": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Adjacent: call graph": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: IaC": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: runtime": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: semantic-diff": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Adjacent: llm-enrich": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Predictive: risk-score": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: cut-points": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: validate-change": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Predictive: ownership": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: drift-digest": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Org: store": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Org: detect": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Org: sync": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Org: queries": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Docs API gen": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: intent": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Rule engine: engine": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: money-as-float": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Rule engine: auth-missing": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: gaps store": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "CF-7 MCP surface": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          }
+        }
+      },
+      {
+        "worker": "w3",
+        "code": 0,
+        "ms": 5098,
+        "suites": {
+          "Python extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Prisma extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Merger": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Import graph": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "R extractor": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "File discovery": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Project Structure": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Path normalization": {
+            "ok": true,
+            "pass": 9,
+            "total": 9
+          },
+          "MCP resilience": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Change plan": {
+            "ok": true,
+            "pass": 21,
+            "total": 21
+          },
+          "Init flow": {
+            "ok": true,
+            "pass": 14,
+            "total": 14
+          },
+          "Git hooks": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Lazy MCP re-parse": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Store adapter (ACP V2)": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Secret leakage": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adaptive clustering": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Domain config": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Domain stability": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Extraction errors": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Framework extractors": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "CF-2b models": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "CF-1 temporal": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Native install resilience": {
+            "ok": true,
+            "pass": 11,
+            "total": 11
+          },
+          "Bitmap validation": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitset serialization": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Bitmap engine": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Inspect command": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Validation API": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          },
+          "Episodic Memory": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "PR impact": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Scale-test driver": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ANCI roundtrip": {
+            "ok": true,
+            "pass": 22,
+            "total": 22
+          },
+          "SSE streaming": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Files without tests": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "MCP middleware": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "carto validate": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "SWE-bench": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "CLI: status": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: why": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "CLI: doctor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "SWE-bench tools": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Temporal storage": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Temporal MCP tools": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain invariants": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Brain conventions": {
+            "ok": true,
+            "pass": 8,
+            "total": 8
+          },
+          "Brain procedural": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Brain working": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Brain suggestions": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Plugin API": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "PHP extractor": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Kotlin extractor": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Swift extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Dart extractor": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Long-tail frameworks": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "ACP persistence": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "ACP config": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "ACP safety": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "AI retrieval: lexical": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: rrf": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI retrieval: semantic": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI context-builder": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: interfaceContract": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: dataFlow": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: safetyChecklist": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "AI tools: dependencySurface": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: upgradeRisk": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "AI tools: staleDocs": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Adjacent: call graph": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: IaC": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: runtime": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Adjacent: semantic-diff": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Adjacent: llm-enrich": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Predictive: risk-score": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: cut-points": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: validate-change": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Predictive: ownership": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Predictive: drift-digest": {
+            "ok": true,
+            "pass": 1,
+            "total": 1
+          },
+          "Org: store": {
+            "ok": true,
+            "pass": 3,
+            "total": 3
+          },
+          "Org: detect": {
+            "ok": true,
+            "pass": 6,
+            "total": 6
+          },
+          "Org: sync": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Org: queries": {
+            "ok": true,
+            "pass": 2,
+            "total": 2
+          },
+          "Docs API gen": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: intent": {
+            "ok": true,
+            "pass": 7,
+            "total": 7
+          },
+          "Rule engine: engine": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: money-as-float": {
+            "ok": true,
+            "pass": 5,
+            "total": 5
+          },
+          "Rule engine: auth-missing": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "Rule engine: gaps store": {
+            "ok": true,
+            "pass": 4,
+            "total": 4
+          },
+          "CF-7 MCP surface": {
+            "ok": true,
+            "pass": 10,
+            "total": 10
+          }
+        }
+      }
+    ]
+  ],
+  "stable": {
+    "ACP config": {
+      "pass": 2,
+      "total": 2
+    },
+    "ACP persistence": {
+      "pass": 3,
+      "total": 3
+    },
+    "ACP safety": {
+      "pass": 6,
+      "total": 6
+    },
+    "AI context-builder": {
+      "pass": 1,
+      "total": 1
+    },
+    "AI retrieval: lexical": {
+      "pass": 2,
+      "total": 2
+    },
+    "AI retrieval: rrf": {
+      "pass": 2,
+      "total": 2
+    },
+    "AI retrieval: semantic": {
+      "pass": 1,
+      "total": 1
+    },
+    "AI tools: dataFlow": {
+      "pass": 2,
+      "total": 2
+    },
+    "AI tools: dependencySurface": {
+      "pass": 1,
+      "total": 1
+    },
+    "AI tools: interfaceContract": {
+      "pass": 1,
+      "total": 1
+    },
+    "AI tools: safetyChecklist": {
+      "pass": 2,
+      "total": 2
+    },
+    "AI tools: staleDocs": {
+      "pass": 1,
+      "total": 1
+    },
+    "AI tools: upgradeRisk": {
+      "pass": 1,
+      "total": 1
+    },
+    "ANCI roundtrip": {
+      "pass": 22,
+      "total": 22
+    },
+    "Adaptive clustering": {
+      "pass": 3,
+      "total": 3
+    },
+    "Adjacent: IaC": {
+      "pass": 3,
+      "total": 3
+    },
+    "Adjacent: call graph": {
+      "pass": 3,
+      "total": 3
+    },
+    "Adjacent: llm-enrich": {
+      "pass": 1,
+      "total": 1
+    },
+    "Adjacent: runtime": {
+      "pass": 3,
+      "total": 3
+    },
+    "Adjacent: semantic-diff": {
+      "pass": 2,
+      "total": 2
+    },
+    "Bitmap engine": {
+      "pass": 10,
+      "total": 10
+    },
+    "Bitmap validation": {
+      "pass": 5,
+      "total": 5
+    },
+    "Bitset serialization": {
+      "pass": 5,
+      "total": 5
+    },
+    "Brain conventions": {
+      "pass": 8,
+      "total": 8
+    },
+    "Brain invariants": {
+      "pass": 7,
+      "total": 7
+    },
+    "Brain procedural": {
+      "pass": 2,
+      "total": 2
+    },
+    "Brain suggestions": {
+      "pass": 4,
+      "total": 4
+    },
+    "Brain working": {
+      "pass": 4,
+      "total": 4
+    },
+    "CF-1 temporal": {
+      "pass": 4,
+      "total": 4
+    },
+    "CF-2b models": {
+      "pass": 3,
+      "total": 3
+    },
+    "CF-7 MCP surface": {
+      "pass": 10,
+      "total": 10
+    },
+    "CLI: doctor": {
+      "pass": 2,
+      "total": 2
+    },
+    "CLI: status": {
+      "pass": 2,
+      "total": 2
+    },
+    "CLI: why": {
+      "pass": 2,
+      "total": 2
+    },
+    "Change plan": {
+      "pass": 21,
+      "total": 21
+    },
+    "Dart extractor": {
+      "pass": 2,
+      "total": 2
+    },
+    "Docs API gen": {
+      "pass": 4,
+      "total": 4
+    },
+    "Domain config": {
+      "pass": 11,
+      "total": 11
+    },
+    "Domain stability": {
+      "pass": 6,
+      "total": 6
+    },
+    "Episodic Memory": {
+      "pass": 6,
+      "total": 6
+    },
+    "Extraction errors": {
+      "pass": 5,
+      "total": 5
+    },
+    "File discovery": {
+      "pass": 4,
+      "total": 4
+    },
+    "Files without tests": {
+      "pass": 4,
+      "total": 4
+    },
+    "Framework extractors": {
+      "pass": 8,
+      "total": 8
+    },
+    "Git hooks": {
+      "pass": 4,
+      "total": 4
+    },
+    "Import graph": {
+      "pass": 11,
+      "total": 11
+    },
+    "Init flow": {
+      "pass": 14,
+      "total": 14
+    },
+    "Inspect command": {
+      "pass": 3,
+      "total": 3
+    },
+    "Kotlin extractor": {
+      "pass": 3,
+      "total": 3
+    },
+    "Lazy MCP re-parse": {
+      "pass": 4,
+      "total": 4
+    },
+    "Long-tail frameworks": {
+      "pass": 7,
+      "total": 7
+    },
+    "MCP middleware": {
+      "pass": 8,
+      "total": 8
+    },
+    "MCP resilience": {
+      "pass": 2,
+      "total": 2
+    },
+    "Merger": {
+      "pass": 5,
+      "total": 5
+    },
+    "Native install resilience": {
+      "pass": 11,
+      "total": 11
+    },
+    "Org: detect": {
+      "pass": 6,
+      "total": 6
+    },
+    "Org: queries": {
+      "pass": 2,
+      "total": 2
+    },
+    "Org: store": {
+      "pass": 3,
+      "total": 3
+    },
+    "Org: sync": {
+      "pass": 2,
+      "total": 2
+    },
+    "PHP extractor": {
+      "pass": 4,
+      "total": 4
+    },
+    "PR impact": {
+      "pass": 7,
+      "total": 7
+    },
+    "Path normalization": {
+      "pass": 9,
+      "total": 9
+    },
+    "Plugin API": {
+      "pass": 4,
+      "total": 4
+    },
+    "Predictive: cut-points": {
+      "pass": 2,
+      "total": 2
+    },
+    "Predictive: drift-digest": {
+      "pass": 1,
+      "total": 1
+    },
+    "Predictive: ownership": {
+      "pass": 2,
+      "total": 2
+    },
+    "Predictive: risk-score": {
+      "pass": 2,
+      "total": 2
+    },
+    "Predictive: validate-change": {
+      "pass": 3,
+      "total": 3
+    },
+    "Prisma extractor": {
+      "pass": 5,
+      "total": 5
+    },
+    "Project Structure": {
+      "pass": 5,
+      "total": 5
+    },
+    "Python extractor": {
+      "pass": 5,
+      "total": 5
+    },
+    "R extractor": {
+      "pass": 5,
+      "total": 5
+    },
+    "Rule engine: auth-missing": {
+      "pass": 4,
+      "total": 4
+    },
+    "Rule engine: engine": {
+      "pass": 4,
+      "total": 4
+    },
+    "Rule engine: gaps store": {
+      "pass": 4,
+      "total": 4
+    },
+    "Rule engine: intent": {
+      "pass": 7,
+      "total": 7
+    },
+    "Rule engine: money-as-float": {
+      "pass": 5,
+      "total": 5
+    },
+    "SSE streaming": {
+      "pass": 5,
+      "total": 5
+    },
+    "SWE-bench": {
+      "pass": 7,
+      "total": 7
+    },
+    "SWE-bench tools": {
+      "pass": 5,
+      "total": 5
+    },
+    "Scale-test driver": {
+      "pass": 3,
+      "total": 3
+    },
+    "Secret leakage": {
+      "pass": 3,
+      "total": 3
+    },
+    "Store adapter (ACP V2)": {
+      "pass": 8,
+      "total": 8
+    },
+    "Swift extractor": {
+      "pass": 2,
+      "total": 2
+    },
+    "Temporal MCP tools": {
+      "pass": 4,
+      "total": 4
+    },
+    "Temporal storage": {
+      "pass": 8,
+      "total": 8
+    },
+    "Validation API": {
+      "pass": 10,
+      "total": 10
+    },
+    "carto validate": {
+      "pass": 3,
+      "total": 3
+    }
+  },
+  "droppedOrUnstable": [],
+  "concurrencySafe": true,
+  "baselineMs": 4358,
+  "concurrentMaxMs": 5271
+}

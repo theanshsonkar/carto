@@ -1,0 +1,35 @@
+{
+  "file": "src/store/path-utils.js",
+  "site": {
+    "op": "if->false",
+    "start": 1002,
+    "end": 1053,
+    "original": "typeof fileArg !== 'string' || fileArg.length === 0",
+    "replacement": "false",
+    "line": 24,
+    "fn": "normalizeFileArg",
+    "id": 0
+  },
+  "result": {
+    "file": "src/store/path-utils.js",
+    "site": {
+      "id": 0,
+      "op": "if->false",
+      "line": 24,
+      "fn": "normalizeFileArg",
+      "original": "typeof fileArg !== 'string' || fileArg.length === 0"
+    },
+    "worker": "w1",
+    "outcome": "killed",
+    "fail": [
+      "MCP resilience",
+      "Path normalization"
+    ],
+    "exit": 1,
+    "signal": null,
+    "ms": 4265
+  },
+  "drift": [],
+  "expectSuite": "Path normalization",
+  "pass": true
+}

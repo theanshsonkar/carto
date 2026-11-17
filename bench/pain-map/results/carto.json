@@ -1,0 +1,2468 @@
+{
+ "summary": {
+  "verdict": {
+   "verdict": "INCONCLUSIVE",
+   "reasons": [
+    "detection 85.3%, cost ratio LEARNED/STATIC-SUITE 0.20"
+   ]
+  },
+  "verdictWithoutBroad": {
+   "verdict": "INCONCLUSIVE",
+   "reasons": [
+    "detection 85.3%, cost ratio LEARNED/STATIC-SUITE 0.20"
+   ]
+  },
+  "strictVerdict": "KILL",
+  "strictVerdictWithoutBroad": "KILL",
+  "suites": 88,
+  "tests": 422,
+  "droppedSuites": [],
+  "concurrencySafe": true,
+  "files": {
+   "src": 138,
+   "eligible": 129,
+   "sampled": 129
+  },
+  "mutants": 770,
+  "outcomes": {
+   "killed": 211,
+   "survived": 552,
+   "timeout": 5,
+   "crash": 2,
+   "killedNoSuite": 0
+  },
+  "broadKilled": 0,
+  "predictorsAll": {
+   "ALL": {
+    "n": 211,
+    "detection": 1,
+    "detected": 211,
+    "fullRecall": 1,
+    "cost": 1,
+    "meanSelected": 88
+   },
+   "STATIC-FILE (Carto native)": {
+    "n": 211,
+    "detection": 0,
+    "detected": 0,
+    "fullRecall": 0,
+    "cost": 0,
+    "meanSelected": 0
+   },
+   "STATIC-FILE (test.js imports added)": {
+    "n": 211,
+    "detection": 1,
+    "detected": 211,
+    "fullRecall": 1,
+    "cost": 1,
+    "meanSelected": 88
+   },
+   "STATIC-SUITE": {
+    "n": 211,
+    "detection": 1,
+    "detected": 211,
+    "fullRecall": 0.990916271721959,
+    "cost": 0.09090909090909091,
+    "meanSelected": 8
+   },
+   "LEARNED (LOO)": {
+    "n": 211,
+    "detection": 0.8530805687203792,
+    "detected": 180,
+    "fullRecall": 0.8144286466561348,
+    "cost": 0.018203360620422226,
+    "meanSelected": 1.6018957345971558
+   },
+   "LEARNED-STRICT": {
+    "n": 211,
+    "detection": 0.6729857819905213,
+    "detected": 142,
+    "fullRecall": 0.6520537124802528,
+    "cost": 0.011794485135717372,
+    "meanSelected": 1.0379146919431288
+   },
+   "_noOtherKilled": 20,
+   "_noOtherKilledDiffFn": 58
+  },
+  "predictorsWithoutBroad": {
+   "ALL": {
+    "n": 211,
+    "detection": 1,
+    "detected": 211,
+    "fullRecall": 1,
+    "cost": 1,
+    "meanSelected": 88
+   },
+   "STATIC-FILE (Carto native)": {
+    "n": 211,
+    "detection": 0,
+    "detected": 0,
+    "fullRecall": 0,
+    "cost": 0,
+    "meanSelected": 0
+   },
+   "STATIC-FILE (test.js imports added)": {
+    "n": 211,
+    "detection": 1,
+    "detected": 211,
+    "fullRecall": 1,
+    "cost": 1,
+    "meanSelected": 88
+   },
+   "STATIC-SUITE": {
+    "n": 211,
+    "detection": 1,
+    "detected": 211,
+    "fullRecall": 0.990916271721959,
+    "cost": 0.09090909090909091,
+    "meanSelected": 8
+   },
+   "LEARNED (LOO)": {
+    "n": 211,
+    "detection": 0.8530805687203792,
+    "detected": 180,
+    "fullRecall": 0.8144286466561348,
+    "cost": 0.018203360620422226,
+    "meanSelected": 1.6018957345971558
+   },
+   "LEARNED-STRICT": {
+    "n": 211,
+    "detection": 0.6729857819905213,
+    "detected": 142,
+    "fullRecall": 0.6520537124802528,
+    "cost": 0.011794485135717372,
+    "meanSelected": 1.0379146919431288
+   },
+   "_noOtherKilled": 20,
+   "_noOtherKilledDiffFn": 58
+  },
+  "learningCurveAll": {
+   "population": 49,
+   "files": 9,
+   "points": [
+    {
+     "k": 1,
+     "detection": 1,
+     "fullRecall": 0.9395124716553285,
+     "cost": 0.014424860853432492,
+     "draws": 20
+    },
+    {
+     "k": 2,
+     "detection": 1,
+     "fullRecall": 0.9451247165532877,
+     "cost": 0.018135435992579076,
+     "draws": 20
+    },
+    {
+     "k": 4,
+     "detection": 1,
+     "fullRecall": 0.9502267573696143,
+     "cost": 0.023747680890538272,
+     "draws": 20
+    },
+    {
+     "k": "all others (LOO)",
+     "detection": 1,
+     "fullRecall": 0.9563492063492064,
+     "cost": 0.024582560296846013,
+     "draws": 1
+    }
+   ],
+   "staticSuiteOnSamePop": {
+    "detection": 1,
+    "cost": 0.0795454545454546
+   }
+  },
+  "learningCurveWithoutBroad": {
+   "population": 49,
+   "files": 9,
+   "points": [
+    {
+     "k": 1,
+     "detection": 1,
+     "fullRecall": 0.9395124716553285,
+     "cost": 0.014424860853432492,
+     "draws": 20
+    },
+    {
+     "k": 2,
+     "detection": 1,
+     "fullRecall": 0.9451247165532877,
+     "cost": 0.018135435992579076,
+     "draws": 20
+    },
+    {
+     "k": 4,
+     "detection": 1,
+     "fullRecall": 0.9502267573696143,
+     "cost": 0.023747680890538272,
+     "draws": 20
+    },
+    {
+     "k": "all others (LOO)",
+     "detection": 1,
+     "fullRecall": 0.9563492063492064,
+     "cost": 0.024582560296846013,
+     "draws": 1
+    }
+   ],
+   "staticSuiteOnSamePop": {
+    "detection": 1,
+    "cost": 0.0795454545454546
+   }
+  },
+  "failSizeDistribution": [
+   {
+    "range": "1",
+    "n": 176
+   },
+   {
+    "range": "2",
+    "n": 19
+   },
+   {
+    "range": "3",
+    "n": 5
+   },
+   {
+    "range": "4-5",
+    "n": 7
+   },
+   {
+    "range": "6-10",
+    "n": 3
+   },
+   {
+    "range": "11-20",
+    "n": 1
+   },
+   {
+    "range": "21-44",
+    "n": 0
+   },
+   {
+    "range": "45-88",
+    "n": 0
+   }
+  ],
+  "failSizeMedian": 1,
+  "staticSuite": {
+   "suitesWithModules": 87,
+   "unattributed": [
+    "File discovery"
+   ],
+   "suitesNotFoundInSource": [],
+   "nonInlineCallbacks": 0,
+   "unresolvedSuiteNames": 0
+  },
+  "staticFile": {
+   "testJsInCartoIndex": false,
+   "testJsDirectDepsInGraph": 100,
+   "sampledFilesNotReachedByTestJs": [
+    "src/acp/agent.js",
+    "src/acp/prompt.js",
+    "src/acp/providers/index.js",
+    "src/acp/tools.js",
+    "src/agents/validator.js",
+    "src/cli/check.js",
+    "src/cli/diff.js",
+    "src/cli/explain.js",
+    "src/cli/export.js",
+    "src/cli/impact.js",
+    "src/cli/index.js",
+    "src/cli/load.js",
+    "src/cli/org.js",
+    "src/cli/remove.js",
+    "src/cli/sync.js",
+    "src/cli/temporal.js",
+    "src/cli/watch.js",
+    "src/engine/worker.js",
+    "src/extractors/filemap.js",
+    "src/extractors/frontend.js",
+    "src/extractors/languages/cpp.js",
+    "src/extractors/languages/csharp.js",
+    "src/extractors/languages/java.js",
+    "src/extractors/languages/rust.js",
+    "src/watcher/watch.js"
+   ]
+  },
+  "graph": {
+   "files": 162,
+   "edges": 510,
+   "resolvedEdges": 267,
+   "relativeEdges": 0,
+   "relativeResolved": 0
+  },
+  "edgeResolution": {
+   "literalRelativeRequiresToIndexedFiles": 256,
+   "presentInCartoGraph": 256,
+   "missing": [],
+   "unresolvedEdgeBreakdown": {
+    "builtin": 206,
+    "npmPackage": 23,
+    "other": 14,
+    "otherExamples": [
+     "${rel}",
+     "package.json",
+     "package.json",
+     "package.json",
+     "this consumer can",
+     "package.json",
+     "package.json",
+     "ui"
+    ]
+   }
+  },
+  "impactSpotCheck": [
+   {
+    "file": "src/store/path-utils.js",
+    "cliDependents": 5,
+    "ourBlast5": 5,
+    "identical": true,
+    "cliTestFiles": 0
+   },
+   {
+    "file": "src/bitmap/bitset.js",
+    "cliDependents": 45,
+    "ourBlast5": 45,
+    "identical": true,
+    "cliTestFiles": 0
+   }
+  ],
+  "timing": {
+   "baselineSeqMs": [
+    4204,
+    4358
+   ],
+   "baselineConcurrentMaxMs": 5271,
+   "timeoutMs": 15813,
+   "mutationWallSec": 1270.952,
+   "mutationCpuSecSum": 3802.648,
+   "testRunsTotal": 779,
+   "workers": 3
+  },
+  "safety": {
+   "drifts": [],
+   "finalDiffs": {
+    "w1": [],
+    "w2": [],
+    "w3": []
+   },
+   "sanity": {
+    "pass": true,
+    "fail": [
+     "MCP resilience",
+     "Path normalization"
+    ],
+    "outcome": "killed"
+   }
+  }
+ },
+ "painMap": {
+  "src/acp/agent.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "CartoAgent.newSession",
+    "CartoAgent.prompt",
+    "CartoAgent.cancel",
+    "CartoAgent.loadSession",
+    "onTextChunk",
+    "CartoAgent._runAgentLoop"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 2
+  },
+  "src/acp/config.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "ACP config": 1
+   },
+   "numbFunctions": [
+    "loadAgentConfig",
+    "saveAgentConfig"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 3
+  },
+  "src/acp/persistence.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "ACP persistence": 2
+   },
+   "numbFunctions": [
+    "AcpStore.close",
+    "AcpStore._ensureSchema",
+    "AcpStore.saveSession",
+    "AcpStore.listSessions"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 4
+  },
+  "src/acp/prompt.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "buildContextBlock"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 3
+  },
+  "src/acp/providers/anthropic.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "SSE streaming": 1
+   },
+   "numbFunctions": [
+    "AnthropicProvider.constructor",
+    "AnthropicProvider.chat",
+    "AnthropicProvider._formatMessage",
+    "AnthropicProvider._streamRequest"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 4
+  },
+  "src/acp/providers/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "ProviderRegistry.set"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 3
+  },
+  "src/acp/providers/openai.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "OpenAIProvider.chat",
+    "OpenAIProvider._formatMessages",
+    "OpenAIProvider._foldChunks",
+    "OpenAIProvider._streamRequest"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 4
+  },
+  "src/acp/providers/sse.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 3
+   },
+   "painSuites": {
+    "SSE streaming": 3
+   },
+   "numbFunctions": [
+    "parseSseStream"
+   ],
+   "staticSuiteSelected": 4,
+   "cartoBlastRadius5": 9
+  },
+  "src/acp/safety.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "ACP safety": 2
+   },
+   "numbFunctions": [
+    "resolveSafe",
+    "safeRunCommand"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 0
+  },
+  "src/acp/session.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 1,
+    "survived": 5
+   },
+   "painSuites": {
+    "Store adapter (ACP V2)": 1
+   },
+   "numbFunctions": [
+    "Session.ensureIndexed",
+    "SessionManager.create",
+    "SessionManager.resume",
+    "SessionManager.list",
+    "SessionManager.closeAll"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/acp/tools.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "executeTool"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 3
+  },
+  "src/adjacent/call-graph.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 5,
+    "survived": 1
+   },
+   "painSuites": {
+    "Adjacent: call graph": 5
+   },
+   "numbFunctions": [
+    "dedupe"
+   ],
+   "staticSuiteSelected": 4,
+   "cartoBlastRadius5": 4
+  },
+  "src/adjacent/iac.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Adjacent: IaC": 2
+   },
+   "numbFunctions": [
+    "parseTerraform",
+    "parseHelmChart",
+    "scanIacResources",
+    "walk"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/adjacent/runtime.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 4,
+    "survived": 2
+   },
+   "painSuites": {
+    "Adjacent: runtime": 4
+   },
+   "numbFunctions": [
+    "walkOtlpSpans",
+    "hotInProdNoTests"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/adjacent/semantic-diff.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 3
+   },
+   "painSuites": {
+    "Adjacent: semantic-diff": 3
+   },
+   "numbFunctions": [
+    "semanticDiff",
+    "detectNewDomains"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/agents/domains.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Domain config": 2
+   },
+   "numbFunctions": [
+    "setDomainMap",
+    "getCluster",
+    "clusterByDomain"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 18
+  },
+  "src/agents/formatter.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "formatSections",
+    "formatDomainFile"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 18
+  },
+  "src/agents/leiden.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "leiden",
+    "_refinementPhase",
+    "shuffleIndices",
+    "nameCommunity",
+    "clusterByGraph"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 18
+  },
+  "src/agents/merger.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 3,
+    "survived": 3
+   },
+   "painSuites": {
+    "Init flow": 1,
+    "Merger": 3,
+    "Project Structure": 1,
+    "Secret leakage": 1,
+    "Store adapter (ACP V2)": 1
+   },
+   "numbFunctions": [
+    "mergeIntoAgentsMd"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 18
+  },
+  "src/agents/scan-structure.js": {
+   "mutants": 5,
+   "outcomes": {
+    "killed": 5
+   },
+   "painSuites": {
+    "ANCI roundtrip": 1,
+    "CF-1 temporal": 1,
+    "Extraction errors": 1,
+    "Git hooks": 1,
+    "Init flow": 1,
+    "Lazy MCP re-parse": 1,
+    "Project Structure": 5,
+    "Secret leakage": 1,
+    "Store adapter (ACP V2)": 1
+   },
+   "numbFunctions": [],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 18
+  },
+  "src/agents/validator.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "validateExtracted",
+    "validateRoutes",
+    "validateModels",
+    "validateFunctions",
+    "validateEnvVars",
+    "validateDBTables"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  },
+  "src/ai/context-builder.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "getMinimalContextForIntent",
+    "renderContextMarkdown",
+    "getProgressiveDisclosureTree",
+    "getTokenBudgetReport"
+   ],
+   "staticSuiteSelected": 9,
+   "cartoBlastRadius5": 4
+  },
+  "src/ai/retrieval/lexical.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "ensureFtsIndex",
+    "rebuildFts",
+    "searchFts"
+   ],
+   "staticSuiteSelected": 24,
+   "cartoBlastRadius5": 20
+  },
+  "src/ai/retrieval/rrf.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "AI retrieval: rrf": 2
+   },
+   "numbFunctions": [
+    "fuse",
+    "computeBoosts"
+   ],
+   "staticSuiteSelected": 10,
+   "cartoBlastRadius5": 5
+  },
+  "src/ai/retrieval/structural.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "structuralSearch",
+    "neighborhoodSearch",
+    "domainSearch"
+   ],
+   "staticSuiteSelected": 9,
+   "cartoBlastRadius5": 5
+  },
+  "src/ai/tools.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "AI tools: staleDocs": 1
+   },
+   "numbFunctions": [
+    "tokenBudget",
+    "testCoverageMap",
+    "interfaceContract",
+    "explainChange",
+    "dependencySurface"
+   ],
+   "staticSuiteSelected": 8,
+   "cartoBlastRadius5": 3
+  },
+  "src/anci/consumer.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 4,
+    "survived": 2
+   },
+   "painSuites": {
+    "ANCI roundtrip": 4
+   },
+   "numbFunctions": [
+    "getHighImpactFiles",
+    "verifyDigest"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 3
+  },
+  "src/anci/deserialize.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 2,
+    "killed": 4
+   },
+   "painSuites": {
+    "ANCI roundtrip": 4
+   },
+   "numbFunctions": [
+    "decodeBitmap",
+    "deserializeBody"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 4
+  },
+  "src/anci/git-meta.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "ANCI roundtrip": 2
+   },
+   "numbFunctions": [
+    "headCommit",
+    "headTree",
+    "isAncestor",
+    "uncommittedPaths"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 22
+  },
+  "src/anci/pack.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "isSafeEntryName",
+    "packContainer",
+    "packFromCartoDir",
+    "unpackContainer",
+    "unpackToDir"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 3
+  },
+  "src/anci/serialize.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 2,
+    "killed": 4
+   },
+   "painSuites": {
+    "ANCI roundtrip": 4
+   },
+   "numbFunctions": [
+    "encodePopcountTable",
+    "buildHeader"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 26
+  },
+  "src/anci/staleness.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 2,
+    "killed": 4
+   },
+   "painSuites": {
+    "ANCI roundtrip": 4
+   },
+   "numbFunctions": [
+    "readManifestSource",
+    "stalenessBanner"
+   ],
+   "staticSuiteSelected": 5,
+   "cartoBlastRadius5": 4
+  },
+  "src/anci/yaml.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 5,
+    "survived": 1
+   },
+   "painSuites": {
+    "ANCI roundtrip": 5
+   },
+   "numbFunctions": [
+    "parseQuotedString"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 24
+  },
+  "src/bitmap/bitset.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 4,
+    "survived": 2
+   },
+   "painSuites": {
+    "Bitset serialization": 4,
+    "ANCI roundtrip": 1,
+    "Bitmap engine": 2,
+    "CF-7 MCP surface": 1,
+    "Inspect command": 1,
+    "Validation API": 1
+   },
+   "numbFunctions": [
+    "Bitset.and",
+    "Bitset.deserialize"
+   ],
+   "staticSuiteSelected": 34,
+   "cartoBlastRadius5": 45
+  },
+  "src/bitmap/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Bitmap engine": 2
+   },
+   "numbFunctions": [
+    "bitmapIsFresh",
+    "ensureBitmapFresh",
+    "invalidate"
+   ],
+   "staticSuiteSelected": 19,
+   "cartoBlastRadius5": 23
+  },
+  "src/bitmap/sidecar.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 4,
+    "survived": 2
+   },
+   "painSuites": {
+    "Bitmap engine": 4,
+    "Inspect command": 3,
+    "ANCI roundtrip": 1,
+    "CF-7 MCP surface": 1,
+    "Scale-test driver": 1
+   },
+   "numbFunctions": [
+    "deriveFlatArrays",
+    "deriveCrossForward"
+   ],
+   "staticSuiteSelected": 23,
+   "cartoBlastRadius5": 30
+  },
+  "src/bitmap/tools.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "ANCI roundtrip": 1,
+    "Bitmap engine": 1,
+    "CF-7 MCP surface": 1,
+    "Validation API": 1,
+    "Bitmap validation": 1,
+    "Scale-test driver": 1
+   },
+   "numbFunctions": [
+    "crossDomain",
+    "highImpactFiles",
+    "simulateChangeImpact"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 19
+  },
+  "src/brain/conventions/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 3,
+    "survived": 3
+   },
+   "painSuites": {
+    "Brain conventions": 3
+   },
+   "numbFunctions": [
+    "mineConventions",
+    "mineNamingConventions",
+    "conventionsForFile"
+   ],
+   "staticSuiteSelected": 7,
+   "cartoBlastRadius5": 5
+  },
+  "src/brain/invariants/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Brain invariants": 2,
+    "Brain procedural": 1
+   },
+   "numbFunctions": [
+    "inferInvariants",
+    "mineCrossDomainInvariants",
+    "score",
+    "pickBest"
+   ],
+   "staticSuiteSelected": 7,
+   "cartoBlastRadius5": 5
+  },
+  "src/brain/procedural/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "mineActionPatterns",
+    "actionPatternsForIntent",
+    "scaffoldForIntent"
+   ],
+   "staticSuiteSelected": 7,
+   "cartoBlastRadius5": 4
+  },
+  "src/brain/suggestions/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "loadThresholds",
+    "getActiveSuggestions"
+   ],
+   "staticSuiteSelected": 7,
+   "cartoBlastRadius5": 4
+  },
+  "src/brain/working/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "Brain working": 1
+   },
+   "numbFunctions": [
+    "getUncommittedFiles",
+    "getWorkingMemory",
+    "getPendingDecisions",
+    "getActiveDrift"
+   ],
+   "staticSuiteSelected": 7,
+   "cartoBlastRadius5": 4
+  },
+  "src/cli/anci.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 1,
+    "survived": 5
+   },
+   "painSuites": {
+    "ANCI roundtrip": 1
+   },
+   "numbFunctions": [
+    "run",
+    "runPublish",
+    "runShow",
+    "runValidate",
+    "formatBytes"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/check.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "run"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/diff.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "run",
+    "<top>"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/doctor.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "CF-1 temporal": 1,
+    "CLI: doctor": 1
+   },
+   "numbFunctions": [
+    "fileSize",
+    "render",
+    "run",
+    "<top>"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/explain.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "collect",
+    "run",
+    "<top>"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/export.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "run",
+    "formatBytes"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/impact.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "run"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "<top>"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  },
+  "src/cli/init.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "preflightChecks",
+    "runTemporalBackfill",
+    "onProgress",
+    "run",
+    "binaryExists",
+    "claudeDesktopConfigPath"
+   ],
+   "staticSuiteSelected": 5,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/inspect.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "Inspect command": 1
+   },
+   "numbFunctions": [
+    "formatBytes",
+    "formatAge",
+    "collect",
+    "renderHuman"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/load.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "run"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/org.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "parseFlags",
+    "main",
+    "toArr"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/pr-impact.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 3,
+    "survived": 3
+   },
+   "painSuites": {
+    "PR impact": 3
+   },
+   "numbFunctions": [
+    "runGitDiff",
+    "renderMarkdown",
+    "<top>"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 2
+  },
+  "src/cli/remove.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "run"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/status.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 1,
+    "crash": 1
+   },
+   "painSuites": {
+    "CLI: status": 1
+   },
+   "numbFunctions": [
+    "formatAge",
+    "render",
+    "run"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/sync.js": {
+   "mutants": 4,
+   "outcomes": {
+    "survived": 4
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "run"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/temporal.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "runInit",
+    "runStatus",
+    "runEvents",
+    "main",
+    "parseFlags"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/update-check.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "checkForUpdate",
+    "isNewer",
+    "formatNotice"
+   ],
+   "staticSuiteSelected": 5,
+   "cartoBlastRadius5": 7
+  },
+  "src/cli/validate.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 3,
+    "crash": 1
+   },
+   "painSuites": {
+    "carto validate": 2
+   },
+   "numbFunctions": [
+    "printUsage",
+    "computeValidation",
+    "run"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/watch.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "applyIncrementalV2",
+    "run",
+    "markDomainsDirty",
+    "checkImportsCrossDomain",
+    "handleChange",
+    "shutdown"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/cli/why.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "collect",
+    "render",
+    "run",
+    "<top>"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 1
+  },
+  "src/detector/framework.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "CF-1 temporal": 1,
+    "Git hooks": 2,
+    "Init flow": 2,
+    "Lazy MCP re-parse": 2
+   },
+   "numbFunctions": [
+    "detectFramework",
+    "walk",
+    "deriveJsLanguage",
+    "detectAllFromRFiles"
+   ],
+   "staticSuiteSelected": 5,
+   "cartoBlastRadius5": 3
+  },
+  "src/engine/worker-pool.js": {
+   "mutants": 6,
+   "outcomes": {
+    "timeout": 4,
+    "survived": 2
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "WorkerPool._spawn",
+    "WorkerPool._addWorker"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 18
+  },
+  "src/engine/worker.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "<anon:L11>"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/dbtables.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "Framework extractors": 1,
+    "Python extractor": 1
+   },
+   "numbFunctions": [
+    "extractDBTables"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 1
+  },
+  "src/extractors/filemap.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "inferResponsibility"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/frameworks.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Long-tail frameworks": 2
+   },
+   "numbFunctions": [
+    "extractJsFrameworkRoutes",
+    "extractNestJsRoutes",
+    "extractSvelteKitRoutes",
+    "extractAstroRoutes"
+   ],
+   "staticSuiteSelected": 5,
+   "cartoBlastRadius5": 4
+  },
+  "src/extractors/frontend.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "extractFrontend"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 1
+  },
+  "src/extractors/functions.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "extractFunctions",
+    "splitParams"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 1
+  },
+  "src/extractors/imports.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "isBareModuleSpecifier",
+    "_resolvePackageEntry",
+    "_resolveExtends",
+    "tryResolvePythonModule",
+    "buildImportGraph",
+    "_resolveRustModule"
+   ],
+   "staticSuiteSelected": 27,
+   "cartoBlastRadius5": 27
+  },
+  "src/extractors/languages/cpp.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "extract",
+    "extractCppStructs",
+    "extractCppEnvVars"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/csharp.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "extract",
+    "extractCSharpRoutes",
+    "extractCSharpModels",
+    "extractCSharpEnvVars"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/dart.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 2,
+    "killed": 4
+   },
+   "painSuites": {
+    "Dart extractor": 4
+   },
+   "numbFunctions": [
+    "extractDartRoutes",
+    "extractDartModels"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/go.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 3
+   },
+   "painSuites": {
+    "Framework extractors": 3
+   },
+   "numbFunctions": [
+    "extract",
+    "extractGoStructs",
+    "extractGoFunctions"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/java.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "extract",
+    "extractJavaRoutes",
+    "extractJavaModels",
+    "extractJavaEnvVars"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/javascript.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "CF-2b models": 1,
+    "Framework extractors": 1
+   },
+   "numbFunctions": [
+    "extract",
+    "extractReactRouterRoutes",
+    "extractJSFunctions",
+    "extractJSFetches"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 1
+  },
+  "src/extractors/languages/kotlin.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 3
+   },
+   "painSuites": {
+    "Kotlin extractor": 3
+   },
+   "numbFunctions": [
+    "extractKotlinRoutes",
+    "extractKotlinModels",
+    "parseKotlinParams"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/php.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 6
+   },
+   "painSuites": {
+    "PHP extractor": 6
+   },
+   "numbFunctions": [],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/prisma.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 2,
+    "timeout": 1
+   },
+   "painSuites": {
+    "Prisma extractor": 2
+   },
+   "numbFunctions": [
+    "extract",
+    "extractPrismaModels"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/python.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "Framework extractors": 2,
+    "Python extractor": 2
+   },
+   "numbFunctions": [
+    "extract"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/r.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 3,
+    "survived": 3
+   },
+   "painSuites": {
+    "R extractor": 3
+   },
+   "numbFunctions": [
+    "descToIdentifier",
+    "collapseParens",
+    "findBalancedEnd"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/ruby.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Framework extractors": 2
+   },
+   "numbFunctions": [
+    "<top>",
+    "_ensureRubyGrammar",
+    "extract",
+    "extractActiveRecordModels"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/rust.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "extract",
+    "extractRustRoutes",
+    "extractRustStructs",
+    "extractRustEnvVars"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/swift.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 6
+   },
+   "painSuites": {
+    "Swift extractor": 6
+   },
+   "numbFunctions": [],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/languages/typescript.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Framework extractors": 2,
+    "CF-2b models": 1
+   },
+   "numbFunctions": [
+    "extract",
+    "walk",
+    "extractTSFunctions",
+    "extractFuncFromNode"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/loader.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 3
+   },
+   "painSuites": {
+    "Extraction errors": 3,
+    "Scale-test driver": 3,
+    "Store adapter (ACP V2)": 3
+   },
+   "numbFunctions": [
+    "loadLanguagePlugins"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 19
+  },
+  "src/extractors/models.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "Framework extractors": 1,
+    "Python extractor": 1
+   },
+   "numbFunctions": [
+    "extractPydanticModels",
+    "extractSQLAlchemyModels",
+    "extractDjangoModels"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 1
+  },
+  "src/extractors/plugin-api.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "PHP extractor": 1,
+    "Plugin API": 2
+   },
+   "numbFunctions": [
+    "validatePlugin",
+    "validatePluginOutput"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 0
+  },
+  "src/extractors/routes.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "Python extractor": 1,
+    "Framework extractors": 1
+   },
+   "numbFunctions": [
+    "collapseMultilineDecorators",
+    "extractFastAPIRoutes",
+    "extractFlaskRoutes",
+    "extractDjangoRoutes"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 1
+  },
+  "src/extractors/schemas.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 6
+   },
+   "painSuites": {
+    "CF-2b models": 6,
+    "Extraction errors": 1,
+    "Framework extractors": 1,
+    "Store adapter (ACP V2)": 1
+   },
+   "numbFunctions": [],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 2
+  },
+  "src/extractors/stack.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "detectStackFromContent",
+    "detectStackFromPackageJson",
+    "detectStackFromRequirements"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 18
+  },
+  "src/extractors/tree-sitter-parser.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "<top>",
+    "_getCompiledGrammar",
+    "supportsExtension",
+    "extractImports",
+    "extractAll",
+    "_inferKind"
+   ],
+   "staticSuiteSelected": 32,
+   "cartoBlastRadius5": 47
+  },
+  "src/mcp/change-plan.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 3
+   },
+   "painSuites": {
+    "Change plan": 3
+   },
+   "numbFunctions": [
+    "tokenize",
+    "routePathTokens",
+    "scoreFileRelevance"
+   ],
+   "staticSuiteSelected": 10,
+   "cartoBlastRadius5": 7
+  },
+  "src/mcp/diff-parser.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Adjacent: semantic-diff": 2,
+    "MCP middleware": 1,
+    "PR impact": 2,
+    "SWE-bench tools": 1,
+    "Validation API": 2,
+    "SWE-bench": 1
+   },
+   "numbFunctions": [
+    "stripDiffPath",
+    "flush",
+    "extractAddedImports"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 16
+  },
+  "src/mcp/files-without-tests.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 5,
+    "survived": 1
+   },
+   "painSuites": {
+    "Files without tests": 5,
+    "PR impact": 1
+   },
+   "numbFunctions": [
+    "list"
+   ],
+   "staticSuiteSelected": 13,
+   "cartoBlastRadius5": 9
+  },
+  "src/mcp/impact.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "ANCI roundtrip": 1,
+    "CF-7 MCP surface": 1
+   },
+   "numbFunctions": [
+    "blast",
+    "formatSimulate",
+    "formatNeighbors",
+    "neighbors"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 3
+  },
+  "src/mcp/middleware/index.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "MCP middleware": 2
+   },
+   "numbFunctions": [
+    "MiddlewareProxy.shouldBlock",
+    "LineSplitter.feed",
+    "realValidate",
+    "runProxy"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 2
+  },
+  "src/mcp/server.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "CF-7 MCP surface": 1
+   },
+   "numbFunctions": [
+    "closeStore",
+    "formatHealth",
+    "formatWorkingMemory",
+    "formatSemanticDiff",
+    "formatServiceGraph"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 2
+  },
+  "src/mcp/validate.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "PR impact": 1,
+    "Validation API": 1
+   },
+   "numbFunctions": [
+    "resolveImportTarget",
+    "validateDiff",
+    "getExistingImportTargets",
+    "recordSideEffects"
+   ],
+   "staticSuiteSelected": 13,
+   "cartoBlastRadius5": 12
+  },
+  "src/org/detect.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 4,
+    "killed": 2
+   },
+   "painSuites": {
+    "Org: detect": 2
+   },
+   "numbFunctions": [
+    "detectPython",
+    "detectMaven",
+    "detectOpenApi",
+    "dedupe"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/org/queries.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "orgArchitectureOverview",
+    "crossRepoBlastRadius",
+    "findConsumersOfApi",
+    "orgDomainMapping",
+    "serviceBoundaryViolations",
+    "microservicesMigrationCutPoints"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 4
+  },
+  "src/org/store.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "OrgStore.openIfExists",
+    "OrgStore.close",
+    "OrgStore._ensureSchema",
+    "OrgStore.addRepo",
+    "OrgStore.insertEdges",
+    "OrgStore.getEdges"
+   ],
+   "staticSuiteSelected": 5,
+   "cartoBlastRadius5": 5
+  },
+  "src/org/sync.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 4,
+    "survived": 2
+   },
+   "painSuites": {
+    "Org: sync": 4
+   },
+   "numbFunctions": [
+    "buildTargetToRepoMap"
+   ],
+   "staticSuiteSelected": 2,
+   "cartoBlastRadius5": 2
+  },
+  "src/predictive/cut-points.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 1,
+    "killed": 5
+   },
+   "painSuites": {
+    "Predictive: cut-points": 5
+   },
+   "numbFunctions": [
+    "findCutPoints"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/predictive/drift-digest.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "Predictive: drift-digest": 1
+   },
+   "numbFunctions": [
+    "renderDriftDigest"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/predictive/ownership.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "ownersForFile",
+    "ownersForDomain",
+    "crossTeamCoupling",
+    "aiCostAttribution"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/predictive/risk-score.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 3
+   },
+   "painSuites": {
+    "Predictive: risk-score": 3,
+    "Predictive: drift-digest": 1
+   },
+   "numbFunctions": [
+    "clampUnit",
+    "scoreFiles"
+   ],
+   "staticSuiteSelected": 4,
+   "cartoBlastRadius5": 4
+  },
+  "src/predictive/validate-change.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 2,
+    "killed": 4
+   },
+   "painSuites": {
+    "Predictive: validate-change": 4
+   },
+   "numbFunctions": [
+    "validateChange"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/rules/engine.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "Rule engine: engine": 1
+   },
+   "numbFunctions": [
+    "runEngine",
+    "gapHash",
+    "normalizeGap"
+   ],
+   "staticSuiteSelected": 3,
+   "cartoBlastRadius5": 3
+  },
+  "src/rules/intent.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 3,
+    "killed": 3
+   },
+   "painSuites": {
+    "Rule engine: intent": 3
+   },
+   "numbFunctions": [
+    "loadIntent",
+    "saveIntent",
+    "autoDetect"
+   ],
+   "staticSuiteSelected": 4,
+   "cartoBlastRadius5": 4
+  },
+  "src/rules/rules/auth-missing-on-mutating-route.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 3,
+    "survived": 3
+   },
+   "painSuites": {
+    "Rule engine: auth-missing": 3
+   },
+   "numbFunctions": [
+    "importIsAuthSignal",
+    "upstreamHasAuthSignal",
+    "appliesWhen"
+   ],
+   "staticSuiteSelected": 4,
+   "cartoBlastRadius5": 5
+  },
+  "src/rules/rules/money-as-float.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "Rule engine: money-as-float": 1
+   },
+   "numbFunctions": [
+    "tokenize",
+    "cleanType",
+    "parseFieldsJson",
+    "appliesWhen",
+    "run"
+   ],
+   "staticSuiteSelected": 4,
+   "cartoBlastRadius5": 5
+  },
+  "src/security/ignore.js": {
+   "mutants": 5,
+   "outcomes": {
+    "survived": 2,
+    "killed": 3
+   },
+   "painSuites": {
+    "Secret leakage": 3,
+    "ANCI roundtrip": 1,
+    "CF-7 MCP surface": 1,
+    "Extraction errors": 1,
+    "File discovery": 1,
+    "Init flow": 1,
+    "Lazy MCP re-parse": 1,
+    "Project Structure": 1,
+    "Scale-test driver": 1,
+    "Store adapter (ACP V2)": 1
+   },
+   "numbFunctions": [
+    "parseCartoIgnore",
+    "isIgnored"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 19
+  },
+  "src/store/change-detector.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 1,
+    "survived": 5
+   },
+   "painSuites": {
+    "ANCI roundtrip": 1,
+    "CF-1 temporal": 1,
+    "CF-7 MCP surface": 1,
+    "Extraction errors": 1,
+    "Git hooks": 1,
+    "Init flow": 1,
+    "Lazy MCP re-parse": 1,
+    "Project Structure": 1,
+    "Scale-test driver": 1,
+    "Secret leakage": 1,
+    "Store adapter (ACP V2)": 1
+   },
+   "numbFunctions": [
+    "detectChangedFiles"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 18
+  },
+  "src/store/config-loader.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 4,
+    "survived": 2
+   },
+   "painSuites": {
+    "Domain config": 4
+   },
+   "numbFunctions": [
+    "applyDeclaredGlobs",
+    "applyAnchors"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 18
+  },
+  "src/store/migrate.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "migrateFromJsonBlobs",
+    "backupFile",
+    "detectLanguage"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 18
+  },
+  "src/store/path-utils.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 6
+   },
+   "painSuites": {
+    "MCP resilience": 2,
+    "Path normalization": 6
+   },
+   "numbFunctions": [],
+   "staticSuiteSelected": 5,
+   "cartoBlastRadius5": 5
+  },
+  "src/store/sqlite-store.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 3,
+    "survived": 3
+   },
+   "painSuites": {
+    "AI tools: dataFlow": 1,
+    "AI tools: interfaceContract": 1,
+    "Domain config": 1,
+    "Episodic Memory": 2
+   },
+   "numbFunctions": [
+    "SQLiteStore.getGapByHash",
+    "SQLiteStore.dismissGap",
+    "SQLiteStore.transaction"
+   ],
+   "staticSuiteSelected": 38,
+   "cartoBlastRadius5": 32
+  },
+  "src/store/store-adapter.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 3,
+    "survived": 3
+   },
+   "painSuites": {
+    "Store adapter (ACP V2)": 3
+   },
+   "numbFunctions": [
+    "StoreAdapter.getBlastRadius",
+    "StoreAdapter.getContextForFile"
+   ],
+   "staticSuiteSelected": 4,
+   "cartoBlastRadius5": 8
+  },
+  "src/store/sync.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "Extraction errors": 1,
+    "Adaptive clustering": 1
+   },
+   "numbFunctions": [
+    "onProgress",
+    "runSync",
+    "generateOutputs",
+    "updateReverseDepsPartial"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 17
+  },
+  "src/temporal/backfill.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "isCodeFile",
+    "isGitRepo",
+    "flush",
+    "backfillFromGit"
+   ],
+   "staticSuiteSelected": 5,
+   "cartoBlastRadius5": 3
+  },
+  "src/temporal/delta.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 2,
+    "survived": 4
+   },
+   "painSuites": {
+    "Temporal storage": 2
+   },
+   "numbFunctions": [
+    "xorBitsets",
+    "flattenMap"
+   ],
+   "staticSuiteSelected": 18,
+   "cartoBlastRadius5": 18
+  },
+  "src/temporal/events.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 1,
+    "survived": 5
+   },
+   "painSuites": {
+    "Temporal MCP tools": 1
+   },
+   "numbFunctions": [
+    "detectEvents",
+    "bucketByDomain",
+    "summarizeDomains",
+    "setIntersect"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 18
+  },
+  "src/temporal/queries.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 5,
+    "killed": 1
+   },
+   "painSuites": {
+    "CF-7 MCP surface": 1,
+    "Domain stability": 1
+   },
+   "numbFunctions": [
+    "getArchitecturalDrift",
+    "getHotspotFiles",
+    "getDomainHealth",
+    "getTemporalContext",
+    "setIntersect"
+   ],
+   "staticSuiteSelected": 16,
+   "cartoBlastRadius5": 10
+  },
+  "src/temporal/snapshot.js": {
+   "mutants": 6,
+   "outcomes": {
+    "killed": 1,
+    "survived": 5
+   },
+   "painSuites": {
+    "Temporal MCP tools": 1
+   },
+   "numbFunctions": [
+    "captureSnapshotWithStore"
+   ],
+   "staticSuiteSelected": 17,
+   "cartoBlastRadius5": 18
+  },
+  "src/temporal/store.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "TemporalStore.getMeta",
+    "TemporalStore.insertFileDomains",
+    "TemporalStore.insertDelta",
+    "TemporalStore.getFileDomainsAt",
+    "TemporalStore.getFileChurn",
+    "TemporalStore.countCommits"
+   ],
+   "staticSuiteSelected": 20,
+   "cartoBlastRadius5": 22
+  },
+  "src/watcher/watch.js": {
+   "mutants": 6,
+   "outcomes": {
+    "survived": 6
+   },
+   "painSuites": {},
+   "numbFunctions": [
+    "ignoredFn",
+    "startWatcher",
+    "scheduleFlush",
+    "flushBatch",
+    "startWatcherLegacy",
+    "onAdd"
+   ],
+   "staticSuiteSelected": 1,
+   "cartoBlastRadius5": 0
+  }
+ }
+}
